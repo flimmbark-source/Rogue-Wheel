@@ -615,10 +615,6 @@ const HUDPanels = () => {
             phase === 'roundEnd' && rs !== null ? 'visible opacity-100' : 'invisible opacity-0'
           }`}
 
-  return (
-    <div
-  className="h-screen w-screen overflow-x-hidden overflow-y-hidden bg-slate-900 text-slate-100 p-1 grid gap-2"
-  style={{ gridTemplateRows: "auto auto 1fr auto" }}
     >
       {/* Controls */}
       <div className="flex items-center justify-between text-[12px] min-h-[24px]">
