@@ -667,16 +667,22 @@ const HandDock = () => {
       </div>
 
       {/* NEW: Dual HUD panels above wheels */}
-      <HUDPanels />
-
-      {/* Wheels center (tight gaps) */}
-      <div className="mt-1">
-        <div className="flex flex-col items-center justify-start gap-1">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="flex-shrink-0"><WheelPanel i={i} /></div>
-          ))}
-        </div>
+      <div ref={hudRef} className="relative z-10">
+        <HUDPanels />
       </div>
+
+     {/* Wheels center (aligned with HUD top) */}
+    <div
+    className="relative z-0"
+    style={{ marginTop: hudH ? -hudH : 0 }}
+    >
+    <div className="flex flex-col items-center justify-start gap-1">
+    {[0, 1, 2].map((i) => (
+      <div key={i} className="flex-shrink-0"><WheelPanel i={i} /></div>
+    ))}
+    </div>
+    </div>
+
 
       {/* Log: compact ticker (expands on hover) */}
       <div className="w-full rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-0.5 shadow overflow-y-auto max-h-7 hover:max-h-24 transition-[max-height] duration-200 ease-in-out">
