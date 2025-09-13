@@ -421,7 +421,7 @@ export default function ThreeWheel_WinsOnly() {
         onDragStart={(e) => { e.dataTransfer.setData('text/plain', card.id); setDragCardId(card.id); }}
         onDragEnd={() => setDragCardId(null)}
         onPointerDown={() => setSelectedCardId(card.id)}
-        onClick={(e) => { e.stopPropagation(); setSelectedCardId((prev) => prev === card.id ? null : prev ? prev : card.id); }}
+        onClick={(e) => { e.stopPropagation(); setSelectedCardId((prev) => prev === card.id ? null : card.id); }}
         disabled={disabled}
         className={`relative select-none ${disabled ? 'opacity-60' : 'hover:scale-[1.02]'} transition will-change-transform ${selected ? 'ring-2 ring-amber-400' : ''}`}
         style={{ width: dims.w, height: dims.h }}
@@ -570,51 +570,69 @@ export default function ThreeWheel_WinsOnly() {
     );
   };
 
-// NEW: Two compact HUD panels above wheels (no horizontal shift)
-const HUDPanels = () => {
-  const rsP = reserveSums ? reserveSums.player : null;
-  const rsE = reserveSums ? reserveSums.enemy : null;
+  // NEW: Two compact HUD panels above wheels (no horizontal shift)
+  const HUDPanels = () => {
+    const rsP = reserveSums ? reserveSums.player : null;
+    const rsE = reserveSums ? reserveSums.enemy : null;
 
-  const Panel = ({ side }: { side: Side }) => {
-    const isPlayer = side === 'player';
-    const color = HUD_COLORS[side];
-    const name = isPlayer ? player.name : enemy.name;
-    const win = isPlayer ? wins.player : wins.enemy;
-    const rs = isPlayer ? rsP : rsE;
-    const hasInit = initiative === side;
+    const Panel = ({ side }: { side: Side }) => {
+      const isPlayer = side === 'player';
+      const color = HUD_COLORS[side];
+      const name = isPlayer ? player.name : enemy.name;
+      const win = isPlayer ? wins.player : wins.enemy;
+      const rs = isPlayer ? rsP : rsE;
+      const hasInit = initiative === side;
 
-    // Fixed reserve lane size on mobile so nothing reflows when it appears.
-    // Tune these if needed for your smallest device.
-    const reserveLaneStyle: React.CSSProperties = {
-      maxWidth: '44vw',
-      minWidth: '90px',       // keeps a small, consistent lane even when hidden
+      // Fixed reserve lane so nothing reflows when it appears
+      const reserveLaneStyle: React.CSSProperties = {
+        maxWidth: '44vw',
+        minWidth: '90px',
+      };
+
+      return (
+        <div
+          className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-1 text-[12px] shadow w-full"
+          style={{ maxWidth: '100%' }}
+        >
+          <div className="w-1.5 h-6 rounded" style={{ background: color }} />
+          <div className="truncate max-w-[36vw] sm:max-w-none">
+            <span className="font-semibold">{name}</span>
+            {hasInit && <span className="ml-1">⚑</span>}
+          </div>
+          <div className="flex items-center gap-1 ml-1 flex-shrink-0">
+            <span className="opacity-80">Wins</span>
+            <span className="text-base font-extrabold">{win}</span>
+          </div>
+          <div
+            className={`ml-2 rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap ${
+              phase === 'roundEnd' && rs !== null ? 'visible opacity-100' : 'invisible opacity-0'
+            }`}
+            style={reserveLaneStyle}
+            title={rs !== null ? `Reserve: ${rs}` : undefined}
+          >
+            Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
+          </div>
+        </div>
+      );
     };
 
+    // 2 fixed columns so panels never tug each other
     return (
-      <div
-        className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-1 text-[12px] shadow w-full"
-        style={{ maxWidth: '100%' }}
-      >
-        <div className="w-1.5 h-6 rounded" style={{ background: color }} />
-
-        {/* Name truncates; never pushes the row wider */}
-        <div className="truncate max-w-[36vw] sm:max-w-none">
-          <span className="font-semibold">{name}</span>
-          {hasInit && <span className="ml-1">⚑</span>}
+      <div className="w-full grid grid-cols-2 gap-2 overflow-x-hidden">
+        <div className="min-w-0">
+          <Panel side="player" />
         </div>
-
-        {/* Wins block is fixed-size and won't grow */}
-        <div className="flex items-center gap-1 ml-1 flex-shrink-0">
-          <span className="opacity-80">Wins</span>
-          <span className="text-base font-extrabold">{win}</span>
+        <div className="min-w-0">
+          <Panel side="enemy" />
         </div>
+      </div>
+    );
+  };
 
-        {/* Reserve lane: always present; invisible until roundEnd */}
-        <div
-          className={`ml-2 rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap ${
-            phase === 'roundEnd' && rs !== null ? 'visible opacity-100' : 'invisible opacity-0'
-          }`}
-
+  return (
+    <div
+      className="h-screen w-screen overflow-x-hidden overflow-y-hidden bg-slate-900 text-slate-100 p-1 grid gap-2"
+      style={{ gridTemplateRows: "auto auto 1fr auto" }}
     >
       {/* Controls */}
       <div className="flex items-center justify-between text-[12px] min-h-[24px]">
@@ -661,10 +679,7 @@ const HUDPanels = () => {
       </div>
 
       {/* Wheels center (aligned with HUD top) */}
-      <div
-        className="relative z-0"
-        style={{ marginTop: hudH ? -hudH : 0 }}
-      >
+      <div className="relative z-0" style={{ marginTop: hudH ? -hudH : 0 }}>
         <div className="flex flex-col items-center justify-start gap-1">
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex-shrink-0"><WheelPanel i={i} /></div>
@@ -673,7 +688,7 @@ const HUDPanels = () => {
       </div>
 
       {/* Log: compact ticker (expands on hover) */}
-      <div className="w-full rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-0.5 shadow overflow-y-auto max-h-7 hover:max-h-24 transition-[max-height] duration-200 ease-in-out">
+      <div className="w-full rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-0.5 shadow overflow-y-auto overflow-x-hidden max-h-7 hover:max-h-24 transition-[max-height] duration-200 ease-in-out">
         <div className="font-semibold mb-0.5">Log</div>
         {log.map((line, i) => (<div key={i}>• {line}</div>))}
       </div>
@@ -693,7 +708,7 @@ const HUDPanels = () => {
     const secs = genWheelSections("bandit");
     const lens = secs.map(s => (s.start <= s.end ? (s.end - s.start + 1) : (SLICES - s.start + (s.end + 1))));
     const sum = lens.reduce((a, b) => a + b, 0);
-    console.debug("[SelfTest] sections cover 15 slices:", sum === 15, lens, "sum=", sum);
+    console.debug("[SelfTest] sections cover 15 slices]:", sum === 15, lens, "sum=", sum);
   } catch (e) { console.error("[SelfTest] section generation failed", e); }
 
   try {
