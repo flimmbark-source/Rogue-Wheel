@@ -182,6 +182,27 @@ export default function ThreeWheel_WinsOnly() {
   const [initiative, setInitiative] = useState<Side>(() => (Math.random() < 0.5 ? "player" : "enemy"));
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
   const [round, setRound] = useState(1);
+  // Measure HUD height so we can align wheels with its top
+  const hudRef = useRef<HTMLDivElement | null>(null);
+  const [hudH, setHudH] = useState(0);
+
+  useEffect(() => {
+    const update = () => {
+      if (!hudRef.current) return;
+      const h = Math.round(hudRef.current.getBoundingClientRect().height || 0);
+      setHudH(h);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    if (hudRef.current) ro.observe(hudRef.current);
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
+    };
+  }, []);
 
   // Phase state: manage the current stage of the round (choose, showEnemy, anim, roundEnd, ended)
   // Declare this before the wheel size hook so it is available inside the resize effect.
