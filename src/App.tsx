@@ -29,6 +29,30 @@ function calcWheelSize(viewH: number, viewW: number) {
   return Math.max(MIN_WHEEL, Math.min(maxAllowed, raw));
 }
 
+// add near your other hooks
+const [freezeLayout, setFreezeLayout] = useState(false);
+
+// when Reveal starts (before anim), freeze layout
+function onReveal() {
+  if (!canReveal) return;
+  setFreezeLayout(true);                 // <-- NEW
+  const enemyPicks = autoPickEnemy();
+  setAssign((a) => ({ ...a, enemy: enemyPicks }));
+  setPhase("showEnemy");
+  setSafeTimeout(() => {
+    if (!mountedRef.current) return;
+    setPhase("anim");
+    resolveRound(enemyPicks);
+  }, 600);
+}
+
+// when you start the next round, unfreeze
+function nextRound() {
+  if (!(phase === "roundEnd" || phase === "ended")) return;
+  setFreezeLayout(false);                // <-- NEW
+  // ...rest unchanged...
+}
+
 // ---------------- Types ----------------
 type Side = "player" | "enemy";
 
@@ -219,27 +243,25 @@ export default function ThreeWheel_WinsOnly() {
    * resize is also guarded to avoid resizes triggered by layout thrash.
    */
   useEffect(() => {
-    const onResize = () => {
-      // Only update wheel size if we're not currently animating the spins. Without
-      // this guard, resize events triggered indirectly by our animations can cause
-      // the wheel panels to jump in size.
-      if (phase !== "anim") {
-        setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth));
-      }
-    };
-    window.addEventListener('resize', onResize);
-    window.addEventListener('orientationchange', onResize);
-    // Call resize after a short delay to handle initial mount and orientation
-    // changes gracefully. Again, respect the current phase guard.
-    const t = setSafeTimeout(() => {
-      if (phase !== "anim") onResize();
-    }, 350);
-    return () => {
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('orientationchange', onResize);
-      clearTimeout(t as any);
-    };
-  }, [phase]);
+  const onResize = () => {
+    if (freezeLayout) return; // <-- NEW: don't recalc while frozen
+    setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth));
+  };
+
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', onResize);
+
+  // settle initial size after a short delay
+  const t = setTimeout(() => {
+    if (!freezeLayout) onResize();
+  }, 350);
+
+  return () => {
+    window.removeEventListener('resize', onResize);
+    window.removeEventListener('orientationchange', onResize);
+    clearTimeout(t);
+  };
+}, [freezeLayout]);  // <-- ⬅️ now depends on freezeLayout, not phase
 
   // Per-wheel sections & tokens & active
   const [wheelSections, setWheelSections] = useState<Section[][]>(() => [genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
