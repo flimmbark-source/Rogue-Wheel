@@ -183,6 +183,10 @@ export default function ThreeWheel_WinsOnly() {
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
   const [round, setRound] = useState(1);
 
+  // Phase state: manage the current stage of the round (choose, showEnemy, anim, roundEnd, ended)
+  // Declare this before the wheel size hook so it is available inside the resize effect.
+  const [phase, setPhase] = useState<"choose" | "showEnemy" | "anim" | "roundEnd" | "ended">("choose");
+
   // Responsive wheel size
   const [wheelSize, setWheelSize] = useState<number>(() => (typeof window !== 'undefined' ? calcWheelSize(window.innerHeight, window.innerWidth) : MAX_WHEEL));
   /**
@@ -231,7 +235,7 @@ export default function ThreeWheel_WinsOnly() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 
   // Phases & log
-  const [phase, setPhase] = useState<"choose" | "showEnemy" | "anim" | "roundEnd" | "ended">("choose");
+  // `phase` is declared earlier to ensure it's available inside the resize effect above.
   const [log, setLog] = useState<string[]>(["A Shade Bandit eyes your purse..."]);
 
   // Reserve sums after resolve (HUD only)
