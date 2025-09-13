@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import TitleScreen from "./ui/TitleScreen";
+import TitleScreen from "../ui/TitleScreen";
 import App from "./App"; // your existing game component (default export)
 
 export default function AppShell() {
