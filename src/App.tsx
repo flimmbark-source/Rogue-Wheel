@@ -601,54 +601,33 @@ export default function ThreeWheel_WinsOnly() {
   };
 
   // NEW: Two compact HUD panels above wheels
-// NEW: Two compact HUD panels above wheels
-const HUDPanels = () => {
-  const rsP = reserveSums ? reserveSums.player : null; const rsE = reserveSums ? reserveSums.enemy : null;
-
-  const Panel = ({ side }: { side: Side }) => {
-    const isPlayer = side === 'player';
-    const color = HUD_COLORS[side];
-    const name = isPlayer ? player.name : enemy.name;
-    const win = isPlayer ? wins.player : wins.enemy;
-    const rs = isPlayer ? rsP : rsE;
-    const hasInit = initiative === side;
-
+  const HUDPanels = () => {
+    const rsP = reserveSums ? reserveSums.player : null; const rsE = reserveSums ? reserveSums.enemy : null;
+    const Panel = ({ side }: { side: Side }) => {
+      const isPlayer = side === 'player';
+      const color = HUD_COLORS[side];
+      const name = isPlayer ? player.name : enemy.name;
+      const win = isPlayer ? wins.player : wins.enemy;
+      const rs = isPlayer ? rsP : rsE;
+      const hasInit = initiative === side;
+      return (
+        <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-1 text-[12px] shadow min-w-0">
+          <div className="w-1.5 h-6 rounded" style={{ background: color }} />
+          <div className="truncate"><span className="font-semibold">{name}</span>{hasInit && <span className="ml-1">⚑</span>}</div>
+          <div className="flex items-center gap-1 ml-1"><span className="opacity-80">Wins</span><span className="text-base font-extrabold">{win}</span></div>
+          {phase==='roundEnd' && rs !== null && (
+            <div className="ml-2 rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] whitespace-nowrap">Reserve: <span className="font-bold">{rs}</span></div>
+          )}
+        </div>
+      );
+    };
     return (
-      <div
-        className="flex min-w-0 flex-shrink items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-1 text-[12px] shadow"
-      >
-        <div className="w-1.5 h-6 rounded" style={{ background: color }} />
-        {/* Name block truncates properly on small screens */}
-        <div className="truncate max-w-[36vw] sm:max-w-none">
-          <span className="font-semibold">{name}</span>
-          {hasInit && <span className="ml-1">⚑</span>}
-        </div>
-        <div className="flex items-center gap-1 ml-1">
-          <span className="opacity-80">Wins</span>
-          <span className="text-base font-extrabold">{win}</span>
-        </div>
-        {/* Reserve chip: cap width + ellipsis to avoid growing the row */}
-        {phase==='roundEnd' && rs !== null && (
-          <div
-            className="ml-2 rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap max-w-[40vw] sm:max-w-none"
-            title={`Reserve: ${rs}`}
-          >
-            Reserve: <span className="font-bold">{rs}</span>
-          </div>
-        )}
+      <div className="w-full flex items-center justify-between gap-2">
+        <Panel side="player" />
+        <Panel side="enemy" />
       </div>
     );
   };
-
-  return (
-    <div className="w-full flex items-center justify-between gap-2 overflow-hidden">
-      {/* Make each panel shrink instead of pushing layout wider */}
-      <div className="flex-1 min-w-0"><Panel side="player" /></div>
-      <div className="flex-1 min-w-0"><Panel side="enemy" /></div>
-    </div>
-  );
-};
-
 
   return (
     <div className="h-screen overflow-hidden w-full bg-slate-900 text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
