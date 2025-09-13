@@ -570,9 +570,10 @@ export default function ThreeWheel_WinsOnly() {
     );
   };
 
-// NEW: Two compact HUD panels above wheels (mobile-safe widths, no stretch)
+// NEW: Two compact HUD panels above wheels (no horizontal shift)
 const HUDPanels = () => {
-  const rsP = reserveSums ? reserveSums.player : null; const rsE = reserveSums ? reserveSums.enemy : null;
+  const rsP = reserveSums ? reserveSums.player : null;
+  const rsE = reserveSums ? reserveSums.enemy : null;
 
   const Panel = ({ side }: { side: Side }) => {
     const isPlayer = side === 'player';
@@ -582,44 +583,37 @@ const HUDPanels = () => {
     const rs = isPlayer ? rsP : rsE;
     const hasInit = initiative === side;
 
+    // Fixed reserve lane size on mobile so nothing reflows when it appears.
+    // Tune these if needed for your smallest device.
+    const reserveLaneStyle: React.CSSProperties = {
+      maxWidth: '44vw',
+      minWidth: '90px',       // keeps a small, consistent lane even when hidden
+    };
+
     return (
       <div
-        className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-1 text-[12px] shadow"
+        className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-1 text-[12px] shadow w-full"
         style={{ maxWidth: '100%' }}
       >
         <div className="w-1.5 h-6 rounded" style={{ background: color }} />
-        {/* Name block truncates on tiny screens */}
-        <div className="truncate max-w-[38vw] sm:max-w-none">
+
+        {/* Name truncates; never pushes the row wider */}
+        <div className="truncate max-w-[36vw] sm:max-w-none">
           <span className="font-semibold">{name}</span>
           {hasInit && <span className="ml-1">⚑</span>}
         </div>
 
+        {/* Wins block is fixed-size and won't grow */}
         <div className="flex items-center gap-1 ml-1 flex-shrink-0">
           <span className="opacity-80">Wins</span>
           <span className="text-base font-extrabold">{win}</span>
         </div>
 
-        {/* Reserve chip: cap width; allow wrap on very small screens to avoid overflow */}
-        {phase==='roundEnd' && rs !== null && (
-          <div
-            className="ml-2 rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis max-w-[44vw] sm:whitespace-nowrap whitespace-normal break-words"
-            title={`Reserve: ${rs}`}
-          >
-            Reserve: <span className="font-bold">{rs}</span>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  return (
-    <div className="w-full flex items-center justify-between gap-2 overflow-x-hidden">
-      {/* NOTE: remove flex-1 so panels don't stretch; cap each to 48% of row */}
-      <div className="min-w-0 max-w-[48%]"><Panel side="player" /></div>
-      <div className="min-w-0 max-w-[48%]"><Panel side="enemy" /></div>
-    </div>
-  );
-};
+        {/* Reserve lane: always present; invisible until roundEnd */}
+        <div
+          className={`ml-2 rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap ${
+            phase === 'roundEnd' && rs !== null ? 'visible opacity-100' : 'invisible opacity-0'
+          }`}
 
   return (
     <div
