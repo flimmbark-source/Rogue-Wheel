@@ -687,11 +687,6 @@ export default function ThreeWheel_WinsOnly() {
         </div>
       </div>
 
-      {/* Log: compact ticker (expands on hover) */}
-      <div className="w-full rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-0.5 shadow overflow-y-auto overflow-x-hidden max-h-7 hover:max-h-24 transition-[max-height] duration-200 ease-in-out">
-        <div className="font-semibold mb-0.5">Log</div>
-        {log.map((line, i) => (<div key={i}>• {line}</div>))}
-      </div>
 
       {/* Docked hand overlay */}
       <div className="pointer-events-none">
