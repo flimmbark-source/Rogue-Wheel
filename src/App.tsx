@@ -570,42 +570,57 @@ export default function ThreeWheel_WinsOnly() {
     );
   };
 
-  // NEW: Two compact HUD panels above wheels (mobile-safe widths)
-  const HUDPanels = () => {
-    const rsP = reserveSums ? reserveSums.player : null; const rsE = reserveSums ? reserveSums.enemy : null;
+// NEW: Two compact HUD panels above wheels (mobile-safe widths, no stretch)
+const HUDPanels = () => {
+  const rsP = reserveSums ? reserveSums.player : null; const rsE = reserveSums ? reserveSums.enemy : null;
 
-    const Panel = ({ side }: { side: Side }) => {
-      const isPlayer = side === 'player';
-      const color = HUD_COLORS[side];
-      const name = isPlayer ? player.name : enemy.name;
-      const win = isPlayer ? wins.player : wins.enemy;
-      const rs = isPlayer ? rsP : rsE;
-      const hasInit = initiative === side;
+  const Panel = ({ side }: { side: Side }) => {
+    const isPlayer = side === 'player';
+    const color = HUD_COLORS[side];
+    const name = isPlayer ? player.name : enemy.name;
+    const win = isPlayer ? wins.player : wins.enemy;
+    const rs = isPlayer ? rsP : rsE;
+    const hasInit = initiative === side;
 
-      return (
-        <div className="flex min-w-0 flex-shrink items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-1 text-[12px] shadow">
-          <div className="w-1.5 h-6 rounded" style={{ background: color }} />
-          {/* Name truncates safely on tiny screens */}
-          <div className="truncate max-w-[36vw] sm:max-w-none">
-            <span className="font-semibold">{name}</span>
-            {hasInit && <span className="ml-1">⚑</span>}
-          </div>
-          <div className="flex items-center gap-1 ml-1">
-            <span className="opacity-80">Wins</span>
-            <span className="text-base font-extrabold">{win}</span>
-          </div>
-          {/* Reserve chip capped to avoid row overflow */}
-          {phase==='roundEnd' && rs !== null && (
-            <div
-              className="ml-2 rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap max-w-[40vw] sm:max-w-none"
-              title={`Reserve: ${rs}`}
-            >
-              Reserve: <span className="font-bold">{rs}</span>
-            </div>
-          )}
+    return (
+      <div
+        className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-1 text-[12px] shadow"
+        style={{ maxWidth: '100%' }}
+      >
+        <div className="w-1.5 h-6 rounded" style={{ background: color }} />
+        {/* Name block truncates on tiny screens */}
+        <div className="truncate max-w-[38vw] sm:max-w-none">
+          <span className="font-semibold">{name}</span>
+          {hasInit && <span className="ml-1">⚑</span>}
         </div>
-      );
-    };
+
+        <div className="flex items-center gap-1 ml-1 flex-shrink-0">
+          <span className="opacity-80">Wins</span>
+          <span className="text-base font-extrabold">{win}</span>
+        </div>
+
+        {/* Reserve chip: cap width; allow wrap on very small screens to avoid overflow */}
+        {phase==='roundEnd' && rs !== null && (
+          <div
+            className="ml-2 rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis max-w-[44vw] sm:whitespace-nowrap whitespace-normal break-words"
+            title={`Reserve: ${rs}`}
+          >
+            Reserve: <span className="font-bold">{rs}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="w-full flex items-center justify-between gap-2 overflow-x-hidden">
+      {/* NOTE: remove flex-1 so panels don't stretch; cap each to 48% of row */}
+      <div className="min-w-0 max-w-[48%]"><Panel side="player" /></div>
+      <div className="min-w-0 max-w-[48%]"><Panel side="enemy" /></div>
+    </div>
+  );
+};
+
 
     return (
       <div className="w-full flex items-center justify-between gap-2 overflow-hidden">
@@ -616,7 +631,10 @@ export default function ThreeWheel_WinsOnly() {
   };
 
   return (
-    <div className="h-screen overflow-hidden w-full bg-slate-900 text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
+    <div
+  className="h-screen w-screen overflow-x-hidden overflow-y-hidden bg-slate-900 text-slate-100 p-1 grid gap-2"
+  style={{ gridTemplateRows: "auto auto 1fr auto" }}
+    >
       {/* Controls */}
       <div className="flex items-center justify-between text-[12px] min-h-[24px]">
         <div className="flex items-center gap-3">
