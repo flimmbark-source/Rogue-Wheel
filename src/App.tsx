@@ -621,15 +621,6 @@ const HUDPanels = () => {
   );
 };
 
-
-    return (
-      <div className="w-full flex items-center justify-between gap-2 overflow-hidden">
-        <div className="flex-1 min-w-0"><Panel side="player" /></div>
-        <div className="flex-1 min-w-0"><Panel side="enemy" /></div>
-      </div>
-    );
-  };
-
   return (
     <div
   className="h-screen w-screen overflow-x-hidden overflow-y-hidden bg-slate-900 text-slate-100 p-1 grid gap-2"
