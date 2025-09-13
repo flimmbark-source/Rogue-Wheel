@@ -511,27 +511,55 @@ export default function ThreeWheel_WinsOnly() {
     );
   };
 
-// Bottom-docked hand (half visible, pop on hover). Overlay → no layout height.
+// Bottom-docked hand with adaptive, gentle lift based on card height
 const HandDock = () => {
-  // how much of each card to keep hidden below the edge
-  const baseYOffset = (typeof window !== 'undefined' && window.innerWidth >= 1024) ? 72 : 52;
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  const [liftPx, setLiftPx] = useState<number>(18); // safe default
+
+  // Measure one card to compute lift ≈ 30–38% of its height (capped)
+  useEffect(() => {
+    const compute = () => {
+      const root = dockRef.current;
+      if (!root) return;
+      const sample = root.querySelector('[data-hand-card]') as HTMLElement | null;
+      if (!sample) return;
+
+      const h = sample.getBoundingClientRect().height || 96; // StSCard sm ≈ 96
+      // 34% of height feels right; clamp so it never jumps too high/low
+      const next = Math.round(Math.min(44, Math.max(12, h * 0.34)));
+      setLiftPx(next);
+    };
+
+    compute();
+    window.addEventListener('resize', compute);
+    window.addEventListener('orientationchange', compute);
+    return () => {
+      window.removeEventListener('resize', compute);
+      window.removeEventListener('orientationchange', compute);
+    };
+  }, []);
 
   return (
     <div
+      ref={dockRef}
       className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none"
-      // lift above phone safe area a bit so even the "resting" cards are visible
-      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 6px)' }}
+      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }} // tiny safe-area bump
     >
       <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
         {player.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
           return (
-            <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
+            <div
+              key={card.id}
+              className="group relative pointer-events-auto"
+              style={{ zIndex: 10 + idx }}
+            >
               <motion.div
+                data-hand-card
                 initial={false}
-                // ⬇️ key fix: negative translate lifts cards UP instead of pushing them off-screen
-                animate={{ y: isSelected ? -8 : -baseYOffset, opacity: 1, scale: isSelected ? 1.08 : 1 }}
-                whileHover={{ y: -8, opacity: 1, scale: 1.05 }}
+                // Rest just above the edge by liftPx, hover/selected come up a bit more
+                animate={{ y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx, opacity: 1, scale: isSelected ? 1.06 : 1 }}
+                whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }}
                 transition={{ type: 'spring', stiffness: 320, damping: 22 }}
                 className={`drop-shadow-xl ${isSelected ? 'ring-2 ring-amber-300' : ''}`}
               >
@@ -544,6 +572,7 @@ const HandDock = () => {
     </div>
   );
 };
+
 
 
   // NEW: Two compact HUD panels above wheels
