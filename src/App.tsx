@@ -185,13 +185,36 @@ export default function ThreeWheel_WinsOnly() {
 
   // Responsive wheel size
   const [wheelSize, setWheelSize] = useState<number>(() => (typeof window !== 'undefined' ? calcWheelSize(window.innerHeight, window.innerWidth) : MAX_WHEEL));
+  /**
+   * Update wheel size on window resize/orientation change. During the token-spin animation
+   * phase ("anim"), avoid recalculating wheel size to prevent the wheels from
+   * shrinking or growing mid-spin. We include `phase` in the dependency array so
+   * that the effect updates whenever the phase changes. On every change, we
+   * re‑attach listeners that guard against updates during animation. A delayed
+   * resize is also guarded to avoid resizes triggered by layout thrash.
+   */
   useEffect(() => {
-    const onResize = () => setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth));
+    const onResize = () => {
+      // Only update wheel size if we're not currently animating the spins. Without
+      // this guard, resize events triggered indirectly by our animations can cause
+      // the wheel panels to jump in size.
+      if (phase !== "anim") {
+        setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth));
+      }
+    };
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
-    const t = setSafeTimeout(onResize, 350);
-    return () => { window.removeEventListener('resize', onResize); window.removeEventListener('orientationchange', onResize); clearTimeout(t as any); };
-  }, []);
+    // Call resize after a short delay to handle initial mount and orientation
+    // changes gracefully. Again, respect the current phase guard.
+    const t = setSafeTimeout(() => {
+      if (phase !== "anim") onResize();
+    }, 350);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      clearTimeout(t as any);
+    };
+  }, [phase]);
 
   // Per-wheel sections & tokens & active
   const [wheelSections, setWheelSections] = useState<Section[][]>(() => [genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
