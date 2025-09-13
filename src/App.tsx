@@ -511,32 +511,40 @@ export default function ThreeWheel_WinsOnly() {
     );
   };
 
-  // Bottom-docked hand (half visible, pop on hover). Overlay → no layout height.
-  const HandDock = () => {
-    const baseYOffset = (typeof window !== 'undefined' && window.innerWidth >= 1024) ? 72 : 52; // more hidden on desktop so dock doesn't cover bottom wheel
-    return (
-      <div className="fixed left-0 right-0 bottom-0 z-40 pointer-events-none select-none">
-        <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
-          {player.hand.map((card, idx) => {
-            const isSelected = selectedCardId === card.id;
-            return (
-              <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
-                <motion.div
-                  initial={false}
-                  animate={{ y: isSelected ? 0 : baseYOffset, opacity: 1, scale: isSelected ? 1.08 : 1 }}
-                  whileHover={{ y: 0, opacity: 1, scale: 1.05 }}
-                  transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-                  className={`drop-shadow-xl ${isSelected ? 'ring-2 ring-amber-300' : ''}`}
-                >
-                  <StSCard card={card} />
-                </motion.div>
-              </div>
-            );
-          })}
-        </div>
+// Bottom-docked hand (half visible, pop on hover). Overlay → no layout height.
+const HandDock = () => {
+  // how much of each card to keep hidden below the edge
+  const baseYOffset = (typeof window !== 'undefined' && window.innerWidth >= 1024) ? 72 : 52;
+
+  return (
+    <div
+      className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none"
+      // lift above phone safe area a bit so even the "resting" cards are visible
+      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 6px)' }}
+    >
+      <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
+        {player.hand.map((card, idx) => {
+          const isSelected = selectedCardId === card.id;
+          return (
+            <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
+              <motion.div
+                initial={false}
+                // ⬇️ key fix: negative translate lifts cards UP instead of pushing them off-screen
+                animate={{ y: isSelected ? -8 : -baseYOffset, opacity: 1, scale: isSelected ? 1.08 : 1 }}
+                whileHover={{ y: -8, opacity: 1, scale: 1.05 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+                className={`drop-shadow-xl ${isSelected ? 'ring-2 ring-amber-300' : ''}`}
+              >
+                <StSCard card={card} />
+              </motion.div>
+            </div>
+          );
+        })}
       </div>
-    );
-  };
+    </div>
+  );
+};
+
 
   // NEW: Two compact HUD panels above wheels
   const HUDPanels = () => {
