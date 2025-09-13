@@ -18,6 +18,7 @@ const TARGET_WINS = 7;
 const HUD_COLORS = { player: "#84cc16", enemy: "#d946ef" } as const;
 const MIN_WHEEL = 160; // do not shrink below
 const MAX_WHEEL = 200;
+
 function calcWheelSize(viewH: number, viewW: number) {
   // Choose a size that fits 3 wheels vertically on initial load for both phone & desktop
   const isMobile = viewW <= 480;
@@ -27,30 +28,6 @@ function calcWheelSize(viewH: number, viewW: number) {
   const DESKTOP_MAX = 220; // desktop cap to guarantee 3 wheels visible
   const maxAllowed = isMobile ? MOBILE_MAX : DESKTOP_MAX;
   return Math.max(MIN_WHEEL, Math.min(maxAllowed, raw));
-}
-
-// add near your other hooks
-const [freezeLayout, setFreezeLayout] = useState(false);
-
-// when Reveal starts (before anim), freeze layout
-function onReveal() {
-  if (!canReveal) return;
-  setFreezeLayout(true);                 // <-- NEW
-  const enemyPicks = autoPickEnemy();
-  setAssign((a) => ({ ...a, enemy: enemyPicks }));
-  setPhase("showEnemy");
-  setSafeTimeout(() => {
-    if (!mountedRef.current) return;
-    setPhase("anim");
-    resolveRound(enemyPicks);
-  }, 600);
-}
-
-// when you start the next round, unfreeze
-function nextRound() {
-  if (!(phase === "roundEnd" || phase === "ended")) return;
-  setFreezeLayout(false);                // <-- NEW
-  // ...rest unchanged...
 }
 
 // ---------------- Types ----------------
@@ -206,6 +183,10 @@ export default function ThreeWheel_WinsOnly() {
   const [initiative, setInitiative] = useState<Side>(() => (Math.random() < 0.5 ? "player" : "enemy"));
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
   const [round, setRound] = useState(1);
+
+  // Freeze layout during resolution to prevent mobile right-shift
+  const [freezeLayout, setFreezeLayout] = useState(false);
+
   // Measure HUD height so we can align wheels with its top
   const hudRef = useRef<HTMLDivElement | null>(null);
   const [hudH, setHudH] = useState(0);
@@ -229,39 +210,37 @@ export default function ThreeWheel_WinsOnly() {
   }, []);
 
   // Phase state: manage the current stage of the round (choose, showEnemy, anim, roundEnd, ended)
-  // Declare this before the wheel size hook so it is available inside the resize effect.
   const [phase, setPhase] = useState<"choose" | "showEnemy" | "anim" | "roundEnd" | "ended">("choose");
 
   // Responsive wheel size
-  const [wheelSize, setWheelSize] = useState<number>(() => (typeof window !== 'undefined' ? calcWheelSize(window.innerHeight, window.innerWidth) : MAX_WHEEL));
+  const [wheelSize, setWheelSize] = useState<number>(() =>
+    (typeof window !== 'undefined' ? calcWheelSize(window.innerHeight, window.innerWidth) : MAX_WHEEL)
+  );
+
   /**
-   * Update wheel size on window resize/orientation change. During the token-spin animation
-   * phase ("anim"), avoid recalculating wheel size to prevent the wheels from
-   * shrinking or growing mid-spin. We include `phase` in the dependency array so
-   * that the effect updates whenever the phase changes. On every change, we
-   * re‑attach listeners that guard against updates during animation. A delayed
-   * resize is also guarded to avoid resizes triggered by layout thrash.
+   * Update wheel size on window resize/orientation change.
+   * IMPORTANT: Do not re-run this on phase changes; only respect `freezeLayout`.
    */
   useEffect(() => {
-  const onResize = () => {
-    if (freezeLayout) return; // <-- NEW: don't recalc while frozen
-    setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth));
-  };
+    const onResize = () => {
+      if (freezeLayout) return; // ignore resizes while frozen
+      setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth));
+    };
 
-  window.addEventListener('resize', onResize);
-  window.addEventListener('orientationchange', onResize);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
 
-  // settle initial size after a short delay
-  const t = setTimeout(() => {
-    if (!freezeLayout) onResize();
-  }, 350);
+    // settle initial size after a short delay
+    const t = setTimeout(() => {
+      if (!freezeLayout) onResize();
+    }, 350);
 
-  return () => {
-    window.removeEventListener('resize', onResize);
-    window.removeEventListener('orientationchange', onResize);
-    clearTimeout(t);
-  };
-}, [freezeLayout]);  // <-- ⬅️ now depends on freezeLayout, not phase
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+      clearTimeout(t);
+    };
+  }, [freezeLayout]);
 
   // Per-wheel sections & tokens & active
   const [wheelSections, setWheelSections] = useState<Section[][]>(() => [genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
@@ -278,7 +257,6 @@ export default function ThreeWheel_WinsOnly() {
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
 
   // Phases & log
-  // `phase` is declared earlier to ensure it's available inside the resize effect above.
   const [log, setLog] = useState<string[]>(["A Shade Bandit eyes your purse..."]);
 
   // Reserve sums after resolve (HUD only)
@@ -332,15 +310,20 @@ export default function ThreeWheel_WinsOnly() {
     return topTwo.reduce((a, c) => a + c.number, 0);
   }
 
+  // ---------------- Reveal / Resolve ----------------
   function onReveal() {
     if (!canReveal) return;
+    setFreezeLayout(true); // NEW: prevent resize/layout shifts mid-round
     const enemyPicks = autoPickEnemy();
     setAssign((a) => ({ ...a, enemy: enemyPicks }));
     setPhase("showEnemy");
-    setSafeTimeout(() => { if (!mountedRef.current) return; setPhase("anim"); resolveRound(enemyPicks); }, 600);
+    setSafeTimeout(() => {
+      if (!mountedRef.current) return;
+      setPhase("anim");
+      resolveRound(enemyPicks);
+    }, 600);
   }
 
-  // ---------------- Resolve ----------------
   function applyTags(ctx: RoundContext, w: number, who: Side, base: number, vc: VC, reserveSum: number, card: Card | null) {
     if (!card) return base;
     let val = base;
@@ -440,6 +423,7 @@ export default function ThreeWheel_WinsOnly() {
 
   function nextRound() {
     if (!(phase === "roundEnd" || phase === "ended")) return;
+    setFreezeLayout(false); // NEW: allow resizes again
     setPlayer((p) => freshFive(p));
     setEnemy((e) => freshFive(e));
     setWheelSections([genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
@@ -461,7 +445,7 @@ export default function ThreeWheel_WinsOnly() {
         onDragStart={(e) => { e.dataTransfer.setData('text/plain', card.id); setDragCardId(card.id); }}
         onDragEnd={() => setDragCardId(null)}
         onPointerDown={() => setSelectedCardId(card.id)}
-        onClick={(e) => { e.stopPropagation(); setSelectedCardId((prev) => prev === card.id ? null : card.id); }}
+        onClick={(e) => { e.stopPropagation(); setSelectedCardId((prev) => prev === card.id ? null : prev ? prev : card.id); }}
         disabled={disabled}
         className={`relative select-none ${disabled ? 'opacity-60' : 'hover:scale-[1.02]'} transition will-change-transform ${selected ? 'ring-2 ring-amber-400' : ''}`}
         style={{ width: dims.w, height: dims.h }}
@@ -554,69 +538,67 @@ export default function ThreeWheel_WinsOnly() {
     );
   };
 
-// Bottom-docked hand with adaptive, gentle lift based on card height
-const HandDock = () => {
-  const dockRef = useRef<HTMLDivElement | null>(null);
-  const [liftPx, setLiftPx] = useState<number>(18); // safe default
+  // Bottom-docked hand with adaptive, gentle lift based on card height
+  const HandDock = () => {
+    const dockRef = useRef<HTMLDivElement | null>(null);
+    const [liftPx, setLiftPx] = useState<number>(18); // safe default
 
-  // Measure one card to compute lift ≈ 30–38% of its height (capped)
-  useEffect(() => {
-    const compute = () => {
-      const root = dockRef.current;
-      if (!root) return;
-      const sample = root.querySelector('[data-hand-card]') as HTMLElement | null;
-      if (!sample) return;
+    // Measure one card to compute lift ≈ 30–38% of its height (capped)
+    useEffect(() => {
+      const compute = () => {
+        const root = dockRef.current;
+        if (!root) return;
+        const sample = root.querySelector('[data-hand-card]') as HTMLElement | null;
+        if (!sample) return;
 
-      const h = sample.getBoundingClientRect().height || 96; // StSCard sm ≈ 96
-      // 34% of height feels right; clamp so it never jumps too high/low
-      const next = Math.round(Math.min(44, Math.max(12, h * 0.34)));
-      setLiftPx(next);
-    };
+        const h = sample.getBoundingClientRect().height || 96; // StSCard sm ≈ 96
+        // 34% of height feels right; clamp so it never jumps too high/low
+        const next = Math.round(Math.min(44, Math.max(12, h * 0.34)));
+        setLiftPx(next);
+      };
 
-    compute();
-    window.addEventListener('resize', compute);
-    window.addEventListener('orientationchange', compute);
-    return () => {
-      window.removeEventListener('resize', compute);
-      window.removeEventListener('orientationchange', compute);
-    };
-  }, []);
+      compute();
+      window.addEventListener('resize', compute);
+      window.addEventListener('orientationchange', compute);
+      return () => {
+        window.removeEventListener('resize', compute);
+        window.removeEventListener('orientationchange', compute);
+      };
+    }, []);
 
-  return (
-    <div
-      ref={dockRef}
-      className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none"
-      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }} // tiny safe-area bump
-    >
-      <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
-        {player.hand.map((card, idx) => {
-          const isSelected = selectedCardId === card.id;
-          return (
-            <div
-              key={card.id}
-              className="group relative pointer-events-auto"
-              style={{ zIndex: 10 + idx }}
-            >
-              <motion.div
-                data-hand-card
-                initial={false}
-                // Rest just above the edge by liftPx, hover/selected come up a bit more
-                animate={{ y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx, opacity: 1, scale: isSelected ? 1.06 : 1 }}
-                whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }}
-                transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-                className={`drop-shadow-xl ${isSelected ? 'ring-2 ring-amber-300' : ''}`}
+    return (
+      <div
+        ref={dockRef}
+        className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }} // tiny safe-area bump
+      >
+        <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
+          {player.hand.map((card, idx) => {
+            const isSelected = selectedCardId === card.id;
+            return (
+              <div
+                key={card.id}
+                className="group relative pointer-events-auto"
+                style={{ zIndex: 10 + idx }}
               >
-                <StSCard card={card} />
-              </motion.div>
-            </div>
-          );
-        })}
+                <motion.div
+                  data-hand-card
+                  initial={false}
+                  // Rest just above the edge by liftPx, hover/selected come up a bit more
+                  animate={{ y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx, opacity: 1, scale: isSelected ? 1.06 : 1 }}
+                  whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }}
+                  transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+                  className={`drop-shadow-xl ${isSelected ? 'ring-2 ring-amber-300' : ''}`}
+                >
+                  <StSCard card={card} />
+                </motion.div>
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
-  );
-};
-
-
+    );
+  };
 
   // NEW: Two compact HUD panels above wheels
   const HUDPanels = () => {
@@ -693,18 +675,17 @@ const HandDock = () => {
         <HUDPanels />
       </div>
 
-     {/* Wheels center (aligned with HUD top) */}
-    <div
-    className="relative z-0"
-    style={{ marginTop: hudH ? -hudH : 0 }}
-    >
-    <div className="flex flex-col items-center justify-start gap-1">
-    {[0, 1, 2].map((i) => (
-      <div key={i} className="flex-shrink-0"><WheelPanel i={i} /></div>
-    ))}
-    </div>
-    </div>
-
+      {/* Wheels center (aligned with HUD top) */}
+      <div
+        className="relative z-0"
+        style={{ marginTop: hudH ? -hudH : 0 }}
+      >
+        <div className="flex flex-col items-center justify-start gap-1">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex-shrink-0"><WheelPanel i={i} /></div>
+          ))}
+        </div>
+      </div>
 
       {/* Log: compact ticker (expands on hover) */}
       <div className="w-full rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-0.5 shadow overflow-y-auto max-h-7 hover:max-h-24 transition-[max-height] duration-200 ease-in-out">
