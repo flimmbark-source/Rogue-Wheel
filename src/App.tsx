@@ -4,12 +4,6 @@ import { motion } from "framer-motion";
 /**
  * Three-Wheel Roguelike — Wins-Only, Low Mental Load (v2.4.9)
  * Single-file App.tsx (Vite React)
- *
- * Changes vs. v2.4.8:
- * - Switched wheels to HTML Canvas rendering (was SVG) to honor "make this in canvas".
- * - Split combined HUD strip into two compact panels (player left, enemy right) above wheels.
- * - Kept reserve sums hidden until after Resolve; revealed in HUD panels at round end.
- * - Preserved all prior features/logic and fit rules (all 3 wheels visible on desktop & 390×844 phones).
  */
 
 // ---------------- Constants ----------------
@@ -32,17 +26,11 @@ function calcWheelSize(viewH: number, viewW: number) {
 
 // ---------------- Types ----------------
 type Side = "player" | "enemy";
-
-type TagId = "oddshift" | "parityflip" | "echoreserve"; // optional tags (not used by base deck)
-
+type TagId = "oddshift" | "parityflip" | "echoreserve";
 type Card = { id: string; name: string; number: number; tags: TagId[] };
-
 type VC = "Strongest" | "Weakest" | "ReserveSum" | "ClosestToTarget" | "Initiative";
-
 type Section = { id: VC; color: string; start: number; end: number; target?: number };
-
 type Fighter = { name: string; deck: Card[]; hand: Card[]; discard: Card[] };
-
 type RoundContext = { initiative: Side; adjust: { [w: number]: { player: number; enemy: number } } };
 
 // ---------------- Helpers ----------------
@@ -53,7 +41,7 @@ function drawOne(f: Fighter): Fighter { const next = { ...f, deck: [...f.deck], 
 function refillTo(f: Fighter, target: number): Fighter { let cur = { ...f }; while (cur.hand.length < target) { const before = cur.hand.length; cur = drawOne(cur); if (cur.hand.length === before) break; } return cur; }
 function freshFive(f: Fighter): Fighter { const pool = shuffle([...f.deck, ...f.hand, ...f.discard]); const hand = pool.slice(0, 5); const deck = pool.slice(5); return { name: f.name, hand, deck, discard: [] }; }
 
-// ---------------- Tags (kept minimal) ----------------
+// ---------------- Tags ----------------
 const TAGS: Record<TagId, { icon: string; label: string; apply: (ctx: RoundContext, w: number, who: Side, base: number, landingVC: VC, reserveSum: number) => number }> = {
   oddshift: { icon: "◇", label: "Oddshift", apply: (_ctx, _w, _who, base, vc) => (vc === "Strongest" && base % 2 === 1 ? base + 2 : base) },
   parityflip: { icon: "±", label: "Parity Flip", apply: (ctx, _w, who, base) => (ctx.initiative === who ? (base % 2 === 0 ? base + 1 : base - 1) : base) },
@@ -70,14 +58,13 @@ const VC_META: Record<VC, { icon: string; color: string; short: string; explain:
 };
 
 function inSection(index: number, s: Section) {
-  if (index === 0) return false; // 0 is legend only
+  if (index === 0) return false;
   if (s.start <= s.end) return index >= s.start && index <= s.end;
   return index >= s.start || index <= s.end;
 }
 function polar(cx: number, cy: number, r: number, aDeg: number) { const a = (aDeg - 90) * (Math.PI / 180); return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }; }
 
 function genWheelSections(archetype: "bandit" | "sorcerer" | "beast" = "bandit"): Section[] {
-  // Cover slices 1..15 exactly; 0 is excluded
   const lens = (() => {
     if (archetype === "bandit") return shuffle([5, 4, 3, 2, 1]);
     if (archetype === "sorcerer") return shuffle([5, 5, 2, 2, 1]);
@@ -103,7 +90,6 @@ function CanvasWheel({ sections, token, size, highlight = false, onTapAssign }: 
     canvas.width = size * dpr; canvas.height = size * dpr; canvas.style.width = `${size}px`; canvas.style.height = `${size}px`;
     const ctx = canvas.getContext("2d"); if (!ctx) return; ctx.scale(dpr, dpr);
 
-    // background clear
     ctx.clearRect(0, 0, size, size);
 
     const center = { x: size / 2, y: size / 2 };
@@ -136,7 +122,7 @@ function CanvasWheel({ sections, token, size, highlight = false, onTapAssign }: 
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(String(i), numPos.x, numPos.y);
 
-      // Icons for sections (not for 0)
+      // Icons
       if (i !== 0) {
         const sec = sections.find((s) => inSection(i, s));
         if (sec) {
@@ -184,7 +170,7 @@ export default function ThreeWheel_WinsOnly() {
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
   const [round, setRound] = useState(1);
 
-  // Freeze layout during resolution to prevent mobile right-shift
+  // Freeze layout during resolution
   const [freezeLayout, setFreezeLayout] = useState(false);
 
   // Measure HUD height so we can align wheels with its top
@@ -209,7 +195,7 @@ export default function ThreeWheel_WinsOnly() {
     };
   }, []);
 
-  // Phase state: manage the current stage of the round (choose, showEnemy, anim, roundEnd, ended)
+  // Phase state
   const [phase, setPhase] = useState<"choose" | "showEnemy" | "anim" | "roundEnd" | "ended">("choose");
 
   // Responsive wheel size
@@ -217,24 +203,15 @@ export default function ThreeWheel_WinsOnly() {
     (typeof window !== 'undefined' ? calcWheelSize(window.innerHeight, window.innerWidth) : MAX_WHEEL)
   );
 
-  /**
-   * Update wheel size on window resize/orientation change.
-   * IMPORTANT: Do not re-run this on phase changes; only respect `freezeLayout`.
-   */
+  // Only react to real resizes; ignore during freeze
   useEffect(() => {
     const onResize = () => {
-      if (freezeLayout) return; // ignore resizes while frozen
+      if (freezeLayout) return;
       setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth));
     };
-
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
-
-    // settle initial size after a short delay
-    const t = setTimeout(() => {
-      if (!freezeLayout) onResize();
-    }, 350);
-
+    const t = setTimeout(() => { if (!freezeLayout) onResize(); }, 350);
     return () => {
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
@@ -281,7 +258,7 @@ export default function ThreeWheel_WinsOnly() {
       if (prevAtI && prevAtI.id !== card.id) hand = [...hand, prevAtI];
       return { ...p, hand };
     });
-    setSelectedCardId(null); // unselect after assignment
+    setSelectedCardId(null);
   }
 
   function clearAssign(i: number) {
@@ -313,7 +290,7 @@ export default function ThreeWheel_WinsOnly() {
   // ---------------- Reveal / Resolve ----------------
   function onReveal() {
     if (!canReveal) return;
-    setFreezeLayout(true); // NEW: prevent resize/layout shifts mid-round
+    setFreezeLayout(true); // prevent resize/layout shifts mid-round
     const enemyPicks = autoPickEnemy();
     setAssign((a) => ({ ...a, enemy: enemyPicks }));
     setPhase("showEnemy");
@@ -349,7 +326,6 @@ export default function ThreeWheel_WinsOnly() {
       const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
       const targetSlice = (tokens[w] + steps) % SLICES;
       if (targetSlice === 0) {
-        // Landing on 0: legend slice → no section, no win
         outcomes.push({ steps, targetSlice, section: { id: "Strongest", color: "transparent", start: 0, end: 0 }, winner: null, tie: true, wheel: w, detail: "Slice 0: no section" });
         continue;
       }
@@ -423,7 +399,7 @@ export default function ThreeWheel_WinsOnly() {
 
   function nextRound() {
     if (!(phase === "roundEnd" || phase === "ended")) return;
-    setFreezeLayout(false); // NEW: allow resizes again
+    setFreezeLayout(false); // allow resizes again
     setPlayer((p) => freshFive(p));
     setEnemy((e) => freshFive(e));
     setWheelSections([genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
@@ -469,6 +445,12 @@ export default function ThreeWheel_WinsOnly() {
     const pc = assign.player[i];
     const ec = assign.enemy[i];
 
+    // 🔒 Fixed width so mobile center doesn't jiggle
+    const leftRight = 80;   // slot width (w-[80px])
+    const gaps = 8;         // gap-1 = 4px; two gaps between three items = 8px
+    const chrome = 4;       // borders + tiny fudge
+    const panelW = wheelSize + leftRight * 2 + gaps + chrome;
+
     const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
     const onZoneLeave = () => { if (dragOverWheel === i) setDragOverWheel(null); };
     const handleDropCommon = (id: string | null) => {
@@ -481,7 +463,6 @@ export default function ThreeWheel_WinsOnly() {
     };
     const onZoneDrop = (e: React.DragEvent) => { e.preventDefault(); handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId); };
 
-    // Tap-to-assign: clicking left slot or the wheel face assigns selected card (if any)
     const tapAssignIfSelected = () => {
       if (!selectedCardId) return;
       const card = player.hand.find(c => c.id === selectedCardId) || assign.player.find(c => c?.id === selectedCardId) || null;
@@ -491,14 +472,12 @@ export default function ThreeWheel_WinsOnly() {
     return (
       <div
         className={`relative rounded-lg border ${active[i] ? "border-slate-700 bg-slate-800/70" : "border-slate-700/70 bg-slate-900/50"} p-0 shadow`}
-        style={{ paddingTop: 0, paddingBottom: 0 }}
+        style={{ width: panelW, paddingTop: 0, paddingBottom: 0 }}
       >
-        {/* Thinner winner strip, no bottom margin to tighten internals */}
         <div className="w-full h-[2px] rounded-t-md mb-0" style={{ background: wheelHUD[i] ?? "#475569" }} />
 
-        {/* Left/Center/Right row: Player slot | Wheel | Enemy slot */}
         <div className="flex items-center justify-center gap-1">
-          {/* Player slot (droppable & tappable) */}
+          {/* Player slot */}
           <div
             onDragOver={onZoneDragOver}
             onDragEnter={onZoneDragOver}
@@ -512,7 +491,7 @@ export default function ThreeWheel_WinsOnly() {
             {pc ? <StSCard card={pc} size="sm" /> : <div className="text-[11px] opacity-80 text-center">Your card</div>}
           </div>
 
-          {/* Wheel (also droppable & tappable for convenience) */}
+          {/* Wheel face */}
           <div
             className="relative"
             onDragOver={onZoneDragOver}
@@ -525,7 +504,7 @@ export default function ThreeWheel_WinsOnly() {
             <CanvasWheel sections={wheelSections[i]} token={tokens[i]} size={wheelSize} highlight={dragOverWheel === i} />
           </div>
 
-          {/* Enemy slot (revealed after Resolve) */}
+          {/* Enemy slot */}
           <div className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center border-slate-600 bg-slate-900/40" aria-label={`Wheel ${i+1} enemy slot`}>
             {ec && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") ? (
               <StSCard card={ec} size="sm" disabled />
@@ -541,22 +520,18 @@ export default function ThreeWheel_WinsOnly() {
   // Bottom-docked hand with adaptive, gentle lift based on card height
   const HandDock = () => {
     const dockRef = useRef<HTMLDivElement | null>(null);
-    const [liftPx, setLiftPx] = useState<number>(18); // safe default
+    const [liftPx, setLiftPx] = useState<number>(18);
 
-    // Measure one card to compute lift ≈ 30–38% of its height (capped)
     useEffect(() => {
       const compute = () => {
         const root = dockRef.current;
         if (!root) return;
         const sample = root.querySelector('[data-hand-card]') as HTMLElement | null;
         if (!sample) return;
-
-        const h = sample.getBoundingClientRect().height || 96; // StSCard sm ≈ 96
-        // 34% of height feels right; clamp so it never jumps too high/low
+        const h = sample.getBoundingClientRect().height || 96;
         const next = Math.round(Math.min(44, Math.max(12, h * 0.34)));
         setLiftPx(next);
       };
-
       compute();
       window.addEventListener('resize', compute);
       window.addEventListener('orientationchange', compute);
@@ -570,21 +545,16 @@ export default function ThreeWheel_WinsOnly() {
       <div
         ref={dockRef}
         className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }} // tiny safe-area bump
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }}
       >
         <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
           {player.hand.map((card, idx) => {
             const isSelected = selectedCardId === card.id;
             return (
-              <div
-                key={card.id}
-                className="group relative pointer-events-auto"
-                style={{ zIndex: 10 + idx }}
-              >
+              <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
                 <motion.div
                   data-hand-card
                   initial={false}
-                  // Rest just above the edge by liftPx, hover/selected come up a bit more
                   animate={{ y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx, opacity: 1, scale: isSelected ? 1.06 : 1 }}
                   whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }}
                   transition={{ type: 'spring', stiffness: 320, damping: 22 }}
@@ -600,9 +570,10 @@ export default function ThreeWheel_WinsOnly() {
     );
   };
 
-  // NEW: Two compact HUD panels above wheels
+  // NEW: Two compact HUD panels above wheels (mobile-safe widths)
   const HUDPanels = () => {
     const rsP = reserveSums ? reserveSums.player : null; const rsE = reserveSums ? reserveSums.enemy : null;
+
     const Panel = ({ side }: { side: Side }) => {
       const isPlayer = side === 'player';
       const color = HUD_COLORS[side];
@@ -610,21 +581,36 @@ export default function ThreeWheel_WinsOnly() {
       const win = isPlayer ? wins.player : wins.enemy;
       const rs = isPlayer ? rsP : rsE;
       const hasInit = initiative === side;
+
       return (
-        <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-1 text-[12px] shadow min-w-0">
+        <div className="flex min-w-0 flex-shrink items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-1 text-[12px] shadow">
           <div className="w-1.5 h-6 rounded" style={{ background: color }} />
-          <div className="truncate"><span className="font-semibold">{name}</span>{hasInit && <span className="ml-1">⚑</span>}</div>
-          <div className="flex items-center gap-1 ml-1"><span className="opacity-80">Wins</span><span className="text-base font-extrabold">{win}</span></div>
+          {/* Name truncates safely on tiny screens */}
+          <div className="truncate max-w-[36vw] sm:max-w-none">
+            <span className="font-semibold">{name}</span>
+            {hasInit && <span className="ml-1">⚑</span>}
+          </div>
+          <div className="flex items-center gap-1 ml-1">
+            <span className="opacity-80">Wins</span>
+            <span className="text-base font-extrabold">{win}</span>
+          </div>
+          {/* Reserve chip capped to avoid row overflow */}
           {phase==='roundEnd' && rs !== null && (
-            <div className="ml-2 rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] whitespace-nowrap">Reserve: <span className="font-bold">{rs}</span></div>
+            <div
+              className="ml-2 rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap max-w-[40vw] sm:max-w-none"
+              title={`Reserve: ${rs}`}
+            >
+              Reserve: <span className="font-bold">{rs}</span>
+            </div>
           )}
         </div>
       );
     };
+
     return (
-      <div className="w-full flex items-center justify-between gap-2">
-        <Panel side="player" />
-        <Panel side="enemy" />
+      <div className="w-full flex items-center justify-between gap-2 overflow-hidden">
+        <div className="flex-1 min-w-0"><Panel side="player" /></div>
+        <div className="flex-1 min-w-0"><Panel side="enemy" /></div>
       </div>
     );
   };
