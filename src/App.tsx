@@ -478,91 +478,85 @@ export default function ThreeWheel_WinsOnly() {
 
     const panelShadow = '0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)';
 
-return (
+<div
+  className="relative rounded-xl border p-2 shadow flex-none"
+  style={{
+    width: panelW,
+    height: ws,
+    background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
+    borderColor: THEME.panelBorder,
+    borderWidth: 2,
+    boxShadow: panelShadow,
+    contain: 'paint',
+    backfaceVisibility: 'hidden',
+    transform: 'translateZ(0)',
+    isolation: 'isolate'
+  }}
+>
   <div
-    className="relative rounded-xl border p-2 shadow flex-none"
-    style={{
-      width: panelW,
-      height: ws,
-      // DESK look: subtle vertical sheen over warm wood
-      background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
-      borderColor: THEME.panelBorder,
-      // deeper bevel than before
-      boxShadow:
-        '0 8px 18px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06), inset 0 -1px 0 rgba(0,0,0,.25)',
-      contain: 'paint',
-      backfaceVisibility: 'hidden',
-      transform: 'translateZ(0)',
-      isolation: 'isolate'
-    }}
-  >
-    {/* top accent strip (was 2px slate line) */}
+    className="w-full rounded-t-md mb-1"
+    style={{ height: 3, background: (wheelHUD[i] ?? THEME.brass), opacity: 0.85 }}
+  />
+
+  <div className="flex items-center justify-center gap-2" style={{ height: ws - 3 }}>
+    {/* Player slot */}
     <div
-      className="w-full rounded-t-md mb-1"
-      style={{
-        height: 3,
-        background: wheelHUD[i] ?? THEME.brass,
-        opacity: 0.85
+      onDragOver={onZoneDragOver}
+      onDragEnter={onZoneDragOver}
+      onDragLeave={onZoneLeave}
+      onDrop={onZoneDrop}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (selectedCardId) {
+          tapAssignIfSelected();
+        } else if (pc) {
+          clearAssign(i);
+        }
       }}
-    />
+      className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+      style={{
+        backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
+        borderColor: dragOverWheel === i ? THEME.brass : THEME.slotBorder,
+        transform: 'translateY(-4px)'
+      }}
+      aria-label={`Wheel ${i+1} player slot`}
+    >
+      {pc ? <StSCard card={pc} size="sm" /> : <div className="text-[11px] opacity-80 text-center">Your card</div>}
+    </div>
 
-    <div className="flex items-center justify-center gap-2" style={{ height: ws - 3 }}>
-      {/* Player slot */}
+    {/* Wheel face */}
+    <div
+      className="relative"
+      onDragOver={onZoneDragOver}
+      onDragEnter={onZoneDragOver}
+      onDragLeave={onZoneLeave}
+      onDrop={onZoneDrop}
+      onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
+      aria-label={`Wheel ${i+1}`}
+    >
+      <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
+      {/* highlight overlay separate from wheel to avoid repainting the image layer */}
       <div
-        onDragOver={onZoneDragOver}
-        onDragEnter={onZoneDragOver}
-        onDragLeave={onZoneLeave}
-        onDrop={onZoneDrop}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (selectedCardId) {
-            tapAssignIfSelected();
-          } else if (pc) {
-            clearAssign(i);
-          }
-        }}
-        className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
-        style={{
-          backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-          borderColor: dragOverWheel === i ? THEME.brass : THEME.slotBorder,
-          transform: 'translateY(-4px)'
-        }}
-        aria-label={`Wheel ${i+1} player slot`}
-      >
-        {pc ? <StSCard card={pc} size="sm" /> : <div className="text-[11px] opacity-80 text-center">Your card</div>}
-      </div>
+        aria-hidden
+        className="pointer-events-none absolute inset-0 rounded-full"
+        style={{ boxShadow: dragOverWheel === i ? '0 0 0 2px rgba(251,191,36,0.7) inset' : 'none' }}
+      />
+    </div>
 
-      {/* Wheel face */}
-      <div
-        className="relative"
-        onDragOver={onZoneDragOver}
-        onDragEnter={onZoneDragOver}
-        onDragLeave={onZoneLeave}
-        onDrop={onZoneDrop}
-        onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
-        aria-label={`Wheel ${i+1}`}
-      >
-        <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
-        {/* highlight overlay separate from wheel to avoid repainting the image layer */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 rounded-full" style={{ boxShadow: dragOverWheel === i ? '0 0 0 2px rgba(251,191,36,0.7) inset' : 'none' }} />
-      </div>
-
-      {/* Enemy slot */}
-      <div
-        className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
-        style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
-        aria-label={`Wheel ${i+1} enemy slot`}
-      >
-        {ec && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") ? (
-          <StSCard card={ec} size="sm" disabled />
-        ) : (
-          <div className="text-[11px] opacity-60 text-center">Enemy</div>
-        )}
-      </div>
+    {/* Enemy slot */}
+    <div
+      className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+      style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
+      aria-label={`Wheel ${i+1} enemy slot`}
+    >
+      {ec && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") ? (
+        <StSCard card={ec} size="sm" disabled />
+      ) : (
+        <div className="text-[11px] opacity-60 text-center">Enemy</div>
+      )}
     </div>
   </div>
-);
-
+</div>
 
   const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
