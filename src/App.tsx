@@ -513,20 +513,19 @@ export default function ThreeWheel_WinsOnly() {
         <div className="flex items-center justify-center gap-1">
           {/* Player slot */}
           <div
-            onDragOver={onZoneDragOver}
-            onDragEnter={onZoneDragOver}
-            onDragLeave={onZoneLeave}
-            onDrop={onZoneDrop}
-            onClick={(e) => { e.stopPropagation(); if (selectedCardId) { tapAssignIfSelected(); } else if (pc) { clearAssign(i); } }}
-            className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
-style={{
-  backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-  borderColor:     dragOverWheel === i ? THEME.brass          : THEME.slotBorder
-}}
-
-            style={{ transform: 'translateY(-4px)' }}
-            aria-label={`Wheel ${i+1} player slot`}
-          >
+  onDragOver={onZoneDragOver}
+  onDragEnter={onZoneDragOver}
+  onDragLeave={onZoneLeave}
+  onDrop={onZoneDrop}
+  onClick={(e) => { e.stopPropagation(); if (selectedCardId) { tapAssignIfSelected(); } else if (pc) { clearAssign(i); } }}
+  className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+  style={{
+    backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
+    borderColor: dragOverWheel === i ? THEME.brass : THEME.slotBorder,
+    transform: 'translateY(-4px)'
+  }}
+  aria-label={`Wheel ${i+1} player slot`}
+>
             {pc ? <StSCard card={pc} size="sm" /> : <div className="text-[11px] opacity-80 text-center">Your card</div>}
           </div>
 
@@ -544,17 +543,17 @@ style={{
           </div>
 
           {/* Enemy slot */}
-          <div
+          <<div
   className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
   style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
-  ...
-
-            {ec && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") ? (
-              <StSCard card={ec} size="sm" disabled />
-            ) : (
-              <div className="text-[11px] opacity-60 text-center">Enemy</div>
-            )}
-          </div>
+  aria-label={`Wheel ${i+1} enemy slot`}
+>
+  {ec && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") ? (
+    <StSCard card={ec} size="sm" disabled />
+  ) : (
+    <div className="text-[11px] opacity-60 text-center">Enemy</div>
+  )}
+</div>
         </div>
       </div>
     );
@@ -618,63 +617,67 @@ style={{
   };
 
   // NEW: Two compact HUD panels above wheels (no horizontal shift)
-  const HUDPanels = () => {
-    const rsP = reserveSums ? reserveSums.player : null;
-    const rsE = reserveSums ? reserveSums.enemy : null;
+ const HUDPanels = () => {
+  const rsP = reserveSums ? reserveSums.player : null;
+  const rsE = reserveSums ? reserveSums.enemy : null;
 
-    const Panel = ({ side }: { side: Side }) => {
-      const isPlayer = side === 'player';
-      const color = HUD_COLORS[side];
-      const name = isPlayer ? player.name : enemy.name;
-      const win = isPlayer ? wins.player : wins.enemy;
-      const rs = isPlayer ? rsP : rsE;
-      const hasInit = initiative === side;
+  const Panel = ({ side }: { side: Side }) => {
+    const isPlayer = side === 'player';
+    const color = HUD_COLORS[side];
+    const name = isPlayer ? player.name : enemy.name;
+    const win = isPlayer ? wins.player : wins.enemy;
+    const rs = isPlayer ? rsP : rsE;
+    const hasInit = initiative === side;
+    const isReserveVisible = phase === 'roundEnd' && rs !== null;
 
-      // Fixed reserve lane so nothing reflows when it appears
-      const reserveLaneStyle: React.CSSProperties = {
-        maxWidth: '44vw',
-        minWidth: '90px',
-      };
-
-      return (
-       <div
-  className="flex min-w-0 items-center gap-2 rounded-lg border px-2 py-1 text-[12px] shadow w-full"
-  style={{
-    maxWidth: '100%',
-    background: THEME.panelBg,
-    borderColor: THEME.panelBorder,
-    color: THEME.textWarm
-  }}
->
-
-          <div className="w-1.5 h-6 rounded" style={{ background: color }} />
-          <div className="truncate max-w-[36vw] sm:max-w-none">
-            <span className="font-semibold">{name}</span>
-            {hasInit && <span className="ml-1">⚑</span>}
-          </div>
-          <div className="flex items-center gap-1 ml-1 flex-shrink-0">
-            <span className="opacity-80">Wins</span>
-            <span className="text-base font-extrabold">{win}</span>
-          </div>
-          <div
-            className="ml-2 rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap"
-style={{
-  maxWidth: '44vw', minWidth: '90px',
-  background: '#1b1209ee',
-  borderColor: THEME.slotBorder,
-  color: THEME.textWarm
-}}
-
-              phase === 'roundEnd' && rs !== null ? 'visible opacity-100' : 'invisible opacity-0'
-            }`}
-            style={reserveLaneStyle}
-            title={rs !== null ? `Reserve: ${rs}` : undefined}
-          >
-            Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
-          </div>
+    return (
+      <div
+        className="flex min-w-0 items-center gap-2 rounded-lg border px-2 py-1 text-[12px] shadow w-full"
+        style={{
+          maxWidth: '100%',
+          background: THEME.panelBg,
+          borderColor: THEME.panelBorder,
+          color: THEME.textWarm
+        }}
+      >
+        <div className="w-1.5 h-6 rounded" style={{ background: color }} />
+        <div className="truncate max-w-[36vw] sm:max-w-none">
+          <span className="font-semibold">{name}</span>
+          {hasInit && <span className="ml-1">⚑</span>}
         </div>
-      );
-    };
+        <div className="flex items-center gap-1 ml-1 flex-shrink-0">
+          <span className="opacity-80">Wins</span>
+          <span className="text-base font-extrabold">{win}</span>
+        </div>
+        <div
+          className={`ml-2 rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap ${isReserveVisible ? 'opacity-100 visible' : 'opacity-0 invisible'}`}
+          style={{
+            maxWidth: '44vw',
+            minWidth: '90px',
+            background: '#1b1209ee',
+            borderColor: THEME.slotBorder,
+            color: THEME.textWarm
+          }}
+          title={rs !== null ? `Reserve: ${rs}` : undefined}
+        >
+          Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="w-full grid grid-cols-2 gap-2 overflow-x-hidden">
+      <div className="min-w-0 w-full max-w-[420px] mx-auto">
+        <Panel side="player" />
+      </div>
+      <div className="min-w-0 w-full max-w-[420px] mx-auto">
+        <Panel side="enemy" />
+      </div>
+    </div>
+  );
+};
+
 
     // 2 fixed columns so panels never tug each other
     return (
