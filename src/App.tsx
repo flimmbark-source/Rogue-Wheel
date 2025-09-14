@@ -455,9 +455,17 @@ export default function ThreeWheel_WinsOnly() {
   const ec = assign.enemy[i];
 
   const ws = Math.round(lockedWheelSize ?? wheelSize);
-  const leftRight = 80; const gaps = 8; const chrome = 4;
-  const panelW = Math.round(ws + leftRight * 2 + gaps + chrome);
 
+  // sizes that must match your classes below
+  const slotW    = 80;   // w-[80px] on both slots
+  const gapX     = 16;   // gap-2 => 8px * 2 gaps = 16
+  const paddingX = 16;   // p-2 => 8px left + 8px right
+  const borderX  = 4;    // border-2 => 2px left + 2px right
+
+  // content width: left slot + wheel + right slot + gaps
+  // panel width (border-box): content + horizontal padding + borders
+  const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
+    
   const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
   const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
   const handleDropCommon = (id: string | null) => {
