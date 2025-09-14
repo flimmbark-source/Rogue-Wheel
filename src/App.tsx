@@ -2,8 +2,14 @@ import React, { useMemo, useRef, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
 /**
- * Three-Wheel Roguelike — Wins-Only, Low Mental Load (v2.4.9)
+ * Three-Wheel Roguelike — Wins-Only, Low Mental Load (v2.4.10)
  * Single-file App.tsx (Vite React)
+ *\
+ * CHANGELOG (v2.4.10):
+ * - Hand clipping fix: wheels now reserve vertical space for the bottom-docked hand
+ * - calcWheelSize takes a `dockAllowance` so wheels shrink just enough on small screens
+ * - Wheels center adds bottom padding equal to measured hand clearance
+ * - HandDock reports its own clearance via `onMeasure`
  */
 
 // ---------------- Constants ----------------
@@ -13,11 +19,11 @@ const HUD_COLORS = { player: "#84cc16", enemy: "#d946ef" } as const;
 const MIN_WHEEL = 160; // do not shrink below
 const MAX_WHEEL = 200;
 
-function calcWheelSize(viewH: number, viewW: number) {
+function calcWheelSize(viewH: number, viewW: number, dockAllowance = 0) {
   // Choose a size that fits 3 wheels vertically on initial load for both phone & desktop
   const isMobile = viewW <= 480;
   const chromeAllowance = viewW >= 1024 ? 200 : 140; // header + HUD + log + minor gaps
-  const raw = Math.floor((viewH - chromeAllowance) / 3);
+  const raw = Math.floor((viewH - chromeAllowance - dockAllowance) / 3);
   const MOBILE_MAX = 188; // phones must cap lower to avoid scroll
   const DESKTOP_MAX = 220; // desktop cap to guarantee 3 wheels visible
   const maxAllowed = isMobile ? MOBILE_MAX : DESKTOP_MAX;
@@ -198,16 +204,19 @@ export default function ThreeWheel_WinsOnly() {
   // Phase state
   const [phase, setPhase] = useState<"choose" | "showEnemy" | "anim" | "roundEnd" | "ended">("choose");
 
+  // ---- NEW: hand clearance bookkeeping ----
+  const [handClearance, setHandClearance] = useState<number>(0);
+
   // Responsive wheel size
   const [wheelSize, setWheelSize] = useState<number>(() =>
-    (typeof window !== 'undefined' ? calcWheelSize(window.innerHeight, window.innerWidth) : MAX_WHEEL)
+    (typeof window !== 'undefined' ? calcWheelSize(window.innerHeight, window.innerWidth, 0) : MAX_WHEEL)
   );
 
-  // Only react to real resizes; ignore during freeze
+  // Only react to real resizes; ignore during freeze. Includes dock allowance.
   useEffect(() => {
     const onResize = () => {
       if (freezeLayout) return;
-      setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth));
+      setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth, handClearance));
     };
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
@@ -217,7 +226,14 @@ export default function ThreeWheel_WinsOnly() {
       window.removeEventListener('orientationchange', onResize);
       clearTimeout(t);
     };
-  }, [freezeLayout]);
+  }, [freezeLayout, handClearance]);
+
+  // Recompute when measured hand clearance changes (first mount + updates)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth, handClearance));
+    }
+  }, [handClearance]);
 
   // Per-wheel sections & tokens & active
   const [wheelSections, setWheelSections] = useState<Section[][]>(() => [genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
@@ -518,7 +534,7 @@ export default function ThreeWheel_WinsOnly() {
   };
 
   // Bottom-docked hand with adaptive, gentle lift based on card height
-  const HandDock = () => {
+  const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
     const [liftPx, setLiftPx] = useState<number>(18);
 
@@ -529,8 +545,12 @@ export default function ThreeWheel_WinsOnly() {
         const sample = root.querySelector('[data-hand-card]') as HTMLElement | null;
         if (!sample) return;
         const h = sample.getBoundingClientRect().height || 96;
-        const next = Math.round(Math.min(44, Math.max(12, h * 0.34)));
-        setLiftPx(next);
+        const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
+        setLiftPx(nextLift);
+
+        // Reserve space above the dock: card height + lift + small gap
+        const clearance = Math.round(h + nextLift + 12);
+        onMeasure?.(clearance);
       };
       compute();
       window.addEventListener('resize', compute);
@@ -539,13 +559,13 @@ export default function ThreeWheel_WinsOnly() {
         window.removeEventListener('resize', compute);
         window.removeEventListener('orientationchange', compute);
       };
-    }, []);
+    }, [onMeasure]);
 
     return (
       <div
         ref={dockRef}
         className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }}
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + -30px)' }}
       >
         <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
           {player.hand.map((card, idx) => {
@@ -679,7 +699,7 @@ export default function ThreeWheel_WinsOnly() {
       </div>
 
       {/* Wheels center (aligned with HUD top) */}
-      <div className="relative z-0" style={{ marginTop: hudH ? -hudH : 0 }}>
+      <div className="relative z-0" style={{ marginTop: hudH ? -hudH : 0, paddingBottom: handClearance }}>
         <div className="flex flex-col items-center justify-start gap-1">
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex-shrink-0"><WheelPanel i={i} /></div>
@@ -690,7 +710,7 @@ export default function ThreeWheel_WinsOnly() {
 
       {/* Docked hand overlay */}
       <div className="pointer-events-none">
-        <HandDock />
+        <HandDock onMeasure={setHandClearance} />
       </div>
     </div>
   );
@@ -714,9 +734,9 @@ export default function ThreeWheel_WinsOnly() {
   } catch (e) { console.error("[SelfTest] inSection test failed", e); }
 
   try {
-    const w390 = calcWheelSize(844, 390);
-    const w414 = calcWheelSize(896, 414);
-    console.debug("[SelfTest] calcWheelSize caps (<=188 mobile, <=220 desktop):", w390 <= 188 && w414 <= 188, { w390, w414 });
+    const w390 = calcWheelSize(844, 390, 120);
+    const w414 = calcWheelSize(896, 414, 120);
+    console.debug("[SelfTest] calcWheelSize caps (<=188 mobile, <=220 desktop) w/ dock:", w390 <= 188 && w414 <= 188, { w390, w414 });
   } catch (e) { console.error("[SelfTest] calcWheelSize test failed", e); }
 
   try {
