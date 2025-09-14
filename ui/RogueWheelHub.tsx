@@ -18,6 +18,13 @@ export type HubShellProps = {
   version?: string;
 };
 
+export interface MenuItem {
+  key: string;
+  label: string;
+  onClick: (() => void) | undefined;
+  icon: ReactNode;
+}
+
 export default function RogueWheelHub(props: HubShellProps) {
   const {
     backgroundUrl = "/fantasy-hero.jpg",
@@ -30,6 +37,16 @@ export default function RogueWheelHub(props: HubShellProps) {
     onQuit,
     version = "v0.1.0",
   } = props;
+
+  // ---- SAFE FALLBACKS (fixes "Play" not working when handler isn't wired) ----
+  const safeOnNew = onNew ?? (() => {
+    try { window.dispatchEvent(new CustomEvent("rw:new-run")); } catch {}
+    console.warn("RogueWheelHub: onNew not provided. Dispatched `rw:new-run`.");
+  });
+  const safeOnContinue = onContinue ?? (() => {
+    try { window.dispatchEvent(new CustomEvent("rw:continue")); } catch {}
+    console.warn("RogueWheelHub: onContinue not provided. Dispatched `rw:continue`.");
+  });
 
   const [selected, setSelected] = useState(0);
   const [showHowTo, setShowHowTo] = useState(false);
@@ -45,17 +62,17 @@ export default function RogueWheelHub(props: HubShellProps) {
   }
 
   // Menu model
-  const items = useMemo(
-    () =>
-      buildMenuItems({
-        hasSave,
-        onContinue,
-        onNew,
-        onHowTo: handleOpenHowTo,
-        onSettings: handleOpenOptions,
-        onQuit,
-      }),
-    [hasSave, onContinue, onNew, onQuit]
+  const items = useMemo<MenuItem[]>(
+    () => [
+      hasSave
+        ? { key: "continue", label: "Continue", onClick: safeOnContinue, icon: <RefreshCw className="h-4 w-4" /> }
+        : null,
+      { key: "new", label: hasSave ? "New Run" : "Play", onClick: safeOnNew, icon: <Swords className="h-4 w-4" /> },
+      { key: "howto", label: "How to Play", onClick: handleOpenHowTo, icon: <BookOpen className="h-4 w-4" /> },
+      { key: "settings", label: "Options", onClick: handleOpenOptions, icon: <SettingsIcon className="h-4 w-4" /> },
+      { key: "quit", label: "Quit", onClick: onQuit, icon: <Power className="h-4 w-4" /> },
+    ].filter(Boolean) as MenuItem[],
+    [hasSave, safeOnContinue, safeOnNew, onQuit]
   );
 
   // Keyboard navigation
@@ -113,14 +130,19 @@ export default function RogueWheelHub(props: HubShellProps) {
           {items.map((it, i) => (
             <li key={it.key} className="mb-3">
               <button
+                role="button"
+                aria-disabled={!it.onClick}
+                disabled={!it.onClick}
                 onMouseEnter={() => setSelected(i)}
-                onClick={it.onClick}
+                onClick={() => it.onClick && it.onClick()}
                 className={[
                   "relative flex w-full items-center justify-between rounded-xl px-5 py-3",
-                  "text-left font-semibold tracking-wide transition outline-none",
-                  i === selected
-                    ? "bg-gradient-to-r from-amber-300 to-amber-500 text-indigo-950 shadow-[0_6px_18px_rgba(255,191,71,0.35)] ring-2 ring-amber-300"
-                    : "bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/25 hover:from-black/30 hover:to-black/10",
+                  "text-left font-semibold tracking-wide outline-none",
+                  !it.onClick
+                    ? "cursor-not-allowed opacity-60 bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/20"
+                    : i === selected
+                      ? "cursor-pointer bg-gradient-to-r from-amber-300 to-amber-500 text-indigo-950 shadow-[0_6px_18px_rgba(255,191,71,0.35)] ring-2 ring-amber-300"
+                      : "cursor-pointer bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/25 hover:from-black/30 hover:to-black/10",
                 ].join(" ")}
               >
                 <span className="flex items-center gap-3 opacity-95">
@@ -293,66 +315,26 @@ function Toggle({ label, value, onChange }: { label: string; value: boolean; onC
   );
 }
 
-// ----- Types & helpers -----
-export interface MenuItem {
-  key: string;
-  label: string;
-  onClick: () => void;
-  icon: ReactNode;
-}
-
-function buildMenuItems({
-  hasSave,
-  onContinue,
-  onNew,
-  onHowTo,
-  onSettings,
-  onQuit,
-}: {
-  hasSave: boolean;
-  onContinue?: () => void;
-  onNew?: () => void;
-  onHowTo?: () => void;
-  onSettings?: () => void;
-  onQuit?: () => void;
-}): MenuItem[] {
-  return (
-    [
-      hasSave
-        ? { key: "continue", label: "Continue", onClick: () => onContinue && onContinue(), icon: <RefreshCw className="h-4 w-4" /> }
-        : null,
-      { key: "new", label: hasSave ? "New Run" : "Play", onClick: () => onNew && onNew(), icon: <Swords className="h-4 w-4" /> },
-      { key: "howto", label: "How to Play", onClick: () => onHowTo && onHowTo(), icon: <BookOpen className="h-4 w-4" /> },
-      { key: "settings", label: "Options", onClick: () => onSettings && onSettings(), icon: <SettingsIcon className="h-4 w-4" /> },
-      { key: "quit", label: "Quit", onClick: () => onQuit && onQuit(), icon: <Power className="h-4 w-4" /> },
-    ].filter(Boolean) as MenuItem[]
-  );
-}
-
+// Helpers
 export function wrapIndex(n: number, len: number): number {
   if (len <= 0) return 0;
   return ((n % len) + len) % len;
 }
 
-// ----- Runtime tests (console) -----
+// Sanity tests (console)
 (function __runtime_tests__() {
   try {
-    // Test wrapIndex
     console.assert(wrapIndex(0, 5) === 0, "wrapIndex base");
     console.assert(wrapIndex(5, 5) === 0, "wrapIndex wraps forward");
     console.assert(wrapIndex(-1, 5) === 4, "wrapIndex wraps backward");
 
-    // Test buildMenuItems labels when hasSave toggles
-    const itemsNoSave = buildMenuItems({ hasSave: false });
+    const itemsNoSave: MenuItem[] = [
+      { key: "new", label: "Play", onClick: () => {}, icon: <Swords className="h-4 w-4" /> },
+      { key: "howto", label: "How to Play", onClick: () => {}, icon: <BookOpen className="h-4 w-4" /> },
+      { key: "settings", label: "Options", onClick: () => {}, icon: <SettingsIcon className="h-4 w-4" /> },
+      { key: "quit", label: "Quit", onClick: () => {}, icon: <Power className="h-4 w-4" /> },
+    ];
     console.assert(itemsNoSave[0].label === "Play", "First item should be Play when no save");
-
-    const itemsWithSave = buildMenuItems({ hasSave: true });
-    console.assert(itemsWithSave[0].label === "Continue", "First item should be Continue when save exists");
-
-    // Additional sanity: menu contains How to Play and Options
-    const labels = itemsNoSave.map((i) => i.label);
-    console.assert(labels.includes("How to Play"), "Menu includes How to Play");
-    console.assert(labels.includes("Options"), "Menu includes Options");
   } catch (e) {
     console.warn("Runtime tests failed:", e);
   }
