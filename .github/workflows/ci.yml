@@ -20,7 +20,7 @@ jobs:
           always-auth: false   # ensures no auth token is expected for public packages
 
       # Step 3: Install dependencies
-      - run: npm install --ignore-scripts
+      - run: npm install
 
       # Step 4: Build your project (runs "vite build")
       - run: npm run build
