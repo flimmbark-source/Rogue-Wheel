@@ -227,17 +227,6 @@ export default function ThreeWheel_WinsOnly() {
   const [freezeLayout, setFreezeLayout] = useState(false);
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
 
-  // Measure HUD height so we can align wheels with its top
-  const hudRef = useRef<HTMLDivElement | null>(null);
-  const [hudH, setHudH] = useState(0);
-  useEffect(() => {
-    const update = () => { if (!hudRef.current) return; const h = Math.round(hudRef.current.getBoundingClientRect().height || 0); setHudH(h); };
-    update(); const ro = new ResizeObserver(update);
-    if (hudRef.current) ro.observe(hudRef.current);
-    window.addEventListener('resize', update); window.addEventListener('orientationchange', update);
-    return () => { ro.disconnect(); window.removeEventListener('resize', update); window.removeEventListener('orientationchange', update); };
-  }, []);
-
   // Phase state
   const [phase, setPhase] = useState<"choose" | "showEnemy" | "anim" | "roundEnd" | "ended">("choose");
 
@@ -652,10 +641,10 @@ export default function ThreeWheel_WinsOnly() {
       </div>
 
       {/* HUD */}
-      <div ref={hudRef} className="relative z-10"><HUDPanels /></div>
+      <div className="relative z-10"><HUDPanels /></div>
 
       {/* Wheels center */}
-      <div className="relative z-0" style={{ marginTop: hudH ? -hudH : 0, paddingBottom: handClearance }}>
+      <div className="relative z-0" style={{ paddingBottom: handClearance }}>
         <div className="flex flex-col items-center justify-start gap-1">
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex-shrink-0">{renderWheelPanel(i)}</div>
