@@ -483,7 +483,7 @@ export default function ThreeWheel_WinsOnly() {
       className="relative rounded-xl border p-2 shadow flex-none"
       style={{
         width: panelW,
-        height: ws + 12,
+        height: ws + 36,
         background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
         borderColor: THEME.panelBorder,
         borderWidth: 2,
@@ -499,7 +499,7 @@ export default function ThreeWheel_WinsOnly() {
         style={{ height: 3, background: (wheelHUD[i] ?? THEME.brass), opacity: 0.85 }}
       />
 
-      <div className="flex items-center justify-center gap-2" style={{ height: (ws + 12) - 3 }}>
+      <div className="flex items-center justify-center gap-2" style={{ height: (ws + 36) - 3 }}>
         {/* Player slot */}
         <div
           onDragOver={onZoneDragOver}
