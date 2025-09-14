@@ -693,3 +693,6 @@ if (typeof window !== 'undefined') {
     console.assert(sum === 15, 'sections cover 15 slices');
   } catch {}
 }
+
+}
+
