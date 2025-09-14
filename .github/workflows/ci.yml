@@ -1,0 +1,26 @@
+name: Build and Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out your repository code
+      - uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js without requiring an npm token
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          registry-url: 'https://registry.npmjs.org'
+          always-auth: false   # ensures no auth token is expected for public packages
+
+      # Step 3: Install dependencies
+      - run: npm install --ignore-scripts
+
+      # Step 4: Build your project (runs "vite build")
+      - run: npm run build
