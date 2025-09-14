@@ -3,7 +3,7 @@ import { RefreshCw, Swords, Settings as SettingsIcon, Power, BookOpen } from "lu
 
 /**
  * Rogue Wheel — Cinematic Hub (Fantasy Skin)
- * Clean merge of typed API + latest logic. Builds in TS/JS.
+ * Clean merge of typed API + latest logic & your requested UX changes.
  */
 
 export type HubShellProps = {
@@ -16,6 +16,7 @@ export type HubShellProps = {
   onSettings?: () => void;
   onQuit?: () => void;
   version?: string;
+  profileName?: string;
 };
 
 export interface MenuItem {
@@ -36,9 +37,10 @@ export default function RogueWheelHub(props: HubShellProps) {
     onSettings,
     onQuit,
     version = "v0.1.0",
+    profileName = "Adventurer",
   } = props;
 
-  // ---- SAFE FALLBACKS (fixes "Play" not working when handler isn't wired) ----
+  // ---- Safe fallbacks so buttons still work if handlers aren't wired ----
   const safeOnNew = onNew ?? (() => {
     try { window.dispatchEvent(new CustomEvent("rw:new-run")); } catch {}
     console.warn("RogueWheelHub: onNew not provided. Dispatched `rw:new-run`.");
@@ -61,7 +63,7 @@ export default function RogueWheelHub(props: HubShellProps) {
     setShowOptions(true);
   }
 
-  // Menu model
+  // Menu model (no Daily Challenge, no Draft Practice, no Credits)
   const items = useMemo<MenuItem[]>(
     () => [
       hasSave
@@ -115,12 +117,16 @@ export default function RogueWheelHub(props: HubShellProps) {
         <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_180px_60px_rgba(10,8,25,0.9)]" />
       </div>
 
-      {/* Title + tagline + profile */}
+      {/* Title + tagline + profile (profile right-aligned under title) */}
       <div className="px-6 pt-10 md:px-10 max-w-xl">
-        <h1 className="text-4xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] md:text-6xl">{logoText}</h1>
-        <div className="mt-2 flex items-center justify-start gap-4">
+        <h1 className="text-4xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] md:text-6xl">
+          {logoText}
+        </h1>
+        <div className="mt-2 flex items-center justify-between">
           <p className="text-purple-100/90 md:text-lg"><b>Spin</b>, <b>draft</b>, triumph.</p>
-          <div className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25">Profile: Adventurer</div>
+          <div className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25">
+            Profile: {profileName}
+          </div>
         </div>
       </div>
 
@@ -183,9 +189,14 @@ function Overlay({ title, onClose, children }: { title: string; onClose: () => v
       <div className="relative z-10 w-[92vw] max-w-2xl rounded-2xl bg-indigo-950/90 p-4 ring-1 ring-amber-300/25 backdrop-blur md:p-6">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-xl font-bold tracking-wide">{title}</h2>
-          <button onClick={onClose} className="rounded bg-white/10 px-3 py-1 text-sm hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-amber-300">Close</button>
+          <button
+            onClick={onClose}
+            className="rounded bg-white/10 px-3 py-1 text-sm hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-amber-300"
+          >
+            Close
+          </button>
         </div>
-        <div className="max-h-[70vh] overflow-auto pr-1 text-sm leading-6 text-white/90">{children}</div>
+        <div className="max-h=[70vh] overflow-auto pr-1 text-sm leading-6 text-white/90">{children}</div>
       </div>
     </div>
   );
@@ -197,25 +208,25 @@ function HowToContent() {
       <p><b>Goal:</b> Win rounds by earning victories on the three wheels.</p>
       <ol className="list-decimal pl-5 space-y-2">
         <li><b>Draft:</b> Each round everyone draws <b>5 cards</b>.</li>
-        <li><b>Commit:</b> Select and place down <b>3</b> of your cards, <b>1</b> beside each wheel. The remaining <b>2</b> go to your <b>Reserve</b>.</li>
-        <li><b>Spin:</b> The token on each wheel moves equal to the <b>sum of the cards placed beside it</b>.</li>
-        <li><b>Resolve:</b> The landing section of each wheel determines the winner for that wheel:
+        <li><b>Commit:</b> Place <b>3</b> cards — <b>1</b> beside each wheel. The remaining <b>2</b> go to your <b>Reserve</b>.</li>
+        <li><b>Spin:</b> Each wheel’s token moves equal to the <b>sum of the two cards beside it</b> (you + enemy).</li>
+        <li><b>Resolve:</b> The landing section decides the winner:
           <ul className="mt-1 list-disc pl-5">
-            <li><b>Largest Number</b> – higher committed number wins.</li>
-            <li><b>Biggest Reserve</b> – higher total of reserve cards wins.</li>
-            <li><b>Smallest Card</b> – lower committed number wins.</li>
-            <li><b>Initiative</b> – initiative holder wins ties here.</li>
+            <li><b>Largest Number</b> — higher committed number wins.</li>
+            <li><b>Biggest Reserve</b> — higher total of reserve cards wins.</li>
+            <li><b>Smallest Card</b> — lower committed number wins.</li>
+            <li><b>Initiative</b> — initiative holder wins ties here.</li>
           </ul>
         </li>
-        <li><b>Advance:</b> Winners are counted, then a new round begins.</li>
+        <li><b>Advance:</b> Winners are counted; start a new round.</li>
       </ol>
 
       <div className="grid gap-3 rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
         <div className="font-semibold">Tips</div>
         <ul className="list-disc pl-5 space-y-1">
-          <li>Spread your strength: Playing your strongest cards isnt always the right choice.</li>
-          <li>Use your Reserve to build advantage for <i>Biggest Reserve</i>.</li>
-          <li>Track <b>initiative</b>: It breaks ties on sections.</li>
+          <li>Spread your strength — playing your highest cards isn’t always best.</li>
+          <li>Use your Reserve to build an advantage for <i>Biggest Reserve</i>.</li>
+          <li>Track <b>initiative</b>; it can flip outcomes on tie-heavy sections.</li>
         </ul>
       </div>
 
@@ -224,7 +235,7 @@ function HowToContent() {
           <div className="font-semibold">Controls</div>
           <ul className="mt-1 list-disc pl-5">
             <li>Menu: ↑/↓ to select, Enter to confirm, Esc to close panels</li>
-            <li>Mouse/touch: Tap and hold to select a card, then tap on a space to place it.</li>
+            <li>Mouse/touch: Tap a card, then tap a wheel slot to place it.</li>
           </ul>
         </div>
         <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
@@ -276,7 +287,11 @@ function OptionsContent() {
       <Toggle label="Screen Shake" value={screenShake} onChange={setScreenShake} />
       <Toggle label="Reduce Motion" value={reducedMotion} onChange={setReducedMotion} />
       <Field label="Colorblind Mode">
-        <select value={colorblind} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setColorblind(e.target.value)} className="w-full rounded bg-black/40 p-2 ring-1 ring-white/15">
+        <select
+          value={colorblind}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setColorblind(e.target.value)}
+          className="w-full rounded bg-black/40 p-2 ring-1 ring-white/15"
+        >
           <option value="off">Off</option>
           <option value="protanopia">Protanopia</option>
           <option value="deuteranopia">Deuteranopia</option>
@@ -284,8 +299,12 @@ function OptionsContent() {
         </select>
       </Field>
       <div className="flex justify-end gap-2 pt-2">
-        <button type="button" className="rounded-xl bg-white/10 px-3 py-1.5 ring-1 ring-white/15 hover:bg-white/15">Cancel</button>
-        <button type="submit" className="rounded-xl bg-amber-400 px-3 py-1.5 font-semibold text-indigo-950 ring-1 ring-amber-300 hover:brightness-95">Apply</button>
+        <button type="button" className="rounded-xl bg-white/10 px-3 py-1.5 ring-1 ring-white/15 hover:bg-white/15">
+          Cancel
+        </button>
+        <button type="submit" className="rounded-xl bg-amber-400 px-3 py-1.5 font-semibold text-indigo-950 ring-1 ring-amber-300 hover:brightness-95">
+          Apply
+        </button>
       </div>
     </form>
   );
@@ -321,20 +340,12 @@ export function wrapIndex(n: number, len: number): number {
   return ((n % len) + len) % len;
 }
 
-// Sanity tests (console)
+// Tiny runtime asserts (console)
 (function __runtime_tests__() {
   try {
     console.assert(wrapIndex(0, 5) === 0, "wrapIndex base");
     console.assert(wrapIndex(5, 5) === 0, "wrapIndex wraps forward");
     console.assert(wrapIndex(-1, 5) === 4, "wrapIndex wraps backward");
-
-    const itemsNoSave: MenuItem[] = [
-      { key: "new", label: "Play", onClick: () => {}, icon: <Swords className="h-4 w-4" /> },
-      { key: "howto", label: "How to Play", onClick: () => {}, icon: <BookOpen className="h-4 w-4" /> },
-      { key: "settings", label: "Options", onClick: () => {}, icon: <SettingsIcon className="h-4 w-4" /> },
-      { key: "quit", label: "Quit", onClick: () => {}, icon: <Power className="h-4 w-4" /> },
-    ];
-    console.assert(itemsNoSave[0].label === "Play", "First item should be Play when no save");
   } catch (e) {
     console.warn("Runtime tests failed:", e);
   }
