@@ -694,5 +694,3 @@ if (typeof window !== 'undefined') {
   } catch {}
 }
 
-}
-
