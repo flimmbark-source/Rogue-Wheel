@@ -45,12 +45,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /*
- * Wood‑themed frames for wheels and card slots.
- *
- * The wheel canvas is wrapped in a `.relative` div with an aria‑label
- * beginning with "Wheel".  Target this element to apply the circular
- * frame as a background image.  Padding creates space for the ornate
- * edge of the frame.
+ * Wood-themed frames for wheels and card slots.
  */
 div.relative[aria-label^="Wheel"] {
   background-image: url("../assets/wheel-frame.png");
@@ -60,16 +55,46 @@ div.relative[aria-label^="Wheel"] {
   padding: 0.5rem;
 }
 
-/*
- * Player and enemy card slots.  Both slots have aria‑labels that end
- * with "player slot" or "enemy slot".  Use the card frame texture as
- * the background image.  The images scale to fit while preserving
- * aspect ratio.
- */
+/* Player and enemy card slots */
 [aria-label$="player slot"],
 [aria-label$="enemy slot"] {
   background-image: url("../assets/card-frame.png");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
+}
+
+/*
+ * Cards in the player's hand.
+ * Each card is a <button> with an aria-label beginning with "Card".
+ * Apply the wood frame image as the background, hide the gradient overlays,
+ * and set the number color to a light parchment tone.
+ */
+button[Card^="Card"] {
+  background-image: url("../assets/card-frame.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  border: none;
+}
+button[aria-label^="Card"] > div:first-child {
+  opacity: 0;
+}
+button[aria-label^="Card"] > div:nth-child(2) {
+  background-color: transparent;
+  border: none;
+}
+button[aria-label^="Card"] .text-3xl {
+  color: #f5e7c4;
+}
+
+
+/* Override card frames using correct attribute selector */
+button[aria-label^="Card"] {
+
+  background-image: url("../assets/card-frame.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  border: none;
 }
