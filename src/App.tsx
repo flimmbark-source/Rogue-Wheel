@@ -483,7 +483,7 @@ export default function ThreeWheel_WinsOnly() {
       className="relative rounded-xl border p-2 shadow flex-none"
       style={{
         width: panelW,
-        height: ws + 16,
+        height: ws + 20,
         background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
         borderColor: THEME.panelBorder,
         borderWidth: 2,
@@ -499,7 +499,7 @@ export default function ThreeWheel_WinsOnly() {
         style={{ height: 3, background: (wheelHUD[i] ?? THEME.brass), opacity: 0.85 }}
       />
 
-        <div className="flex items-center justify-center gap-2" style={{ height: (ws + 16) - 3 }}>
+        <div className="flex items-center justify-center gap-2" style={{ height: (ws + 20) - 3 }}>
 
 
         {/* Player slot */}
@@ -516,7 +516,7 @@ export default function ThreeWheel_WinsOnly() {
               clearAssign(i);
             }
           }}
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
           style={{
             backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
             borderColor: dragOverWheel === i ? THEME.brass : THEME.slotBorder,
@@ -529,7 +529,7 @@ export default function ThreeWheel_WinsOnly() {
 
         {/* Wheel face */}
         <div
-          className="relative"
+          className="relative flex-1 flex items-center justify-center"
           onDragOver={onZoneDragOver}
           onDragEnter={onZoneDragOver}
           onDragLeave={onZoneLeave}
@@ -548,7 +548,7 @@ export default function ThreeWheel_WinsOnly() {
 
         {/* Enemy slot */}
         <div
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
           style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
           aria-label={`Wheel ${i+1} enemy slot`}
         >
