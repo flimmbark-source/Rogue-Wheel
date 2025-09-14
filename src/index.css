@@ -1,3 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Inter:wght@400;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Base body styles */
+body {
+  @apply text-surface bg-black font-text selection:bg-secondary selection:text-white;
+}
+
+/* Panel container background */
+.panel {
+  @apply bg-panel/60 text-surface p-4 rounded-lg shadow-md;
+}
+
+/* Card styling for hand */
+.card {
+  @apply bg-surface text-surface flex items-center justify-center rounded-lg shadow-lg border-2 border-panel hover:scale-105 transition-transform;
+}
+
+/* Primary & secondary buttons */
+.btn-primary {
+  @apply bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/80;
+}
+.btn-secondary {
+  @apply bg-secondary text-white px-4 py-2 rounded-md hover:bg-secondary/80;
+}
