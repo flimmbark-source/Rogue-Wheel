@@ -7,13 +7,11 @@ export default {
   ],
   theme: {
     extend: {
-          colors: {
-                primary: '#b68a4e',
+      colors: {
+        primary: '#b68a4e',
         secondary: '#704921',
         surface: '#3b2610',
         panel: '#2c1c0e',
-    
-      ,
       },
       fontFamily: {
         heading: ['Poppins', 'sans-serif'],
