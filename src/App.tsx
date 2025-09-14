@@ -487,7 +487,7 @@ export default function ThreeWheel_WinsOnly() {
 
     return (
       <div
-        className={`relative rounded-lg border ${active[i] ? "border-slate-700 bg-slate-800/70" : "border-slate-700/70 bg-slate-900/50"} p-0 shadow`}
+        className={`relative rounded-lg border ${active[i] ? "border-slate-700" : "border-slate-700/70"} p-0 shadow bg-transparent`}
         style={{ width: panelW, paddingTop: 0, paddingBottom: 0 }}
       >
         <div className="w-full h-[2px] rounded-t-md mb-0" style={{ background: wheelHUD[i] ?? "#475569" }} />
@@ -500,7 +500,7 @@ export default function ThreeWheel_WinsOnly() {
             onDragLeave={onZoneLeave}
             onDrop={onZoneDrop}
             onClick={(e) => { e.stopPropagation(); if (selectedCardId) { tapAssignIfSelected(); } else if (pc) { clearAssign(i); } }}
-            className={`${dragOverWheel === i ? "border-amber-400 bg-amber-400/10" : "border-slate-600 bg-slate-900/40"} w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center`}
+            className={`${dragOverWheel === i ? "border-amber-400 bg-amber-400/10" : "border-slate-600 bg-transparent"} w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center`}
             style={{ transform: 'translateY(-4px)' }}
             aria-label={`Wheel ${i+1} player slot`}
           >
@@ -521,7 +521,7 @@ export default function ThreeWheel_WinsOnly() {
           </div>
 
           {/* Enemy slot */}
-          <div className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center border-slate-600 bg-slate-900/40" aria-label={`Wheel ${i+1} enemy slot`}>
+          <div className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center border-slate-600 bg-transparent" aria-label={`Wheel ${i+1} enemy slot`}>
             {ec && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") ? (
               <StSCard card={ec} size="sm" disabled />
             ) : (
@@ -651,7 +651,7 @@ export default function ThreeWheel_WinsOnly() {
 
   return (
     <div
-      className="h-screen w-screen overflow-x-hidden overflow-y-hidden bg-slate-900 text-slate-100 p-1 grid gap-2"
+      className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2"
       style={{ gridTemplateRows: "auto auto 1fr auto" }}
     >
       {/* Controls */}
