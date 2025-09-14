@@ -674,19 +674,6 @@ style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
     );
   };
 
-  return (
-    <div className="w-full grid grid-cols-2 gap-2 overflow-x-hidden">
-      <div className="min-w-0 w-full max-w-[420px] mx-auto">
-        <Panel side="player" />
-      </div>
-      <div className="min-w-0 w-full max-w-[420px] mx-auto">
-        <Panel side="enemy" />
-      </div>
-    </div>
-  );
-};
-
-
     // 2 fixed columns so panels never tug each other
     return (
     <div className="w-full grid grid-cols-2 gap-2 overflow-x-hidden">
