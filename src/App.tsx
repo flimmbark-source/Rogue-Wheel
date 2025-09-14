@@ -461,7 +461,7 @@ export default function ThreeWheel_WinsOnly() {
   const gapX     = 16;   // gap-2 => 8px, two gaps between three items => 16
   const paddingX = 16;   // p-2 => 8px left + 8px right
   const borderX  = 4;    // border-2 => 2px left + 2px right
-  const EXTRA_H  = 20;   // extra breathing room inside the panel (change to tweak height)
+  const EXTRA_H  = 12;   // extra breathing room inside the panel (change to tweak height)
 
   // panel width (border-box) so wheel is visually centered
   const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
