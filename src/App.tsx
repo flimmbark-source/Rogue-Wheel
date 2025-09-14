@@ -456,16 +456,16 @@ export default function ThreeWheel_WinsOnly() {
 
   const ws = Math.round(lockedWheelSize ?? wheelSize);
 
-  // sizes that must match your classes below
+  // --- layout numbers that must match the classes below ---
   const slotW    = 80;   // w-[80px] on both slots
-  const gapX     = 16;   // gap-2 => 8px * 2 gaps = 16
+  const gapX     = 16;   // gap-2 => 8px, two gaps between three items => 16
   const paddingX = 16;   // p-2 => 8px left + 8px right
   const borderX  = 4;    // border-2 => 2px left + 2px right
+  const EXTRA_H  = 20;   // extra breathing room inside the panel (change to tweak height)
 
-  // content width: left slot + wheel + right slot + gaps
-  // panel width (border-box): content + horizontal padding + borders
+  // panel width (border-box) so wheel is visually centered
   const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
-    
+
   const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
   const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
   const handleDropCommon = (id: string | null) => {
@@ -491,7 +491,7 @@ export default function ThreeWheel_WinsOnly() {
       className="relative rounded-xl border p-2 shadow flex-none"
       style={{
         width: panelW,
-        height: ws + 20,
+        height: ws + EXTRA_H,
         background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
         borderColor: THEME.panelBorder,
         borderWidth: 2,
@@ -502,14 +502,17 @@ export default function ThreeWheel_WinsOnly() {
         isolation: 'isolate'
       }}
     >
+      {/* thin top accent bar */}
       <div
         className="w-full rounded-t-md mb-1"
         style={{ height: 3, background: (wheelHUD[i] ?? THEME.brass), opacity: 0.85 }}
       />
 
-        <div className="flex items-center justify-center gap-2" style={{ height: (ws + 20) - 3 }}>
-
-
+      {/* the row: slots + centered wheel */}
+      <div
+        className="flex items-center justify-center gap-2"
+        style={{ height: (ws + EXTRA_H) - 3 }}
+      >
         {/* Player slot */}
         <div
           onDragOver={onZoneDragOver}
@@ -518,16 +521,13 @@ export default function ThreeWheel_WinsOnly() {
           onDrop={onZoneDrop}
           onClick={(e) => {
             e.stopPropagation();
-            if (selectedCardId) {
-              tapAssignIfSelected();
-            } else if (pc) {
-              clearAssign(i);
-            }
+            if (selectedCardId) tapAssignIfSelected();
+            else if (pc)      clearAssign(i);
           }}
           className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
           style={{
             backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-            borderColor: dragOverWheel === i ? THEME.brass : THEME.slotBorder,
+            borderColor:     dragOverWheel === i ? THEME.brass          : THEME.slotBorder,
             transform: 'translateY(-4px)'
           }}
           aria-label={`Wheel ${i+1} player slot`}
@@ -535,7 +535,7 @@ export default function ThreeWheel_WinsOnly() {
           {pc ? <StSCard card={pc} size="sm" /> : <div className="text-[11px] opacity-80 text-center">Your card</div>}
         </div>
 
-        {/* Wheel face */}
+        {/* Wheel face (centers itself inside the middle column) */}
         <div
           className="relative flex-1 flex items-center justify-center"
           onDragOver={onZoneDragOver}
@@ -546,7 +546,6 @@ export default function ThreeWheel_WinsOnly() {
           aria-label={`Wheel ${i+1}`}
         >
           <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
-          {/* highlight overlay separate from wheel to avoid repainting the image layer */}
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0 rounded-full"
