@@ -6,7 +6,18 @@ export default {
     "./ui/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        primary: '#84cc16',
+        secondary: '#d946ef',
+        surface: '#0f172a',
+        panel: '#1e293b',
+      },
+      fontFamily: {
+        heading: ['Poppins', 'sans-serif'],
+        text: ['Inter', 'sans-serif'],
+      },
+    },
   },
   plugins: [],
 }
