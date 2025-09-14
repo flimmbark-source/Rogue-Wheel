@@ -3,10 +3,9 @@ import { RefreshCw, Swords, Settings as SettingsIcon, Power, BookOpen } from "lu
 
 /**
  * Rogue Wheel — Cinematic Hub (Fantasy Skin)
- * Clean merge of typed API + latest logic & your requested UX changes:
  * - Vertical menu: Continue (if save), Play/New Run, How to Play, Options, Quit
- * - No Daily Challenge, Draft Practice, or Credits
- * - Profile pill right-aligned under title; tagline simplified
+ * - Removed Daily Challenge, Draft Practice, Credits
+ * - Title with right-aligned Profile pill under it
  */
 
 export type HubShellProps = {
@@ -70,7 +69,7 @@ export default function RogueWheelHub(props: HubShellProps) {
     [hasSave, safeOnContinue, safeOnNew, onHowTo, onSettings, onQuit]
   );
 
-  // Keyboard nav
+  // Keyboard navigation
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown") { e.preventDefault(); setSelected((i) => wrapIndex(i + 1, items.length)); }
