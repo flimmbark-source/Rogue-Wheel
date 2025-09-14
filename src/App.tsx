@@ -132,7 +132,7 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
 
         // Numbers
         const midAng = (i + 0.5) * angPer;
-        const numPos = polar(center.x, center.y, wheelR * 0.52, midAng);
+        const numPos = polar(center.x, center.y, wheelR * 0.6, midAng);
         ctx.fillStyle = i === 0 ? "#ffffff" : "#0f172a";
         ctx.font = "700 11px system-ui, -apple-system, Segoe UI, Roboto";
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -226,17 +226,6 @@ export default function ThreeWheel_WinsOnly() {
   // Freeze layout during resolution
   const [freezeLayout, setFreezeLayout] = useState(false);
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
-
-  // Measure HUD height so we can align wheels with its top
-  const hudRef = useRef<HTMLDivElement | null>(null);
-  const [hudH, setHudH] = useState(0);
-  useEffect(() => {
-    const update = () => { if (!hudRef.current) return; const h = Math.round(hudRef.current.getBoundingClientRect().height || 0); setHudH(h); };
-    update(); const ro = new ResizeObserver(update);
-    if (hudRef.current) ro.observe(hudRef.current);
-    window.addEventListener('resize', update); window.addEventListener('orientationchange', update);
-    return () => { ro.disconnect(); window.removeEventListener('resize', update); window.removeEventListener('orientationchange', update); };
-  }, []);
 
   // Phase state
   const [phase, setPhase] = useState<"choose" | "showEnemy" | "anim" | "roundEnd" | "ended">("choose");
@@ -461,7 +450,7 @@ export default function ThreeWheel_WinsOnly() {
   });
   StSCard.displayName = 'StSCard';
 
-  const WheelPanel = memo(({ i }: { i: number }) => {
+  const renderWheelPanel = (i: number) => {
     const pc = assign.player[i];
     const ec = assign.enemy[i];
 
@@ -549,8 +538,7 @@ export default function ThreeWheel_WinsOnly() {
         </div>
       </div>
     );
-  });
-  WheelPanel.displayName = 'WheelPanel';
+  };
 
   const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
@@ -653,13 +641,13 @@ export default function ThreeWheel_WinsOnly() {
       </div>
 
       {/* HUD */}
-      <div ref={hudRef} className="relative z-10"><HUDPanels /></div>
+      <div className="relative z-10"><HUDPanels /></div>
 
       {/* Wheels center */}
-      <div className="relative z-0" style={{ marginTop: hudH ? -hudH : 0, paddingBottom: handClearance }}>
+      <div className="relative z-0" style={{ paddingBottom: handClearance }}>
         <div className="flex flex-col items-center justify-start gap-1">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="flex-shrink-0"><WheelPanel i={i} /></div>
+            <div key={i} className="flex-shrink-0">{renderWheelPanel(i)}</div>
           ))}
         </div>
       </div>
