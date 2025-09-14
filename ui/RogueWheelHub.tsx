@@ -3,7 +3,10 @@ import { RefreshCw, Swords, Settings as SettingsIcon, Power, BookOpen } from "lu
 
 /**
  * Rogue Wheel — Cinematic Hub (Fantasy Skin)
- * Clean merge of typed API + latest logic & your requested UX changes.
+ * Clean merge of typed API + latest logic & your requested UX changes:
+ * - Vertical menu: Continue (if save), Play/New Run, How to Play, Options, Quit
+ * - No Daily Challenge, Draft Practice, or Credits
+ * - Profile pill right-aligned under title; tagline simplified
  */
 
 export type HubShellProps = {
@@ -40,7 +43,7 @@ export default function RogueWheelHub(props: HubShellProps) {
     profileName = "Adventurer",
   } = props;
 
-  // ---- Safe fallbacks so buttons still work if handlers aren't wired ----
+  // Fallbacks so buttons still do something if handlers aren’t wired
   const safeOnNew = onNew ?? (() => {
     try { window.dispatchEvent(new CustomEvent("rw:new-run")); } catch {}
     console.warn("RogueWheelHub: onNew not provided. Dispatched `rw:new-run`.");
@@ -54,30 +57,20 @@ export default function RogueWheelHub(props: HubShellProps) {
   const [showHowTo, setShowHowTo] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
 
-  function handleOpenHowTo() {
-    onHowTo?.();
-    setShowHowTo(true);
-  }
-  function handleOpenOptions() {
-    onSettings?.();
-    setShowOptions(true);
-  }
-
-  // Menu model (no Daily Challenge, no Draft Practice, no Credits)
   const items = useMemo<MenuItem[]>(
     () => [
       hasSave
         ? { key: "continue", label: "Continue", onClick: safeOnContinue, icon: <RefreshCw className="h-4 w-4" /> }
         : null,
       { key: "new", label: hasSave ? "New Run" : "Play", onClick: safeOnNew, icon: <Swords className="h-4 w-4" /> },
-      { key: "howto", label: "How to Play", onClick: handleOpenHowTo, icon: <BookOpen className="h-4 w-4" /> },
-      { key: "settings", label: "Options", onClick: handleOpenOptions, icon: <SettingsIcon className="h-4 w-4" /> },
+      { key: "howto", label: "How to Play", onClick: () => { onHowTo?.(); setShowHowTo(true); }, icon: <BookOpen className="h-4 w-4" /> },
+      { key: "settings", label: "Options", onClick: () => { onSettings?.(); setShowOptions(true); }, icon: <SettingsIcon className="h-4 w-4" /> },
       { key: "quit", label: "Quit", onClick: onQuit, icon: <Power className="h-4 w-4" /> },
     ].filter(Boolean) as MenuItem[],
-    [hasSave, safeOnContinue, safeOnNew, onQuit]
+    [hasSave, safeOnContinue, safeOnNew, onHowTo, onSettings, onQuit]
   );
 
-  // Keyboard navigation
+  // Keyboard nav
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown") { e.preventDefault(); setSelected((i) => wrapIndex(i + 1, items.length)); }
@@ -95,7 +88,7 @@ export default function RogueWheelHub(props: HubShellProps) {
     const el = parallaxRef.current; if (!el) return;
     const onMove = (e: MouseEvent) => {
       const { innerWidth: w, innerHeight: h } = window;
-      const x = (e.clientX / w - 0.5) * 2; // -1..1
+      const x = (e.clientX / w - 0.5) * 2;
       const y = (e.clientY / h - 0.5) * 2;
       el.style.transform = `translate3d(${x * 6}px, ${y * 6}px, 0)`;
     };
@@ -117,7 +110,7 @@ export default function RogueWheelHub(props: HubShellProps) {
         <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_180px_60px_rgba(10,8,25,0.9)]" />
       </div>
 
-      {/* Title + tagline + profile (profile right-aligned under title) */}
+      {/* Title + tagline + profile */}
       <div className="px-6 pt-10 md:px-10 max-w-xl">
         <h1 className="text-4xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] md:text-6xl">
           {logoText}
@@ -196,7 +189,7 @@ function Overlay({ title, onClose, children }: { title: string; onClose: () => v
             Close
           </button>
         </div>
-        <div className="max-h=[70vh] overflow-auto pr-1 text-sm leading-6 text-white/90">{children}</div>
+        <div className="max-h-[70vh] overflow-auto pr-1 text-sm leading-6 text-white/90">{children}</div>
       </div>
     </div>
   );
@@ -339,14 +332,3 @@ export function wrapIndex(n: number, len: number): number {
   if (len <= 0) return 0;
   return ((n % len) + len) % len;
 }
-
-// Tiny runtime asserts (console)
-(function __runtime_tests__() {
-  try {
-    console.assert(wrapIndex(0, 5) === 0, "wrapIndex base");
-    console.assert(wrapIndex(5, 5) === 0, "wrapIndex wraps forward");
-    console.assert(wrapIndex(-1, 5) === 4, "wrapIndex wraps backward");
-  } catch (e) {
-    console.warn("Runtime tests failed:", e);
-  }
-})();

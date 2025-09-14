@@ -1,13 +1,15 @@
-import React, { useState } from "react";
-import RogueWheelHub from "../ui/RogueWheelHub";
-import App from "./App"; // your existing game component (default export)
+import React from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import App from "./App";
+import HubRoute from "./HubRoute";
 
 export default function AppShell() {
-  const [showTitle, setShowTitle] = useState(true);
-
   return (
-    <div className="min-h-screen w-full bg-gradient-to-b from-indigo-900 via-indigo-800 to-indigo-900 text-slate-100">
-      {showTitle ? <RogueWheelHub onPlay={() => setShowTitle(false)} /> : <App />}
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HubRoute />} />
+        <Route path="/game" element={<App />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
