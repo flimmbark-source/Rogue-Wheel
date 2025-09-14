@@ -524,7 +524,7 @@ export default function ThreeWheel_WinsOnly() {
   } else if (pc) {
     clearAssign(i);
   }
-}}} className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+}}  className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
   style={{
     backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
     borderColor: dragOverWheel === i ? THEME.brass : THEME.slotBorder,
