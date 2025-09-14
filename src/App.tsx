@@ -132,7 +132,7 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
 
         // Numbers
         const midAng = (i + 0.5) * angPer;
-        const numPos = polar(center.x, center.y, wheelR * 0.52, midAng);
+        const numPos = polar(center.x, center.y, wheelR * 0.6, midAng);
         ctx.fillStyle = i === 0 ? "#ffffff" : "#0f172a";
         ctx.font = "700 11px system-ui, -apple-system, Segoe UI, Roboto";
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
