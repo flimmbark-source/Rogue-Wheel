@@ -1,20 +1,15 @@
-import React, { useState } from "react";
+import React from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import App from "./App";
-import RogueWheelHub from "../ui/RogueWheelHub";
+import HubRoute from "./HubRoute";
 
 export default function AppShell() {
-  const [showGame, setShowGame] = useState(false);
-
-  if (showGame) {
-    return <App />;
-  }
-
   return (
-    <RogueWheelHub
-      onPlay={() => setShowGame(true)}
-      onContinue={() => setShowGame(true)}
-      onNewRun={() => setShowGame(true)}
-      continueAvailable={true}
-    />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HubRoute />} />
+        <Route path="/game" element={<App />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
