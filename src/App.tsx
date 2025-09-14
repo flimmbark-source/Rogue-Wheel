@@ -499,7 +499,15 @@ export default function ThreeWheel_WinsOnly() {
         style={{ height: 3, background: (wheelHUD[i] ?? THEME.brass), opacity: 0.85 }}
       />
 
-      <div className="flex items-center justify-center gap-2" style={{ height: (ws + 16) - 3 }}>
+      <div
+      className="grid items-center"
+      style={{
+        height: (ws + 16) - 3,
+        gridTemplateColumns: `80px ${ws}px 80px`, // left slot, wheel, right slot
+        columnGap: 8, // matches gap-2 (8px)
+      }}
+      >
+
         {/* Player slot */}
         <div
           onDragOver={onZoneDragOver}
