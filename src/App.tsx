@@ -461,7 +461,7 @@ export default function ThreeWheel_WinsOnly() {
   });
   StSCard.displayName = 'StSCard';
 
-  const WheelPanel = memo(({ i }: { i: number }) => {
+  const renderWheelPanel = (i: number) => {
     const pc = assign.player[i];
     const ec = assign.enemy[i];
 
@@ -549,8 +549,7 @@ export default function ThreeWheel_WinsOnly() {
         </div>
       </div>
     );
-  });
-  WheelPanel.displayName = 'WheelPanel';
+  };
 
   const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
@@ -659,7 +658,7 @@ export default function ThreeWheel_WinsOnly() {
       <div className="relative z-0" style={{ marginTop: hudH ? -hudH : 0, paddingBottom: handClearance }}>
         <div className="flex flex-col items-center justify-start gap-1">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="flex-shrink-0"><WheelPanel i={i} /></div>
+            <div key={i} className="flex-shrink-0">{renderWheelPanel(i)}</div>
           ))}
         </div>
       </div>
