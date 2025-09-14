@@ -6,10 +6,12 @@ export default function HubRoute() {
   const navigate = useNavigate();
   return (
     <RogueWheelHub
-      onPlay={() => navigate("/game")}
+      hasSave={false}
+      onNew={() => navigate("/game")}
       onContinue={() => navigate("/game?resume=1")}
-      onNewRun={() => navigate("/game")}
-      continueAvailable={true}
+      onQuit={() => console.log("Quit clicked")}
+      profileName="Adventurer"
+      version="v0.1.0"
     />
   );
 }
