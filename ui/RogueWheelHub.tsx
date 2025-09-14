@@ -1,19 +1,24 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import { RefreshCw, Swords, Settings as SettingsIcon, Power, BookOpen } from "lucide-react";
 
 /**
  * Rogue Wheel — Cinematic Hub (Fantasy Skin)
- * Fully self-contained, fixed JSX, and with simple runtime tests.
- *
- * Features
- * - Vertical game-like menu with keyboard/gamepad-style nav (↑/↓, Enter, Esc)
- * - Fantasy palette (amethyst/indigo + gold accents)
- * - Background parallax + vignette for readability
- * - In-menu panels: How to Play & Options (overlay dialogs)
- * - Profile chip sits on the same row as the tagline, under the title
+ * Clean merge of typed API + latest logic. Builds in TS/JS.
  */
 
-export default function HubShell(props) {
+export type HubShellProps = {
+  backgroundUrl?: string;
+  logoText?: string;
+  hasSave?: boolean;
+  onContinue?: () => void;
+  onNew?: () => void;
+  onHowTo?: () => void;
+  onSettings?: () => void;
+  onQuit?: () => void;
+  version?: string;
+};
+
+export default function RogueWheelHub(props: HubShellProps) {
   const {
     backgroundUrl = "/fantasy-hero.jpg",
     logoText = "Rogue Wheel",
@@ -24,31 +29,38 @@ export default function HubShell(props) {
     onSettings,
     onQuit,
     version = "v0.1.0",
-  } = props || {};
-
-  // Menu model (pure function so we can test it)
-  const items = useMemo(
-    () => buildMenuItems({ hasSave, onContinue, onNew, onHowTo: handleOpenHowTo, onSettings: handleOpenOptions, onQuit }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasSave, onContinue, onNew, onQuit]
-  );
+  } = props;
 
   const [selected, setSelected] = useState(0);
   const [showHowTo, setShowHowTo] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
 
   function handleOpenHowTo() {
-    if (typeof onHowTo === "function") onHowTo();
+    onHowTo?.();
     setShowHowTo(true);
   }
   function handleOpenOptions() {
-    if (typeof onSettings === "function") onSettings();
+    onSettings?.();
     setShowOptions(true);
   }
 
-  // Keyboard navigation (gamey)
+  // Menu model
+  const items = useMemo(
+    () =>
+      buildMenuItems({
+        hasSave,
+        onContinue,
+        onNew,
+        onHowTo: handleOpenHowTo,
+        onSettings: handleOpenOptions,
+        onQuit,
+      }),
+    [hasSave, onContinue, onNew, onQuit]
+  );
+
+  // Keyboard navigation
   useEffect(() => {
-    const onKey = (e) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown") { e.preventDefault(); setSelected((i) => wrapIndex(i + 1, items.length)); }
       else if (e.key === "ArrowUp") { e.preventDefault(); setSelected((i) => wrapIndex(i - 1, items.length)); }
       else if (e.key === "Enter") { e.preventDefault(); items[selected]?.onClick?.(); }
@@ -59,10 +71,10 @@ export default function HubShell(props) {
   }, [items, selected]);
 
   // Parallax background
-  const parallaxRef = useRef(null);
+  const parallaxRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = parallaxRef.current; if (!el) return;
-    const onMove = (e) => {
+    const onMove = (e: MouseEvent) => {
       const { innerWidth: w, innerHeight: h } = window;
       const x = (e.clientX / w - 0.5) * 2; // -1..1
       const y = (e.clientY / h - 0.5) * 2;
@@ -142,7 +154,7 @@ export default function HubShell(props) {
 }
 
 // ----- Overlay & Panel Content -----
-function Overlay({ title, onClose, children }) {
+function Overlay({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
     <div role="dialog" aria-modal className="fixed inset-0 z-40 grid place-items-center">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
@@ -210,17 +222,39 @@ function OptionsContent() {
   const [colorblind, setColorblind] = useState("off");
 
   return (
-    <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); console.log("apply", { music, sfx, screenShake, reducedMotion, colorblind }); }}>
+    <form
+      className="grid gap-4"
+      onSubmit={(e: React.FormEvent) => {
+        e.preventDefault();
+        console.log("apply", { music, sfx, screenShake, reducedMotion, colorblind });
+      }}
+    >
       <Field label="Music Volume">
-        <input type="range" min={0} max={1} step={0.01} value={music} onChange={(e) => setMusic(parseFloat(e.target.value))} className="w-full" />
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={music}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMusic(parseFloat(e.target.value))}
+          className="w-full"
+        />
       </Field>
       <Field label="SFX Volume">
-        <input type="range" min={0} max={1} step={0.01} value={sfx} onChange={(e) => setSfx(parseFloat(e.target.value))} className="w-full" />
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={sfx}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSfx(parseFloat(e.target.value))}
+          className="w-full"
+        />
       </Field>
       <Toggle label="Screen Shake" value={screenShake} onChange={setScreenShake} />
       <Toggle label="Reduce Motion" value={reducedMotion} onChange={setReducedMotion} />
       <Field label="Colorblind Mode">
-        <select value={colorblind} onChange={(e) => setColorblind(e.target.value)} className="w-full rounded bg-black/40 p-2 ring-1 ring-white/15">
+        <select value={colorblind} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setColorblind(e.target.value)} className="w-full rounded bg-black/40 p-2 ring-1 ring-white/15">
           <option value="off">Off</option>
           <option value="protanopia">Protanopia</option>
           <option value="deuteranopia">Deuteranopia</option>
@@ -235,7 +269,7 @@ function OptionsContent() {
   );
 }
 
-function Field({ label, children }) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="grid gap-1">
       <span className="text-sm text-white/80">{label}</span>
@@ -244,7 +278,7 @@ function Field({ label, children }) {
   );
 }
 
-function Toggle({ label, value, onChange }) {
+function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (val: boolean) => void }) {
   return (
     <label className="flex items-center justify-between gap-3">
       <span className="text-sm text-white/80">{label}</span>
@@ -259,20 +293,45 @@ function Toggle({ label, value, onChange }) {
   );
 }
 
-// ----- Pure helpers (for sanity tests) -----
-function buildMenuItems({ hasSave, onContinue, onNew, onHowTo, onSettings, onQuit }) {
-  return [
-    hasSave ? { key: "continue", label: "Continue", onClick: () => onContinue && onContinue(), icon: <RefreshCw className="h-4 w-4" /> } : null,
-    { key: "new", label: hasSave ? "New Run" : "Play", onClick: () => onNew && onNew(), icon: <Swords className="h-4 w-4" /> },
-    { key: "howto", label: "How to Play", onClick: () => onHowTo && onHowTo(), icon: <BookOpen className="h-4 w-4" /> },
-    { key: "settings", label: "Options", onClick: () => onSettings && onSettings(), icon: <SettingsIcon className="h-4 w-4" /> },
-    { key: "quit", label: "Quit", onClick: () => onQuit && onQuit(), icon: <Power className="h-4 w-4" /> },
-  ].filter(Boolean);
+// ----- Types & helpers -----
+export interface MenuItem {
+  key: string;
+  label: string;
+  onClick: () => void;
+  icon: ReactNode;
 }
 
-function wrapIndex(n, len) {
+function buildMenuItems({
+  hasSave,
+  onContinue,
+  onNew,
+  onHowTo,
+  onSettings,
+  onQuit,
+}: {
+  hasSave: boolean;
+  onContinue?: () => void;
+  onNew?: () => void;
+  onHowTo?: () => void;
+  onSettings?: () => void;
+  onQuit?: () => void;
+}): MenuItem[] {
+  return (
+    [
+      hasSave
+        ? { key: "continue", label: "Continue", onClick: () => onContinue && onContinue(), icon: <RefreshCw className="h-4 w-4" /> }
+        : null,
+      { key: "new", label: hasSave ? "New Run" : "Play", onClick: () => onNew && onNew(), icon: <Swords className="h-4 w-4" /> },
+      { key: "howto", label: "How to Play", onClick: () => onHowTo && onHowTo(), icon: <BookOpen className="h-4 w-4" /> },
+      { key: "settings", label: "Options", onClick: () => onSettings && onSettings(), icon: <SettingsIcon className="h-4 w-4" /> },
+      { key: "quit", label: "Quit", onClick: () => onQuit && onQuit(), icon: <Power className="h-4 w-4" /> },
+    ].filter(Boolean) as MenuItem[]
+  );
+}
+
+export function wrapIndex(n: number, len: number): number {
   if (len <= 0) return 0;
-  return (n % len + len) % len;
+  return ((n % len) + len) % len;
 }
 
 // ----- Runtime tests (console) -----
