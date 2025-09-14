@@ -517,8 +517,14 @@ export default function ThreeWheel_WinsOnly() {
   onDragEnter={onZoneDragOver}
   onDragLeave={onZoneLeave}
   onDrop={onZoneDrop}
-  onClick={(e) => { e.stopPropagation(); if (selectedCardId) { tapAssignIfSelected(); } else if (pc) { clearAssign(i); } }}
-  className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+ onClick={(e) => {
+  e.stopPropagation();
+  if (selectedCardId) {
+    tapAssignIfSelected();
+  } else if (pc) {
+    clearAssign(i);
+  }
+}}} className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
   style={{
     backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
     borderColor: dragOverWheel === i ? THEME.brass : THEME.slotBorder,
@@ -543,9 +549,11 @@ export default function ThreeWheel_WinsOnly() {
           </div>
 
           {/* Enemy slot */}
-          <<div
+<div
+
   className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
-  style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
+
+style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
   aria-label={`Wheel ${i+1} enemy slot`}
 >
   {ec && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") ? (
