@@ -19,6 +19,16 @@ const HUD_COLORS = { player: "#84cc16", enemy: "#d946ef" } as const;
 const MIN_WHEEL = 160; // do not shrink below
 const MAX_WHEEL = 200;
 
+// --- Warm brass/wood theme ---
+const THEME = {
+  panelBg:   '#2c1c0e',  // deep wood panels
+  panelBorder:'#5c4326', // warm wood edge
+  slotBg:    '#1b1209',  // card slot bg
+  slotBorder:'#7a5a33',  // brass/wood border
+  brass:     '#b68a4e',  // accent gold
+  textWarm:  '#ead9b9',  // parchment text
+};
+
 function calcWheelSize(viewH: number, viewW: number, dockAllowance = 0) {
   // Choose a size that fits 3 wheels vertically on initial load for both phone & desktop
   const isMobile = viewW <= 480;
@@ -486,10 +496,18 @@ export default function ThreeWheel_WinsOnly() {
     };
 
     return (
-      <div
-        className={`relative rounded-lg border ${active[i] ? "border-slate-700" : "border-slate-700/70"} p-0 shadow bg-transparent`}
-        style={{ width: panelW, paddingTop: 0, paddingBottom: 0 }}
-      >
+<div
+  className="relative rounded-lg border p-0 shadow"
+  style={{
+    width: panelW,
+    paddingTop: 0,
+    paddingBottom: 0,
+    background: active[i] ? THEME.panelBg : '#22150c',
+    borderColor: active[i] ? THEME.panelBorder : '#4a3520',
+    boxShadow: '0 2px 10px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04)'
+  }}
+>
+
         <div className="w-full h-[2px] rounded-t-md mb-0" style={{ background: wheelHUD[i] ?? "#475569" }} />
 
         <div className="flex items-center justify-center gap-1">
@@ -500,7 +518,12 @@ export default function ThreeWheel_WinsOnly() {
             onDragLeave={onZoneLeave}
             onDrop={onZoneDrop}
             onClick={(e) => { e.stopPropagation(); if (selectedCardId) { tapAssignIfSelected(); } else if (pc) { clearAssign(i); } }}
-            className={`${dragOverWheel === i ? "border-amber-400 bg-amber-400/10" : "border-slate-600 bg-transparent"} w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center`}
+            className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+style={{
+  backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
+  borderColor:     dragOverWheel === i ? THEME.brass          : THEME.slotBorder
+}}
+
             style={{ transform: 'translateY(-4px)' }}
             aria-label={`Wheel ${i+1} player slot`}
           >
@@ -521,7 +544,11 @@ export default function ThreeWheel_WinsOnly() {
           </div>
 
           {/* Enemy slot */}
-          <div className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center border-slate-600 bg-transparent" aria-label={`Wheel ${i+1} enemy slot`}>
+          <div
+  className="w-[80px] min-h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+  style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
+  ...
+
             {ec && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") ? (
               <StSCard card={ec} size="sm" disabled />
             ) : (
@@ -610,10 +637,16 @@ export default function ThreeWheel_WinsOnly() {
       };
 
       return (
-        <div
-          className="flex min-w-0 items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-2 py-1 text-[12px] shadow w-full"
-          style={{ maxWidth: '100%' }}
-        >
+       <div
+  className="flex min-w-0 items-center gap-2 rounded-lg border px-2 py-1 text-[12px] shadow w-full"
+  style={{
+    maxWidth: '100%',
+    background: THEME.panelBg,
+    borderColor: THEME.panelBorder,
+    color: THEME.textWarm
+  }}
+>
+
           <div className="w-1.5 h-6 rounded" style={{ background: color }} />
           <div className="truncate max-w-[36vw] sm:max-w-none">
             <span className="font-semibold">{name}</span>
@@ -624,7 +657,14 @@ export default function ThreeWheel_WinsOnly() {
             <span className="text-base font-extrabold">{win}</span>
           </div>
           <div
-            className={`ml-2 rounded-full border border-slate-600 bg-slate-900/90 px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap ${
+            className="ml-2 rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap"
+style={{
+  maxWidth: '44vw', minWidth: '90px',
+  background: '#1b1209ee',
+  borderColor: THEME.slotBorder,
+  color: THEME.textWarm
+}}
+
               phase === 'roundEnd' && rs !== null ? 'visible opacity-100' : 'invisible opacity-0'
             }`}
             style={reserveLaneStyle}
