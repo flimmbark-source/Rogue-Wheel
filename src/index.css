@@ -98,3 +98,9 @@ button[aria-label^="Card"] {
   background-position: center;
   border: none;
 }
+
+/* Add margin below the last wheel to prevent overlap with the player's hand */
+div.relative[aria-label^="Wheel"]:last-of-type {
+  margin-bottom: 1rem;
+}
+
