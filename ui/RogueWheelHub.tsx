@@ -1,292 +1,334 @@
-import React, { useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
-import {
-  PlayCircle,
-  Swords,
-  Trophy,
-  BookOpen,
-  Sparkles,
-  Settings,
-  User,
-  RefreshCw,
-  Star,
-  Wand2,
-  Info,
-  Power,
-} from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState, ReactNode } from "react";
+import { RefreshCw, Swords, Settings as SettingsIcon, Power, BookOpen } from "lucide-react";
 
 /**
- * Rogue Wheel — Main Hub Start Menu
- *
- * • Responsive three-column layout (Profile • Core • Meta)
- * • Big primary Play CTA, secondary modes, footer utilities
- * • Subtle animations, accessible focus states, keyboard friendly
- * • Works even if the logo image fails (fallback emblem)
- * • TailwindCSS styling; Framer Motion for entrance/hover
- *
- * Wire this into your router/state by passing the on* handlers below.
+ * Rogue Wheel — Cinematic Hub (Fantasy Skin)
+ * Clean merge of typed API + latest logic & your requested UX changes:
+ * - Vertical menu: Continue (if save), Play/New Run, How to Play, Options, Quit
+ * - No Daily Challenge, Draft Practice, or Credits
+ * - Profile pill right-aligned under title; tagline simplified
  */
 
-export type HubProps = {
-  logoSrc?: string; // optional brand image; put in /public or import as module
-  playerName?: string;
-  level?: number;
-  xp?: number; // 0..1 for bar fill
-  continueAvailable?: boolean;
-  onPlay?: () => void;
+export type HubShellProps = {
+  backgroundUrl?: string;
+  logoText?: string;
+  hasSave?: boolean;
   onContinue?: () => void;
-  onNewRun?: () => void;
-  onChallenge?: () => void;
-  onDraftPractice?: () => void;
+  onNew?: () => void;
+  onHowTo?: () => void;
   onSettings?: () => void;
-  onCredits?: () => void;
   onQuit?: () => void;
+  version?: string;
+  profileName?: string;
 };
 
-export default function RogueWheelHub({
-  logoSrc = "/rogue-wheel-logo.png", // put your image in /public or pass prop
-  playerName = "Adventurer",
-  level = 3,
-  xp = 0.42,
-  continueAvailable = false,
-  onPlay,
-  onContinue,
-  onNewRun,
-  onChallenge,
-  onDraftPractice,
-  onSettings,
-  onCredits,
-  onQuit,
-}: HubProps) {
-  const [logoError, setLogoError] = useState(false);
-
-  // Decorative floating sparkles positions (stable between renders)
-  const sparkleSeeds = useMemo(
-    () =>
-      Array.from({ length: 16 }, (_, i) => ({
-        key: i,
-        x: Math.random() * 100,
-        y: Math.random() * 100,
-        d: 6 + Math.random() * 10,
-        delay: Math.random() * 4,
-      })),
-    []
-  );
-
-  return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-gradient-to-b from-indigo-700 via-indigo-800 to-indigo-900 text-slate-100">
-      {/* Parallax background ornaments */}
-      <div aria-hidden className="pointer-events-none absolute inset-0 opacity-25">
-        {sparkleSeeds.map((s) => (
-          <motion.div
-            key={s.key}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: [0, 1, 0], y: [0, -10, 0] }}
-            transition={{ duration: s.d, repeat: Infinity, delay: s.delay }}
-            className="absolute"
-            style={{ left: `${s.x}%`, top: `${s.y}%` }}
-          >
-            <Sparkles className="h-4 w-4" />
-          </motion.div>
-        ))}
-      </div>
-
-      {/* CONTENT */}
-      <div className="relative mx-auto flex max-w-6xl flex-col gap-6 px-4 pb-10 pt-10 md:gap-10 md:px-6 md:pt-12">
-        {/* BRANDING */}
-        <div className="mx-auto flex max-w-4xl flex-col items-center text-center">
-          <div className="mb-3 flex items-center gap-3">
-            {logoSrc && !logoError ? (
-              <img
-                src={logoSrc}
-                alt="Rogue Wheel logo"
-                className="h-14 w-auto drop-shadow"
-                onError={() => setLogoError(true)}
-                loading="eager"
-              />
-            ) : (
-              <motion.div
-                initial={{ rotate: -6, scale: 0.9, opacity: 0 }}
-                animate={{ rotate: 0, scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 80, damping: 12 }}
-                className="grid h-14 w-14 place-items-center rounded-full bg-indigo-500/40 ring-1 ring-white/40"
-              >
-                <Wand2 className="h-7 w-7" />
-              </motion.div>
-            )}
-            <motion.h1
-              initial={{ y: -10, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ type: "spring", stiffness: 100, damping: 12 }}
-              className="text-2xl font-extrabold tracking-wide md:text-3xl"
-            >
-              Rogue Wheel
-            </motion.h1>
-          </div>
-          <p className="text-indigo-100/90">
-            Lighthearted fantasy. <span className="font-semibold">Spin</span>, <span className="font-semibold">draft</span>, triumph.
-          </p>
-        </div>
-
-        {/* GRID: Profile • Core • Meta */}
-        <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-3">
-          {/* PROFILE */}
-          <motion.section
-            initial={{ x: -12, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 120, damping: 16, delay: 0.05 }}
-            className="rounded-2xl bg-indigo-950/30 p-4 shadow-xl ring-1 ring-white/10 backdrop-blur-sm"
-          >
-            <header className="mb-3 flex items-center gap-2">
-              <User className="h-5 w-5" />
-              <h2 className="text-lg font-semibold">Profile</h2>
-            </header>
-            <div className="flex items-center gap-3">
-              <div className="grid h-12 w-12 place-items-center rounded-full bg-indigo-600/50 ring-1 ring-white/30">
-                <Star className="h-6 w-6" />
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-sm/5 opacity-90">{playerName}</div>
-                <div className="text-xs opacity-80">Level {level}</div>
-                <div aria-label="experience" className="mt-1 h-2 w-40 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className="h-full bg-gradient-to-r from-amber-300 to-amber-500"
-                    style={{ width: `${Math.min(Math.max(xp, 0), 1) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-3 gap-3 text-center text-xs">
-              <StatCard label="Wins" value="12" />
-              <StatCard label="Best Streak" value="4" />
-              <StatCard label="Cards" value="36" />
-            </div>
-          </motion.section>
-
-          {/* CORE MENU */}
-          <motion.section
-            initial={{ scale: 0.98, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 120, damping: 14, delay: 0.1 }}
-            className="rounded-2xl bg-indigo-950/40 p-4 shadow-2xl ring-1 ring-white/10 backdrop-blur-sm md:p-6"
-          >
-            <div className="mx-auto flex max-w-md flex-col gap-3">
-              <HubButton
-                large
-                icon={<PlayCircle className="h-6 w-6" />}
-                label="Play"
-                kbd="Enter"
-                onClick={onPlay}
-              />
-              <HubButton
-                icon={<RefreshCw className="h-5 w-5" />}
-                label="Continue"
-                disabled={!continueAvailable}
-                onClick={onContinue}
-              />
-              <HubButton icon={<Swords className="h-5 w-5" />} label="New Run" onClick={onNewRun} />
-              <HubButton icon={<Trophy className="h-5 w-5" />} label="Daily Challenge" onClick={onChallenge} />
-              <HubButton icon={<BookOpen className="h-5 w-5" />} label="Draft Practice" onClick={onDraftPractice} />
-            </div>
-          </motion.section>
-
-          {/* META */}
-          <motion.section
-            initial={{ x: 12, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ type: "spring", stiffness: 120, damping: 16, delay: 0.15 }}
-            className="rounded-2xl bg-indigo-950/30 p-4 shadow-xl ring-1 ring-white/10 backdrop-blur-sm"
-          >
-            <header className="mb-3 flex items-center gap-2">
-              <Trophy className="h-5 w-5" />
-              <h2 className="text-lg font-semibold">Meta & Progress</h2>
-            </header>
-            <ul className="space-y-2 text-sm">
-              <li className="flex items-center justify-between rounded-lg bg-white/5 p-2 ring-1 ring-white/10">
-                <span>Achievements</span>
-                <span className="text-amber-300">7/32</span>
-              </li>
-              <li className="flex items-center justify-between rounded-lg bg-white/5 p-2 ring-1 ring-white/10">
-                <span>Lore Codex</span>
-                <span className="opacity-80">12 entries</span>
-              </li>
-              <li className="flex items-center justify-between rounded-lg bg-white/5 p-2 ring-1 ring-white/10">
-                <span>Card Album</span>
-                <span className="opacity-80">36/120</span>
-              </li>
-            </ul>
-          </motion.section>
-        </div>
-
-        {/* FOOTER */}
-        <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-center gap-3 pt-2 text-sm opacity-95">
-          <FooterButton icon={<Settings className="h-4 w-4" />} label="Settings" onClick={onSettings} />
-          <FooterButton icon={<Info className="h-4 w-4" />} label="Credits" onClick={onCredits} />
-          <FooterButton icon={<Power className="h-4 w-4" />} label="Quit" onClick={onQuit} />
-          <span className="select-none opacity-60">v0.1.0</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HubButton({
-  label,
-  icon,
-  onClick,
-  disabled,
-  large,
-  kbd,
-}: {
+export interface MenuItem {
+  key: string;
   label: string;
-  icon?: React.ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-  large?: boolean;
-  kbd?: string;
-}) {
-  return (
-    <motion.button
-      whileHover={!disabled ? { scale: 1.02 } : undefined}
-      whileTap={!disabled ? { scale: 0.98 } : undefined}
-      onClick={disabled ? undefined : onClick}
-      disabled={disabled}
-      className={[
-        "group relative flex items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300",
-        large ? "py-4 text-lg" : "text-base",
-        disabled
-          ? "cursor-not-allowed border-white/10 bg-white/5 text-white/40"
-          : "border-amber-400/20 bg-gradient-to-b from-amber-300/10 to-amber-400/10 hover:from-amber-300/20 hover:to-amber-400/20",
-      ].join(" ")}
-    >
-      <span className="pointer-events-none absolute -left-2 -top-2 hidden rounded-full bg-amber-400/20 p-1 group-hover:block" />
-      <div className="flex items-center gap-3">
-        {icon}
-        <span className="font-semibold tracking-wide">{label}</span>
-      </div>
-      {kbd && <span className="rounded bg-white/10 px-2 py-0.5 text-xs tracking-wider opacity-80">{kbd}</span>}
-    </motion.button>
-  );
+  onClick: (() => void) | undefined;
+  icon: ReactNode;
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+export default function RogueWheelHub(props: HubShellProps) {
+  const {
+    backgroundUrl = "/fantasy-hero.jpg",
+    logoText = "Rogue Wheel",
+    hasSave = false,
+    onContinue,
+    onNew,
+    onHowTo,
+    onSettings,
+    onQuit,
+    version = "v0.1.0",
+    profileName = "Adventurer",
+  } = props;
+
+  // Fallbacks so buttons still do something if handlers aren’t wired
+  const safeOnNew = onNew ?? (() => {
+    try { window.dispatchEvent(new CustomEvent("rw:new-run")); } catch {}
+    console.warn("RogueWheelHub: onNew not provided. Dispatched `rw:new-run`.");
+  });
+  const safeOnContinue = onContinue ?? (() => {
+    try { window.dispatchEvent(new CustomEvent("rw:continue")); } catch {}
+    console.warn("RogueWheelHub: onContinue not provided. Dispatched `rw:continue`.");
+  });
+
+  const [selected, setSelected] = useState(0);
+  const [showHowTo, setShowHowTo] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
+
+  const items = useMemo<MenuItem[]>(
+    () => [
+      hasSave
+        ? { key: "continue", label: "Continue", onClick: safeOnContinue, icon: <RefreshCw className="h-4 w-4" /> }
+        : null,
+      { key: "new", label: hasSave ? "New Run" : "Play", onClick: safeOnNew, icon: <Swords className="h-4 w-4" /> },
+      { key: "howto", label: "How to Play", onClick: () => { onHowTo?.(); setShowHowTo(true); }, icon: <BookOpen className="h-4 w-4" /> },
+      { key: "settings", label: "Options", onClick: () => { onSettings?.(); setShowOptions(true); }, icon: <SettingsIcon className="h-4 w-4" /> },
+      { key: "quit", label: "Quit", onClick: onQuit, icon: <Power className="h-4 w-4" /> },
+    ].filter(Boolean) as MenuItem[],
+    [hasSave, safeOnContinue, safeOnNew, onHowTo, onSettings, onQuit]
+  );
+
+  // Keyboard nav
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowDown") { e.preventDefault(); setSelected((i) => wrapIndex(i + 1, items.length)); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); setSelected((i) => wrapIndex(i - 1, items.length)); }
+      else if (e.key === "Enter") { e.preventDefault(); items[selected]?.onClick?.(); }
+      else if (e.key === "Escape") { setShowHowTo(false); setShowOptions(false); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [items, selected]);
+
+  // Parallax background
+  const parallaxRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = parallaxRef.current; if (!el) return;
+    const onMove = (e: MouseEvent) => {
+      const { innerWidth: w, innerHeight: h } = window;
+      const x = (e.clientX / w - 0.5) * 2;
+      const y = (e.clientY / h - 0.5) * 2;
+      el.style.transform = `translate3d(${x * 6}px, ${y * 6}px, 0)`;
+    };
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, []);
+
   return (
-    <div className="rounded-xl bg-white/5 p-2 ring-1 ring-white/10">
-      <div className="text-xs opacity-75">{label}</div>
-      <div className="text-base font-semibold">{value}</div>
+    <div className="relative min-h-screen w-full overflow-hidden text-white">
+      {/* Background */}
+      <div className="absolute inset-0 -z-10">
+        <div
+          ref={parallaxRef}
+          className="absolute inset-0 will-change-transform"
+          style={{ backgroundImage: `url('${backgroundUrl}')`, backgroundSize: "cover", backgroundPosition: "center" }}
+        />
+        <div className="absolute inset-0 bg-purple-900/40 mix-blend-multiply" />
+        <div className="absolute inset-0 bg-gradient-to-b from-purple-950/70 via-indigo-950/25 to-indigo-950/80" />
+        <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_180px_60px_rgba(10,8,25,0.9)]" />
+      </div>
+
+      {/* Title + tagline + profile */}
+      <div className="px-6 pt-10 md:px-10 max-w-xl">
+        <h1 className="text-4xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] md:text-6xl">
+          {logoText}
+        </h1>
+        <div className="mt-2 flex items-center justify-between">
+          <p className="text-purple-100/90 md:text-lg"><b>Spin</b>, <b>draft</b>, triumph.</p>
+          <div className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25">
+            Profile: {profileName}
+          </div>
+        </div>
+      </div>
+
+      {/* Vertical Menu */}
+      <nav aria-label="Main menu" className="mt-6 px-6 md:mt-10 md:px-10">
+        <ul className="max-w-md">
+          {items.map((it, i) => (
+            <li key={it.key} className="mb-3">
+              <button
+                role="button"
+                aria-disabled={!it.onClick}
+                disabled={!it.onClick}
+                onMouseEnter={() => setSelected(i)}
+                onClick={() => it.onClick && it.onClick()}
+                className={[
+                  "relative flex w-full items-center justify-between rounded-xl px-5 py-3",
+                  "text-left font-semibold tracking-wide outline-none",
+                  !it.onClick
+                    ? "cursor-not-allowed opacity-60 bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/20"
+                    : i === selected
+                      ? "cursor-pointer bg-gradient-to-r from-amber-300 to-amber-500 text-indigo-950 shadow-[0_6px_18px_rgba(255,191,71,0.35)] ring-2 ring-amber-300"
+                      : "cursor-pointer bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/25 hover:from-black/30 hover:to-black/10",
+                ].join(" ")}
+              >
+                <span className="flex items-center gap-3 opacity-95">
+                  <span className="-ml-1 mr-1 text-amber-300">{i === selected ? "❯" : "•"}</span>
+                  {it.icon}{it.label}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      {/* Footer */}
+      <footer className="pointer-events-none absolute bottom-0 left-0 right-0 flex flex-wrap items-end justify-end gap-2 px-6 pb-4 text-sm opacity-85 md:px-10">
+        <div className="pointer-events-auto rounded bg-black/35 px-3 py-1.5 ring-1 ring-amber-300/25">{version}</div>
+      </footer>
+
+      {/* Panels */}
+      {showHowTo && (
+        <Overlay title="How to Play" onClose={() => setShowHowTo(false)}>
+          <HowToContent />
+        </Overlay>
+      )}
+      {showOptions && (
+        <Overlay title="Options" onClose={() => setShowOptions(false)}>
+          <OptionsContent />
+        </Overlay>
+      )}
     </div>
   );
 }
 
-function FooterButton({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick?: () => void }) {
+// ----- Overlay & Panel Content -----
+function Overlay({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 shadow-sm ring-1 ring-white/10 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
+    <div role="dialog" aria-modal className="fixed inset-0 z-40 grid place-items-center">
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative z-10 w-[92vw] max-w-2xl rounded-2xl bg-indigo-950/90 p-4 ring-1 ring-amber-300/25 backdrop-blur md:p-6">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-xl font-bold tracking-wide">{title}</h2>
+          <button
+            onClick={onClose}
+            className="rounded bg-white/10 px-3 py-1 text-sm hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-amber-300"
+          >
+            Close
+          </button>
+        </div>
+        <div className="max-h-[70vh] overflow-auto pr-1 text-sm leading-6 text-white/90">{children}</div>
+      </div>
+    </div>
   );
+}
+
+function HowToContent() {
+  return (
+    <div className="space-y-4">
+      <p><b>Goal:</b> Win rounds by earning victories on the three wheels.</p>
+      <ol className="list-decimal pl-5 space-y-2">
+        <li><b>Draft:</b> Each round everyone draws <b>5 cards</b>.</li>
+        <li><b>Commit:</b> Place <b>3</b> cards — <b>1</b> beside each wheel. The remaining <b>2</b> go to your <b>Reserve</b>.</li>
+        <li><b>Spin:</b> Each wheel’s token moves equal to the <b>sum of the two cards beside it</b> (you + enemy).</li>
+        <li><b>Resolve:</b> The landing section decides the winner:
+          <ul className="mt-1 list-disc pl-5">
+            <li><b>Largest Number</b> — higher committed number wins.</li>
+            <li><b>Biggest Reserve</b> — higher total of reserve cards wins.</li>
+            <li><b>Smallest Card</b> — lower committed number wins.</li>
+            <li><b>Initiative</b> — initiative holder wins ties here.</li>
+          </ul>
+        </li>
+        <li><b>Advance:</b> Winners are counted; start a new round.</li>
+      </ol>
+
+      <div className="grid gap-3 rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+        <div className="font-semibold">Tips</div>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>Spread your strength — playing your highest cards isn’t always best.</li>
+          <li>Use your Reserve to build an advantage for <i>Biggest Reserve</i>.</li>
+          <li>Track <b>initiative</b>; it can flip outcomes on tie-heavy sections.</li>
+        </ul>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+          <div className="font-semibold">Controls</div>
+          <ul className="mt-1 list-disc pl-5">
+            <li>Menu: ↑/↓ to select, Enter to confirm, Esc to close panels</li>
+            <li>Mouse/touch: Tap a card, then tap a wheel slot to place it.</li>
+          </ul>
+        </div>
+        <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+          <div className="font-semibold">Win Target</div>
+          <p>First to win the majority of rounds.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OptionsContent() {
+  const [music, setMusic] = useState(0.6);
+  const [sfx, setSfx] = useState(0.8);
+  const [screenShake, setScreenShake] = useState(true);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [colorblind, setColorblind] = useState("off");
+
+  return (
+    <form
+      className="grid gap-4"
+      onSubmit={(e: React.FormEvent) => {
+        e.preventDefault();
+        console.log("apply", { music, sfx, screenShake, reducedMotion, colorblind });
+      }}
+    >
+      <Field label="Music Volume">
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={music}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMusic(parseFloat(e.target.value))}
+          className="w-full"
+        />
+      </Field>
+      <Field label="SFX Volume">
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={sfx}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSfx(parseFloat(e.target.value))}
+          className="w-full"
+        />
+      </Field>
+      <Toggle label="Screen Shake" value={screenShake} onChange={setScreenShake} />
+      <Toggle label="Reduce Motion" value={reducedMotion} onChange={setReducedMotion} />
+      <Field label="Colorblind Mode">
+        <select
+          value={colorblind}
+          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setColorblind(e.target.value)}
+          className="w-full rounded bg-black/40 p-2 ring-1 ring-white/15"
+        >
+          <option value="off">Off</option>
+          <option value="protanopia">Protanopia</option>
+          <option value="deuteranopia">Deuteranopia</option>
+          <option value="tritanopia">Tritanopia</option>
+        </select>
+      </Field>
+      <div className="flex justify-end gap-2 pt-2">
+        <button type="button" className="rounded-xl bg-white/10 px-3 py-1.5 ring-1 ring-white/15 hover:bg-white/15">
+          Cancel
+        </button>
+        <button type="submit" className="rounded-xl bg-amber-400 px-3 py-1.5 font-semibold text-indigo-950 ring-1 ring-amber-300 hover:brightness-95">
+          Apply
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="grid gap-1">
+      <span className="text-sm text-white/80">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function Toggle({ label, value, onChange }: { label: string; value: boolean; onChange: (val: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between gap-3">
+      <span className="text-sm text-white/80">{label}</span>
+      <button
+        type="button"
+        onClick={() => onChange(!value)}
+        className={["relative h-6 w-11 rounded-full transition", value ? "bg-amber-400" : "bg-white/20"].join(" ")}
+      >
+        <span className={["absolute top-0.5 h-5 w-5 rounded-full bg-white transition", value ? "left-5" : "left-0.5"].join(" ")} />
+      </button>
+    </label>
+  );
+}
+
+// Helpers
+export function wrapIndex(n: number, len: number): number {
+  if (len <= 0) return 0;
+  return ((n % len) + len) % len;
 }
