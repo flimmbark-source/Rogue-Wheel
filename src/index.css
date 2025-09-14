@@ -1,28 +1,75 @@
-@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&family=Inter:wght@400;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Base body styles */
+/*
+ * Global styles for the Roguelike Wheel game.  This file sets up a dark
+ * background and light text by default and applies the custom fonts from
+ * tailwind.config.js.  It also includes typographic rules for headings.
+ */
+
 body {
-  @apply text-surface bg-black font-text selection:bg-secondary selection:text-white;
+  /* Apply a warm wood background texture across the entire game.  The dark
+   * slate fallback ensures the UI remains legible if the image fails to
+   * load.  Text uses the custom font defined in tailwind.config.js. */
+  @apply bg-slate-900 text-slate-200 font-text;
+  background-image: url("../assets/wood-bg.jpg");
+  background-size: cover;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
-/* Panel container background */
+h1, h2, h3, h4, h5, h6 {
+  @apply font-heading;
+}
+
+/* Panels (HUD) */
 .panel {
-  @apply bg-panel/60 text-surface p-4 rounded-lg shadow-md;
+  @apply bg-panel rounded-xl shadow-md p-3 flex flex-col gap-1;
 }
 
-/* Card styling for hand */
+/* Cards in the player's hand */
 .card {
-  @apply bg-surface text-surface flex items-center justify-center rounded-lg shadow-lg border-2 border-panel hover:scale-105 transition-transform;
+  @apply bg-surface rounded-lg shadow-inner p-2 flex items-center justify-center text-xl font-bold text-white transition-transform duration-150;
+}
+.card:hover {
+  @apply scale-105;
 }
 
-/* Primary & secondary buttons */
+/* Action buttons */
 .btn-primary {
-  @apply bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/80;
+  @apply bg-primary text-slate-900 rounded px-4 py-2 hover:bg-primary/80 transition-colors duration-150;
 }
 .btn-secondary {
-  @apply bg-secondary text-white px-4 py-2 rounded-md hover:bg-secondary/80;
+  @apply bg-secondary text-slate-900 rounded px-4 py-2 hover:bg-secondary/80 transition-colors duration-150;
+}
+
+/*
+ * Wood‑themed frames for wheels and card slots.
+ *
+ * The wheel canvas is wrapped in a `.relative` div with an aria‑label
+ * beginning with "Wheel".  Target this element to apply the circular
+ * frame as a background image.  Padding creates space for the ornate
+ * edge of the frame.
+ */
+div.relative[aria-label^="Wheel"] {
+  background-image: url("../assets/wheel-frame.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  padding: 0.5rem;
+}
+
+/*
+ * Player and enemy card slots.  Both slots have aria‑labels that end
+ * with "player slot" or "enemy slot".  Use the card frame texture as
+ * the background image.  The images scale to fit while preserving
+ * aspect ratio.
+ */
+[aria-label$="player slot"],
+[aria-label$="enemy slot"] {
+  background-image: url("../assets/card-frame.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
 }
