@@ -451,112 +451,115 @@ export default function ThreeWheel_WinsOnly() {
   StSCard.displayName = 'StSCard';
 
   const renderWheelPanel = (i: number) => {
-    const pc = assign.player[i];
-    const ec = assign.enemy[i];
+  const pc = assign.player[i];
+  const ec = assign.enemy[i];
 
-    const ws = Math.round(lockedWheelSize ?? wheelSize);
-    const leftRight = 80; const gaps = 8; const chrome = 4;
-    const panelW = Math.round(ws + leftRight * 2 + gaps + chrome);
+  const ws = Math.round(lockedWheelSize ?? wheelSize);
+  const leftRight = 80; const gaps = 8; const chrome = 4;
+  const panelW = Math.round(ws + leftRight * 2 + gaps + chrome);
 
-    const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
-    const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
-    const handleDropCommon = (id: string | null) => {
-      if (!id || !active[i]) return;
-      const fromHand = player.hand.find((c) => c.id === id);
-      const fromSlots = assign.player.find((c) => c && c.id === id) as Card | undefined;
-      const card = fromHand || fromSlots || null;
-      if (card) assignToWheel(i, card as Card);
-      setDragOverWheel(null); setDragCardId(null);
-    };
-    const onZoneDrop = (e: React.DragEvent) => { e.preventDefault(); handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId); };
+  const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
+  const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
+  const handleDropCommon = (id: string | null) => {
+    if (!id || !active[i]) return;
+    const fromHand = player.hand.find((c) => c.id === id);
+    const fromSlots = assign.player.find((c) => c && c.id === id) as Card | undefined;
+    const card = fromHand || fromSlots || null;
+    if (card) assignToWheel(i, card as Card);
+    setDragOverWheel(null); setDragCardId(null);
+  };
+  const onZoneDrop = (e: React.DragEvent) => { e.preventDefault(); handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId); };
 
-    const tapAssignIfSelected = () => {
-      if (!selectedCardId) return;
-      const card = player.hand.find(c => c.id === selectedCardId) || assign.player.find(c => c?.id === selectedCardId) || null;
-      if (card) assignToWheel(i, card as Card);
-    };
+  const tapAssignIfSelected = () => {
+    if (!selectedCardId) return;
+    const card = player.hand.find(c => c.id === selectedCardId) || assign.player.find(c => c?.id === selectedCardId) || null;
+    if (card) assignToWheel(i, card as Card);
+  };
 
-    const panelShadow = '0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)';
+  const panelShadow = '0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)';
 
-<div
-  className="relative rounded-xl border p-2 shadow flex-none"
-  style={{
-    width: panelW,
-    height: ws,
-    background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
-    borderColor: THEME.panelBorder,
-    borderWidth: 2,
-    boxShadow: panelShadow,
-    contain: 'paint',
-    backfaceVisibility: 'hidden',
-    transform: 'translateZ(0)',
-    isolation: 'isolate'
-  }}
->
-  <div
-    className="w-full rounded-t-md mb-1"
-    style={{ height: 3, background: (wheelHUD[i] ?? THEME.brass), opacity: 0.85 }}
-  />
-
-  <div className="flex items-center justify-center gap-2" style={{ height: ws - 3 }}>
-    {/* Player slot */}
+  return (
     <div
-      onDragOver={onZoneDragOver}
-      onDragEnter={onZoneDragOver}
-      onDragLeave={onZoneLeave}
-      onDrop={onZoneDrop}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (selectedCardId) {
-          tapAssignIfSelected();
-        } else if (pc) {
-          clearAssign(i);
-        }
-      }}
-      className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+      className="relative rounded-xl border p-2 shadow flex-none"
       style={{
-        backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-        borderColor: dragOverWheel === i ? THEME.brass : THEME.slotBorder,
-        transform: 'translateY(-4px)'
+        width: panelW,
+        height: ws,
+        background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
+        borderColor: THEME.panelBorder,
+        borderWidth: 2,
+        boxShadow: panelShadow,
+        contain: 'paint',
+        backfaceVisibility: 'hidden',
+        transform: 'translateZ(0)',
+        isolation: 'isolate'
       }}
-      aria-label={`Wheel ${i+1} player slot`}
     >
-      {pc ? <StSCard card={pc} size="sm" /> : <div className="text-[11px] opacity-80 text-center">Your card</div>}
-    </div>
-
-    {/* Wheel face */}
-    <div
-      className="relative"
-      onDragOver={onZoneDragOver}
-      onDragEnter={onZoneDragOver}
-      onDragLeave={onZoneLeave}
-      onDrop={onZoneDrop}
-      onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
-      aria-label={`Wheel ${i+1}`}
-    >
-      <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
-      {/* highlight overlay separate from wheel to avoid repainting the image layer */}
       <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-full"
-        style={{ boxShadow: dragOverWheel === i ? '0 0 0 2px rgba(251,191,36,0.7) inset' : 'none' }}
+        className="w-full rounded-t-md mb-1"
+        style={{ height: 3, background: (wheelHUD[i] ?? THEME.brass), opacity: 0.85 }}
       />
-    </div>
 
-    {/* Enemy slot */}
-    <div
-      className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
-      style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
-      aria-label={`Wheel ${i+1} enemy slot`}
-    >
-      {ec && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") ? (
-        <StSCard card={ec} size="sm" disabled />
-      ) : (
-        <div className="text-[11px] opacity-60 text-center">Enemy</div>
-      )}
+      <div className="flex items-center justify-center gap-2" style={{ height: ws - 3 }}>
+        {/* Player slot */}
+        <div
+          onDragOver={onZoneDragOver}
+          onDragEnter={onZoneDragOver}
+          onDragLeave={onZoneLeave}
+          onDrop={onZoneDrop}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (selectedCardId) {
+              tapAssignIfSelected();
+            } else if (pc) {
+              clearAssign(i);
+            }
+          }}
+          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+          style={{
+            backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
+            borderColor: dragOverWheel === i ? THEME.brass : THEME.slotBorder,
+            transform: 'translateY(-4px)'
+          }}
+          aria-label={`Wheel ${i+1} player slot`}
+        >
+          {pc ? <StSCard card={pc} size="sm" /> : <div className="text-[11px] opacity-80 text-center">Your card</div>}
+        </div>
+
+        {/* Wheel face */}
+        <div
+          className="relative"
+          onDragOver={onZoneDragOver}
+          onDragEnter={onZoneDragOver}
+          onDragLeave={onZoneLeave}
+          onDrop={onZoneDrop}
+          onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
+          aria-label={`Wheel ${i+1}`}
+        >
+          <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
+          {/* highlight overlay separate from wheel to avoid repainting the image layer */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 rounded-full"
+            style={{ boxShadow: dragOverWheel === i ? '0 0 0 2px rgba(251,191,36,0.7) inset' : 'none' }}
+          />
+        </div>
+
+        {/* Enemy slot */}
+        <div
+          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center"
+          style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
+          aria-label={`Wheel ${i+1} enemy slot`}
+        >
+          {ec && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") ? (
+            <StSCard card={ec} size="sm" disabled />
+          ) : (
+            <div className="text-[11px] opacity-60 text-center">Enemy</div>
+          )}
+        </div>
+      </div>
     </div>
-  </div>
-</div>
+  );
+};
 
   const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
