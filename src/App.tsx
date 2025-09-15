@@ -12,9 +12,26 @@ import { motion } from "framer-motion";
  * - Kept flicker mitigations: static IMG base, imperative token, integer snapping, isolated layers.
  */
 
+// game modules
+import {
+  SLICES,
+  TARGET_WINS,
+  Side,
+  Card,
+  Section,
+  Fighter,
+  SplitChoiceMap,
+} from "./game/types";
+import { easeInOutCubic, inSection } from "./game/math";
+import { VC_META, genWheelSections } from "./game/wheel";
+import { makeFighter, freshFive } from "./game/decks";
+import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
+
+// components
+import CanvasWheel, { WheelHandle } from "./components/CanvasWheel";
+import StSCard from "./components/StSCard";
+
 // ---------------- Constants ----------------
-const SLICES = 16;
-const TARGET_WINS = 7;
 const HUD_COLORS = { player: "#84cc16", enemy: "#d946ef" } as const;
 const MIN_WHEEL = 160;
 const MAX_WHEEL = 200;
@@ -27,45 +44,6 @@ const THEME = {
   brass:     '#b68a4e',
   textWarm:  '#ead9b9',
 };
-
-function calcWheelSize(viewH: number, viewW: number, dockAllowance = 0) {
-  const isMobile = viewW <= 480;
-  const chromeAllowance = viewW >= 1024 ? 200 : 140;
-  const raw = Math.floor((viewH - chromeAllowance - dockAllowance) / 3);
-  const MOBILE_MAX = 188;
-  const DESKTOP_MAX = 220;
-  const maxAllowed = isMobile ? MOBILE_MAX : DESKTOP_MAX;
-  return Math.max(MIN_WHEEL, Math.min(maxAllowed, raw));
-}
-
-
-
-function inSection(index: number, s: Section) {
-  if (index === 0) return false;
-  if (s.start <= s.end) return index >= s.start && index <= s.end;
-  return index >= s.start || index <= s.end;
-}
-function polar(cx: number, cy: number, r: number, aDeg: number) { const a = (aDeg - 90) * (Math.PI / 180); return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }; }
-
-function genWheelSections(archetype: "bandit" | "sorcerer" | "beast" = "bandit"): Section[] {
-  const lens = (() => {
-    if (archetype === "bandit") return shuffle([5, 4, 3, 2, 1]);
-    if (archetype === "sorcerer") return shuffle([5, 5, 2, 2, 1]);
-    return shuffle([6, 3, 3, 2, 1]);
-  })();
-  const kinds: VC[] = shuffle(["Strongest", "Weakest", "ReserveSum", "ClosestToTarget", "Initiative"]);
-  let start = 1; const sections: Section[] = [];
-  for (let i = 0; i < kinds.length; i++) {
-    const id = kinds[i]; const len = lens[i]; const end = (start + len - 1) % SLICES;
-    sections.push({ id, color: VC_META[id].color, start, end, target: id === "ClosestToTarget" ? Math.floor(Math.random() * 16) : undefined });
-    start = (start + len) % SLICES;
-  }
-  return sections;
-}
-
-// ---------------- Decks ----------------
-function starterDeck(): Card[] { const base: Card[] = Array.from({ length: 10 }, (_, n) => ({ id: uid(), name: `${n}`, number: n, tags: [] })); return shuffle(base); }
-function makeFighter(name: string): Fighter { const deck = starterDeck(); return refillTo({ name, deck, hand: [], discard: [] }, 5); }
 
 // ---------------- Main Component ----------------
 export default function ThreeWheel_WinsOnly() {
@@ -90,6 +68,16 @@ export default function ThreeWheel_WinsOnly() {
 
   const [handClearance, setHandClearance] = useState<number>(0);
 
+function calcWheelSize(viewH: number, viewW: number, dockAllowance = 0) {
+  const isMobile = viewW <= 480;
+  const chromeAllowance = viewW >= 1024 ? 200 : 140;
+  const raw = Math.floor((viewH - chromeAllowance - dockAllowance) / 3);
+  const MOBILE_MAX = 188;
+  const DESKTOP_MAX = 220;
+  const maxAllowed = isMobile ? MOBILE_MAX : DESKTOP_MAX;
+  return Math.max(MIN_WHEEL, Math.min(maxAllowed, raw));
+}
+  
   // Responsive wheel size
   const [wheelSize, setWheelSize] = useState<number>(() => (typeof window !== 'undefined' ? calcWheelSize(window.innerHeight, window.innerWidth, 0) : MAX_WHEEL));
   useEffect(() => {
@@ -157,23 +145,23 @@ export default function ThreeWheel_WinsOnly() {
     });
   }
 
-  function autoPickEnemy(): (Card | null)[] {
-    const hand = [...enemy.hand];
-    const picks: (Card | null)[] = [null, null, null];
-    const take = (c: Card) => { const k = hand.indexOf(c); if (k >= 0) hand.splice(k, 1); return c; };
-    const best = [...hand].sort((a, b) => b.number - a.number)[0]; if (best) picks[0] = take(best);
-    const low = [...hand].sort((a, b) => a.number - b.number)[0]; if (low) picks[1] = take(low);
-    const sorted = [...hand].sort((a, b) => a.number - b.number); const mid = sorted[Math.floor(sorted.length / 2)]; if (mid) picks[2] = take(mid);
-    for (let i = 0; i < 3; i++) if (!picks[i] && hand.length) picks[i] = take(hand[0]);
-    return picks;
-  }
+function autoPickEnemy(): (Card | null)[] {
+  const hand = [...enemy.hand].filter(isNormal);   // ← guard
+  const picks: (Card | null)[] = [null, null, null];
+  const take = (c: typeof hand[number]) => { const k = hand.indexOf(c); if (k >= 0) hand.splice(k, 1); return c; };
+  const best = [...hand].sort((a, b) => b.number - a.number)[0]; if (best) picks[0] = take(best);
+  const low  = [...hand].sort((a, b) => a.number - b.number)[0]; if (low) picks[1] = take(low);
+  const sorted = [...hand].sort((a, b) => a.number - b.number); const mid = sorted[Math.floor(sorted.length / 2)]; if (mid) picks[2] = take(mid);
+  for (let i = 0; i < 3; i++) if (!picks[i] && hand.length) picks[i] = take(hand[0]);
+  return picks;
+}
 
-  function computeReserveSum(who: Side, used: (Card | null)[]) {
-    const hand = who === "player" ? player.hand : enemy.hand;
-    const usedIds = new Set((used.filter(Boolean) as Card[]).map((c) => c.id));
-    const left = hand.filter((c) => !usedIds.has(c.id));
-    return left.slice(0, 2).reduce((a, c) => a + c.number, 0);
-  }
+function computeReserveSum(who: Side, used: (Card | null)[]) {
+  const hand = who === "player" ? player.hand : enemy.hand;
+  const usedIds = new Set((used.filter(Boolean) as Card[]).map((c) => c.id));
+  const left = hand.filter((c) => !usedIds.has(c.id));
+  return left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
+}
 
   // ---------------- Reveal / Resolve ----------------
   function onReveal() {
