@@ -99,8 +99,9 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
     const drawBase = () => {
       const canvas = canvasRef.current; if (!canvas) return;
       const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const cssW = Math.round(size), cssH = Math.round(size);
       const CLIP_PAD = 3;
+      const WHEEL_OFFSET_X = -2;   // ← try -2 to move the inner wheel 2px left
+      const WHEEL_OFFSET_Y =  1;   // ← try  1 to move it 1px down
 
       if (canvas.width !== cssW * dpr || canvas.height !== cssH * dpr) {
         canvas.width = cssW * dpr;
@@ -113,9 +114,21 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const center = { x: cssW / 2, y: cssH / 2 };
-      const wheelR = cssW / 2 - (16 + CLIP_PAD);
+      const wheelR = size / 2 - (16 + CLIP_PAD);
       const angPer = 360 / SLICES;
       const sliceFill = (i: number) => sections.find((s) => inSection(i, s))?.color ?? "#334155";
+      const cssW = Math.round(size), cssH = Math.round(size);
+      const center = { 
+         x: cssW / 2 + WHEEL_OFFSET_X, 
+         y: cssH / 2 + WHEEL_OFFSET_Y 
+        };
+      
+      const cx = size / 2 + WHEEL_OFFSET_X;
+      const cy = size / 2 + WHEEL_OFFSET_Y;
+
+      const pos = polar(cx, cy, wheelR * 0.94, tokenAng);
+      const x = Math.round(pos.x - 7), y = Math.round(pos.y - 7);
+      el.style.transform = `translate(${x}px, ${y}px)`;
 
       ctx.clearRect(0, 0, cssW, cssH);
 
