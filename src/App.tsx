@@ -712,7 +712,7 @@ const HUDPanels = () => {
               aria-label="Has initiative"
               className="absolute -top-1 -right-1 leading-none select-none"
               style={{
-                fontSize: 12,
+                fontSize: 24,
                 filter: 'drop-shadow(0 1px 1px rgba(0,0,0,.6))',
               }}
             >
