@@ -96,13 +96,17 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
     const tokenElRef = useRef<HTMLDivElement | null>(null);
     const tokenSliceRef = useRef<number>(0);
 
+    // Small safety margin and alignment offsets
+    const CLIP_PAD = 3;
+    const WHEEL_OFFSET_X = -2; // tweak to move left/right
+    const WHEEL_OFFSET_Y =  1; // tweak to move up/down
+
     const drawBase = () => {
       const canvas = canvasRef.current; if (!canvas) return;
       const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const CLIP_PAD = 3;
-      const WHEEL_OFFSET_X = -2;   // ← try -2 to move the inner wheel 2px left
-      const WHEEL_OFFSET_Y =  1;   // ← try  1 to move it 1px down
+      const cssW = Math.round(size), cssH = Math.round(size);
 
+      // ensure backing store matches CSS size
       if (canvas.width !== cssW * dpr || canvas.height !== cssH * dpr) {
         canvas.width = cssW * dpr;
         canvas.height = cssH * dpr;
@@ -113,50 +117,43 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
       const ctx = canvas.getContext("2d"); if (!ctx) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const center = { x: cssW / 2, y: cssH / 2 };
-      const wheelR = size / 2 - (16 + CLIP_PAD);
-      const angPer = 360 / SLICES;
-      const sliceFill = (i: number) => sections.find((s) => inSection(i, s))?.color ?? "#334155";
-      const cssW = Math.round(size), cssH = Math.round(size);
-      const center = { 
-         x: cssW / 2 + WHEEL_OFFSET_X, 
-         y: cssH / 2 + WHEEL_OFFSET_Y 
-        };
-      
-      const cx = size / 2 + WHEEL_OFFSET_X;
-      const cy = size / 2 + WHEEL_OFFSET_Y;
+      // center & radius (with small clip pad)
+      const centerX = cssW / 2 + WHEEL_OFFSET_X;
+      const centerY = cssH / 2 + WHEEL_OFFSET_Y;
+      const wheelR = cssW / 2 - (16 + CLIP_PAD);
 
-      const pos = polar(cx, cy, wheelR * 0.94, tokenAng);
-      const x = Math.round(pos.x - 7), y = Math.round(pos.y - 7);
-      el.style.transform = `translate(${x}px, ${y}px)`;
+      const angPer = 360 / SLICES;
+      const sliceFill = (i: number) =>
+        sections.find((s) => inSection(i, s))?.color ?? "#334155";
 
       ctx.clearRect(0, 0, cssW, cssH);
 
       for (let i = 0; i < SLICES; i++) {
         const startAng = (i * angPer - 90) * (Math.PI / 180);
-        const endAng = ((i + 1) * angPer - 90) * (Math.PI / 180);
+        const endAng   = ((i + 1) * angPer - 90) * (Math.PI / 180);
 
+        // slice
         ctx.beginPath();
-        ctx.moveTo(center.x, center.y);
-        ctx.arc(center.x, center.y, wheelR, startAng, endAng, false);
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, wheelR, startAng, endAng, false);
         ctx.closePath();
         ctx.fillStyle = i === 0 ? "#6b7280" : sliceFill(i);
         (ctx as any).globalAlpha = 0.9; ctx.fill(); (ctx as any).globalAlpha = 1;
         ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 1; ctx.stroke();
 
-        // Numbers
+        // numbers
         const midAng = (i + 0.5) * angPer;
-        const numPos = polar(center.x, center.y, wheelR * 0.6, midAng);
+        const numPos = polar(centerX, centerY, wheelR * 0.6, midAng);
         ctx.fillStyle = i === 0 ? "#ffffff" : "#0f172a";
         ctx.font = "700 11px system-ui, -apple-system, Segoe UI, Roboto";
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.fillText(String(i), numPos.x, numPos.y);
 
-        // Icons
+        // icons
         if (i !== 0) {
           const sec = sections.find((s) => inSection(i, s));
           if (sec) {
-            const iconPos = polar(center.x, center.y, wheelR * 0.86, midAng);
+            const iconPos = polar(centerX, centerY, wheelR * 0.86, midAng);
             ctx.font = "12px system-ui, Apple Color Emoji, Segoe UI Emoji";
             ctx.fillStyle = "#ffffff";
             ctx.fillText(VC_META[sec.id].icon, iconPos.x, iconPos.y);
@@ -164,25 +161,34 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
         }
       }
 
+      // re-place the token at the new center after redraw
       placeToken(tokenSliceRef.current);
     };
 
+    // Move token imperatively (keeps React out of the loop)
     const placeToken = (slice: number) => {
       const el = tokenElRef.current; if (!el) return;
-      const wheelR = size / 2 - 16; const angPer = 360 / SLICES;
+      const wheelR = size / 2 - (16 + CLIP_PAD);
+      const angPer = 360 / SLICES;
       const tokenAng = (slice + 0.5) * angPer;
-      const pos = polar(size / 2, size / 2, wheelR * 0.94, tokenAng);
+
+      // same center offsets as the drawing code
+      const cx = size / 2 + WHEEL_OFFSET_X;
+      const cy = size / 2 + WHEEL_OFFSET_Y;
+
+      const pos = polar(cx, cy, wheelR * 0.94, tokenAng);
       const x = Math.round(pos.x - 7), y = Math.round(pos.y - 7);
       el.style.transform = `translate(${x}px, ${y}px)`;
     };
 
+    // redraw base when size/sections change
     useEffect(() => { drawBase(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [size, sections]);
 
+    // expose imperative API
     useImperativeHandle(ref, () => ({
       setVisualToken: (s: number) => { tokenSliceRef.current = s; placeToken(s); }
     }), [size]);
 
-    // ✅ You were missing this return (
     return (
       <div
         onClick={onTapAssign}
@@ -216,7 +222,6 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
     );
   }
 ));
-
 CanvasWheel.displayName = 'CanvasWheel';
 
 // ---------------- Decks ----------------
