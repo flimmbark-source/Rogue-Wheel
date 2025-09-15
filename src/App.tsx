@@ -86,8 +86,18 @@ const ptrPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
 function addTouchDragCss(on: boolean) {
   const root = document.documentElement;
-  if (on) root.classList.add('touch-dragging');
-  else root.classList.remove('touch-dragging');
+  if (on) {
+    // store previous to restore later
+    (root as any).__prevTouchAction = root.style.touchAction;
+    (root as any).__prevOverscroll = root.style.overscrollBehavior;
+    root.style.touchAction = 'none';
+    root.style.overscrollBehavior = 'contain';
+  } else {
+    root.style.touchAction = (root as any).__prevTouchAction ?? '';
+    root.style.overscrollBehavior = (root as any).__prevOverscroll ?? '';
+    delete (root as any).__prevTouchAction;
+    delete (root as any).__prevOverscroll;
+  }
 }
 
 function getDropTargetAt(x: number, y: number): { kind: 'wheel' | 'slot'; idx: number } | null {
@@ -147,12 +157,6 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
   window.addEventListener('pointermove', onMove, { passive: false, capture: true });
   window.addEventListener('pointerup', onUp, { passive: false, capture: true });
   window.addEventListener('pointercancel', onCancel, { passive: false, capture: true });
-}
-
-/* Prevent the page from scrolling during touch drag */
-.touch-dragging, .touch-dragging body {
-  touch-action: none !important;
-  overscroll-behavior: contain !important;
 }
   
   // Responsive wheel size
