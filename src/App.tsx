@@ -602,10 +602,10 @@ export default function ThreeWheel_WinsOnly() {
       const compute = () => {
         const root = dockRef.current; if (!root) return;
         const sample = root.querySelector('[data-hand-card]') as HTMLElement | null; if (!sample) return;
-        const h = sample.getBoundingClientRect().height || 50;
+        const h = sample.getBoundingClientRect().height || 96;
         const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
         setLiftPx(nextLift);
-        const clearance = Math.round(h + nextLift + 12);
+        const clearance = Math.round(h + nextLift - 12);
         onMeasure?.(clearance);
       };
       compute(); window.addEventListener('resize', compute); window.addEventListener('orientationchange', compute);
