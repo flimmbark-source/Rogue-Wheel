@@ -605,7 +605,7 @@ export default function ThreeWheel_WinsOnly() {
         const h = sample.getBoundingClientRect().height || 96;
         const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
         setLiftPx(nextLift);
-        const clearance = Math.round(h + nextLift - 12);
+        const clearance = Math.round(h + nextLift - 50);
         onMeasure?.(clearance);
       };
       compute(); window.addEventListener('resize', compute); window.addEventListener('orientationchange', compute);
