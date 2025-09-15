@@ -560,31 +560,31 @@ export default function ThreeWheel_WinsOnly() {
           style={{
             backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
             borderColor:     dragOverWheel === i ? THEME.brass          : THEME.slotBorder,
-            transform: 'translateY(-4px)'
           }}
           aria-label={`Wheel ${i+1} player slot`}
         >
           {pc ? <StSCard card={pc} size="sm" /> : <div className="text-[11px] opacity-80 text-center">Your card</div>}
         </div>
 
-        {/* Wheel face (centers itself inside the middle column) */}
-        <div
-          className="relative flex-1 flex items-center justify-center"
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={onZoneDrop}
-          onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
-          aria-label={`Wheel ${i+1}`}
-        >
-          <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 rounded-full"
-            style={{ boxShadow: dragOverWheel === i ? '0 0 0 2px rgba(251,191,36,0.7) inset' : 'none' }}
-          />
-        </div>
-
+  {/* Wheel face (fixed width equals wheel size; centers wheel exactly) */}
+  <div
+    className="relative flex items-center justify-center"
+    style={{ width: ws, height: ws }}
+    onDragOver={onZoneDragOver}
+    onDragEnter={onZoneDragOver}
+    onDragLeave={onZoneLeave}
+    onDrop={onZoneDrop}
+    onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
+    aria-label={`Wheel ${i+1}`}
+  >
+    <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 rounded-full"
+      style={{ boxShadow: dragOverWheel === i ? '0 0 0 2px rgba(251,191,36,0.7) inset' : 'none' }}
+    />
+  </div>
+    
         {/* Enemy slot */}
         <div
           className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
