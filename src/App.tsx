@@ -662,26 +662,17 @@ const HUDPanels = () => {
   };
 
   return (
-    <div className="w-full grid grid-cols-2 gap-2 overflow-x-hidden">
-      <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="player" /></div>
-      <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="enemy" /></div>
+    <div className="w-full flex flex-col items-center">
+      <div className="w-full grid grid-cols-2 gap-2 overflow-x-hidden">
+        <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="player" /></div>
+        <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="enemy" /></div>
+      </div>
+      <div className="mt-1 flex justify-center w-full">
+        <span style={{ color: HUD_COLORS[initiative] }}>⚑</span>
+      </div>
     </div>
   );
 };
-
-
-    return (
-      <div className="w-full flex flex-col items-center">
-        <div className="w-full grid grid-cols-2 gap-2 overflow-x-hidden">
-          <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="player" /></div>
-          <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="enemy" /></div>
-        </div>
-        <div className="mt-1 flex justify-center w-full">
-          <span style={{ color: HUD_COLORS[initiative] }}>⚑</span>
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
