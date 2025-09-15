@@ -170,18 +170,20 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
       setVisualToken: (s: number) => { tokenSliceRef.current = s; placeToken(s); }
     }), [size]);
 
-    return (
-      <div
-        onClick={onTapAssign}
-        style={{
-          position: 'relative',
-          width: size,
-          height: size,
-          contain: 'paint',
-          transform: 'translateZ(0)',
-          backfaceVisibility: 'hidden'
-        }}
-      >
+<div
+  onClick={onTapAssign}
+  style={{
+    position: 'relative',
+    width: size,
+    height: size,
+    contain: 'paint',
+    transform: 'translateZ(0)',
+    backfaceVisibility: 'hidden',
+    overflow: 'hidden',          // ⬅️ clip anything that overpaints
+    borderRadius: 50%           // ⬅️ circular mask
+  }}
+>
+
         <canvas
           ref={canvasRef}
           aria-hidden
@@ -560,6 +562,7 @@ export default function ThreeWheel_WinsOnly() {
           style={{
             backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
             borderColor:     dragOverWheel === i ? THEME.brass          : THEME.slotBorder,
+            
           }}
           aria-label={`Wheel ${i+1} player slot`}
         >
