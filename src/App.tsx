@@ -629,6 +629,7 @@ export default function ThreeWheel_WinsOnly() {
           <div className={`ml-2 rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap ${isReserveVisible ? 'opacity-100 visible' : 'opacity-0 invisible'}`} style={{ maxWidth: '44vw', minWidth: '90px', background: '#1b1209ee', borderColor: THEME.slotBorder, color: THEME.textWarm }} title={rs !== null ? `Reserve: ${rs}` : undefined}>
             Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
           </div>
+          {hasInit && <span className="mt-1">⚑</span>}
         </div>
       );
     };
