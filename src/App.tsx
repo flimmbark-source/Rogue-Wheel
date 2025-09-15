@@ -608,8 +608,9 @@ const HUDPanels = () => {
         </div>
       </div>
 
-      {/* Docked hand overlay */}
-      <div className="pointer-events-none"><HandDock onMeasure={setHandClearance} /></div>
+{/* Docked hand overlay */}
+<HandDock onMeasure={setHandClearance} />
+
     </div>
   );
 
