@@ -409,7 +409,28 @@ export default function ThreeWheel_WinsOnly() {
     animateSpins();
   }
 
-  function nextRound() {
+  function function nextRound() {
+  if (!(phase === "roundEnd" || phase === "ended")) return;
+
+  // Reset visual tokens immediately (imperative)
+  wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
+
+  setFreezeLayout(false);
+  setLockedWheelSize(null);
+  setPlayer((p) => freshFive(p));
+  setEnemy((e) => freshFive(e));
+  setWheelSections([genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
+  setAssign({ player: [null, null, null], enemy: [null, null, null] });
+
+  // Keep state in sync
+  setTokens([0, 0, 0]);
+
+  setReserveSums(null);
+  setWheelHUD([null, null, null]);
+  setPhase("choose");
+  setRound((r) => r + 1);
+}
+ {
     if (!(phase === "roundEnd" || phase === "ended")) return;
     setFreezeLayout(false);
     setLockedWheelSize(null);
