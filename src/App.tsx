@@ -605,7 +605,7 @@ export default function ThreeWheel_WinsOnly() {
         const h = sample.getBoundingClientRect().height || 96;
         const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
         setLiftPx(nextLift);
-        const clearance = Math.round(h + nextLift - 50);
+        const clearance = Math.round(h + nextLift + 12);
         onMeasure?.(clearance);
       };
       compute(); window.addEventListener('resize', compute); window.addEventListener('orientationchange', compute);
@@ -645,9 +645,9 @@ const HUDPanels = () => {
 
     return (
       <div className="flex flex-col items-center w-full">
-        {/* HUD row (no flag inside) */}
+        {/* HUD row (flag moved inside; absolute to avoid layout shift) */}
         <div
-          className="flex min-w-0 items-center gap-2 rounded-lg border px-2 py-1 text-[12px] shadow w-full"
+          className="relative flex min-w-0 items-center gap-2 rounded-lg border px-2 py-1 text-[12px] shadow w-full"
           style={{
             maxWidth: '100%',
             background: THEME.panelBg,
@@ -661,10 +661,10 @@ const HUDPanels = () => {
           </div>
           <div className="flex items-center gap-1 ml-1 flex-shrink-0">
             <span className="opacity-80">Wins</span>
-            <span className="text-base font-extrabold">{win}</span>
+            <span className="text-base font-extrabold tabular-nums">{win}</span>
           </div>
           <div
-            className={`ml-2 rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap ${
+            className={`ml-2 rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap transition-opacity ${
               isReserveVisible ? 'opacity-100 visible' : 'opacity-0 invisible'
             }`}
             style={{
@@ -678,10 +678,24 @@ const HUDPanels = () => {
           >
             Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
           </div>
+
+          {/* Initiative flag — absolute, no extra height */}
+          {hasInit && (
+            <span
+              aria-label="Has initiative"
+              className="absolute -top-1 -right-1 leading-none select-none"
+              style={{
+                fontSize: 12,
+                filter: 'drop-shadow(0 1px 1px rgba(0,0,0,.6))',
+              }}
+            >
+              ⚑
+            </span>
+          )}
         </div>
 
-        {/* Flag outside the HUD pill */}
-        {hasInit && <span className="mt-1" aria-label="Has initiative">⚑</span>}
+        {/* (removed) old outside flag that was pushing layout down */}
+        {/* {hasInit && <span className="mt-1" aria-label="Has initiative">⚑</span>} */}
       </div>
     );
   };
@@ -699,6 +713,7 @@ const HUDPanels = () => {
     </div>
   );
 };
+
 
   return (
     <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
