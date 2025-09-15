@@ -605,39 +605,80 @@ export default function ThreeWheel_WinsOnly() {
     );
   };
 
-  const HUDPanels = () => {
-    const rsP = reserveSums ? reserveSums.player : null;
-    const rsE = reserveSums ? reserveSums.enemy : null;
+const HUDPanels = () => {
+  const rsP = reserveSums ? reserveSums.player : null;
+  const rsE = reserveSums ? reserveSums.enemy : null;
 
-    const Panel = ({ side }: { side: Side }) => {
-      const isPlayer = side === 'player';
-      const color = HUD_COLORS[side];
-      const name = isPlayer ? player.name : enemy.name;
-      const win = isPlayer ? wins.player : wins.enemy;
-      const rs = isPlayer ? rsP : rsE;
-      const hasInit = initiative === side;
-      const isReserveVisible = phase === 'roundEnd' && rs !== null;
+  const Panel = ({ side }: { side: Side }) => {
+    const isPlayer = side === 'player';
+    const color = HUD_COLORS[side];
+    const name = isPlayer ? player.name : enemy.name;
+    const win = isPlayer ? wins.player : wins.enemy;
+    const rs = isPlayer ? rsP : rsE;
+    const hasInit = initiative === side;
+    const isReserveVisible = phase === 'roundEnd' && rs !== null;
 
-      return (
-        <div className="flex min-w-0 items-center gap-2 rounded-lg border px-2 py-1 text-[12px] shadow w-full" style={{ maxWidth: '100%', background: THEME.panelBg, borderColor: THEME.panelBorder, color: THEME.textWarm }}>
+    return (
+      <div className="flex flex-col items-center w-full">
+        {/* HUD row (no flag inside) */}
+        <div
+          className="flex min-w-0 items-center gap-2 rounded-lg border px-2 py-1 text-[12px] shadow w-full"
+          style={{
+            maxWidth: '100%',
+            background: THEME.panelBg,
+            borderColor: THEME.panelBorder,
+            color: THEME.textWarm,
+          }}
+        >
           <div className="w-1.5 h-6 rounded" style={{ background: color }} />
           <div className="flex items-center max-w-[36vw] sm:max-w-none min-w-0">
             <span className="truncate block font-semibold">{name}</span>
-            {hasInit && <span className="ml-1 flex-shrink-0">⚑</span>}
           </div>
-          <div className="flex items-center gap-1 ml-1 flex-shrink-0"><span className="opacity-80">Wins</span><span className="text-base font-extrabold">{win}</span></div>
-          <div className={`ml-2 rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap ${isReserveVisible ? 'opacity-100 visible' : 'opacity-0 invisible'}`} style={{ maxWidth: '44vw', minWidth: '90px', background: '#1b1209ee', borderColor: THEME.slotBorder, color: THEME.textWarm }} title={rs !== null ? `Reserve: ${rs}` : undefined}>
+          <div className="flex items-center gap-1 ml-1 flex-shrink-0">
+            <span className="opacity-80">Wins</span>
+            <span className="text-base font-extrabold">{win}</span>
+          </div>
+          <div
+            className={`ml-2 rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap ${
+              isReserveVisible ? 'opacity-100 visible' : 'opacity-0 invisible'
+            }`}
+            style={{
+              maxWidth: '44vw',
+              minWidth: '90px',
+              background: '#1b1209ee',
+              borderColor: THEME.slotBorder,
+              color: THEME.textWarm,
+            }}
+            title={rs !== null ? `Reserve: ${rs}` : undefined}
+          >
             Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
           </div>
-          {hasInit && <span className="mt-1">⚑</span>}
         </div>
-      );
-    };
+
+        {/* Flag outside the HUD pill */}
+        {hasInit && <span className="mt-1" aria-label="Has initiative">⚑</span>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="w-full grid grid-cols-2 gap-2 overflow-x-hidden">
+      <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="player" /></div>
+      <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="enemy" /></div>
+    </div>
+  );
+};
+
 
     return (
-      <div className="w-full grid grid-cols-2 gap-2 overflow-x-hidden">
-        <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="player" /></div>
-        <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="enemy" /></div>
+      <div className="w-full flex flex-col items-center">
+        <div className="w-full grid grid-cols-2 gap-2 overflow-x-hidden">
+          <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="player" /></div>
+          <div className="min-w-0 w-full max-w-[420px] mx-auto"><Panel side="enemy" /></div>
+        </div>
+        <div className="mt-1 flex justify-center w-full">
+          <span style={{ color: HUD_COLORS[initiative] }}>⚑</span>
+        </div>
       </div>
     );
   };
