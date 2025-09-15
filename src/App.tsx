@@ -502,17 +502,42 @@ export default function ThreeWheel_WinsOnly() {
         isolation: 'isolate'
       }}
     >
-      {/* thin top accent bar */}
-      <div
-        className="w-full rounded-t-md mb-1"
-        style={{ height: 3, background: (wheelHUD[i] ?? THEME.brass), opacity: 0.85 }}
+  {/* ADD: winner dots (don’t affect layout) */}
+  { (phase === "roundEnd" || phase === "ended") && (
+    <>
+      {/* Player dot (top-left) */}
+      <span
+        aria-label={`Wheel ${i+1} player result`}
+        className="absolute top-1 left-1 rounded-full border"
+        style={{
+          width: 10,
+          height: 10,
+          background: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : 'transparent',
+          borderColor: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : THEME.panelBorder,
+          boxShadow: '0 0 0 1px rgba(0,0,0,0.4)'
+        }}
       />
 
-      {/* the row: slots + centered wheel */}
-      <div
-        className="flex items-center justify-center gap-2"
-        style={{ height: (ws + EXTRA_H) - 3 }}
-      >
+      {/* Enemy dot (top-right) */}
+      <span
+        aria-label={`Wheel ${i+1} enemy result`}
+        className="absolute top-1 right-1 rounded-full border"
+        style={{
+          width: 10,
+          height: 10,
+          background: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : 'transparent',
+          borderColor: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : THEME.panelBorder,
+          boxShadow: '0 0 0 1px rgba(0,0,0,0.4)'
+        }}
+      />
+    </>
+  )}
+
+  {/* the row: slots + centered wheel */}
+  <div
+    className="flex items-center justify-center gap-2"
+    style={{ height: (ws + EXTRA_H) /* removed the - 3 */ }}
+  >
         {/* Player slot */}
         <div
           onDragOver={onZoneDragOver}
