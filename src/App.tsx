@@ -450,7 +450,26 @@ function computeReserveSum(who: Side, used: (Card | null)[]) {
             return (
               <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
                 <motion.div data-hand-card initial={false} animate={{ y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx, opacity: 1, scale: isSelected ? 1.06 : 1 }} whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }} transition={{ type: 'spring', stiffness: 320, damping: 22 }} className={`drop-shadow-xl ${isSelected ? 'ring-2 ring-amber-300' : ''}`}>
-                  <button data-hand-card className="pointer-events-auto"><StSCard card={card} /></button>
+                  <button
+  data-hand-card
+  className="pointer-events-auto"
+  onClick={(e) => {
+    e.stopPropagation();
+    setSelectedCardId((prev) => (prev === card.id ? null : card.id));
+  }}
+  draggable
+  onDragStart={(e) => {
+    setDragCardId(card.id);
+    try { e.dataTransfer.setData("text/plain", card.id); } catch {}
+    e.dataTransfer.effectAllowed = "move";
+  }}
+  onDragEnd={() => setDragCardId(null)}
+  aria-pressed={isSelected}
+  aria-label={`Select ${card.name}`}
+>
+  <StSCard card={card} />
+</button>
+
                 </motion.div>
               </div>
             );
