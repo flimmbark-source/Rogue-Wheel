@@ -731,7 +731,6 @@ const HUDPanels = () => {
       <div className="pointer-events-none"><HandDock onMeasure={setHandClearance} /></div>
     </div>
   );
-}
 
 // ---------------- Dev Self-Tests (lightweight) ----------------
 // These run once in dev consoles to catch regressions.
