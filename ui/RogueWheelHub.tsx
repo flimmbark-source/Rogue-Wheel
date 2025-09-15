@@ -1,5 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState, ReactNode } from "react";
-import { RefreshCw, Swords, Settings as SettingsIcon, Power, BookOpen } from "lucide-react";
+
+const ICONS = {
+  refresh: "↻",
+  swords: "⚔️",
+  settings: "⚙️",
+  power: "⏻",
+  book: "📖",
+};
 
 /**
  * Rogue Wheel — Cinematic Hub (Fantasy Skin)
@@ -59,12 +66,12 @@ export default function RogueWheelHub(props: HubShellProps) {
   const items = useMemo<MenuItem[]>(
     () => [
       hasSave
-        ? { key: "continue", label: "Continue", onClick: safeOnContinue, icon: <RefreshCw className="h-4 w-4" /> }
+        ? { key: "continue", label: "Continue", onClick: safeOnContinue, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.refresh}</span> }
         : null,
-      { key: "new", label: hasSave ? "New Run" : "Play", onClick: safeOnNew, icon: <Swords className="h-4 w-4" /> },
-      { key: "howto", label: "How to Play", onClick: () => { onHowTo?.(); setShowHowTo(true); }, icon: <BookOpen className="h-4 w-4" /> },
-      { key: "settings", label: "Options", onClick: () => { onSettings?.(); setShowOptions(true); }, icon: <SettingsIcon className="h-4 w-4" /> },
-      { key: "quit", label: "Quit", onClick: onQuit, icon: <Power className="h-4 w-4" /> },
+      { key: "new", label: hasSave ? "New Run" : "Play", onClick: safeOnNew, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.swords}</span> },
+      { key: "howto", label: "How to Play", onClick: () => { onHowTo?.(); setShowHowTo(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.book}</span> },
+      { key: "settings", label: "Options", onClick: () => { onSettings?.(); setShowOptions(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.settings}</span> },
+      { key: "quit", label: "Quit", onClick: onQuit, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.power}</span> },
     ].filter(Boolean) as MenuItem[],
     [hasSave, safeOnContinue, safeOnNew, onHowTo, onSettings, onQuit]
   );
