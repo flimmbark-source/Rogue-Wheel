@@ -1,15 +1,12 @@
-import React from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import React, { useState } from "react";
 import App from "./App";
 import HubRoute from "./HubRoute";
 
 export default function AppShell() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HubRoute />} />
-        <Route path="/game" element={<App />} />
-      </Routes>
-    </BrowserRouter>
+  const [view, setView] = useState<"hub" | "game">("hub");
+  return view === "hub" ? (
+    <HubRoute onStart={() => setView("game")} />
+  ) : (
+    <App />
   );
 }
