@@ -431,21 +431,6 @@ export default function ThreeWheel_WinsOnly() {
   setRound((r) => r + 1);
   }
 
-   {
-    if (!(phase === "roundEnd" || phase === "ended")) return;
-    setFreezeLayout(false);
-    setLockedWheelSize(null);
-    setPlayer((p) => freshFive(p));
-    setEnemy((e) => freshFive(e));
-    setWheelSections([genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
-    setAssign({ player: [null, null, null], enemy: [null, null, null] });
-    setTokens([0, 0, 0]);
-    setReserveSums(null);
-    setWheelHUD([null, null, null]);
-    setPhase("choose");
-    setRound((r) => r + 1);
-    }
-
   // ---------------- UI ----------------
   const StSCard = memo(({ card, disabled, size = "sm" }: { card: Card; disabled?: boolean; size?: "sm" | "md" | "lg" }) => {
     const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
