@@ -429,8 +429,9 @@ export default function ThreeWheel_WinsOnly() {
   setWheelHUD([null, null, null]);
   setPhase("choose");
   setRound((r) => r + 1);
-}
- {
+  }
+
+   {
     if (!(phase === "roundEnd" || phase === "ended")) return;
     setFreezeLayout(false);
     setLockedWheelSize(null);
@@ -443,7 +444,7 @@ export default function ThreeWheel_WinsOnly() {
     setWheelHUD([null, null, null]);
     setPhase("choose");
     setRound((r) => r + 1);
-  }
+    }
 
   // ---------------- UI ----------------
   const StSCard = memo(({ card, disabled, size = "sm" }: { card: Card; disabled?: boolean; size?: "sm" | "md" | "lg" }) => {
