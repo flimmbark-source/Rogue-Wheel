@@ -162,48 +162,47 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
       el.style.transform = `translate(${x}px, ${y}px)`;
     };
 
-    // Only redraw base when size/sections change
     useEffect(() => { drawBase(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [size, sections]);
 
-    // Move token imperatively, no React re-render
     useImperativeHandle(ref, () => ({
       setVisualToken: (s: number) => { tokenSliceRef.current = s; placeToken(s); }
     }), [size]);
 
-<div
-  onClick={onTapAssign}
-  style={{
-    position: 'relative',
-    width: size,
-    height: size,
-    contain: 'paint',
-    transform: 'translateZ(0)',
-    backfaceVisibility: 'hidden',
-    overflow: 'hidden',       // clip anything that overpaints
-    borderRadius: '50%'       // circular mask (as a string)
-  }}
->
-  <canvas
-    ref={canvasRef}
-    aria-hidden
-    style={{ position: 'absolute', inset: 0, display: 'block' }}
-  />
-  <div
-    ref={tokenElRef}
-    aria-hidden
-    style={{
-      position: 'absolute',
-      width: 14, height: 14, left: 0, top: 0,
-      borderRadius: 9999,
-      background: '#fff',
-      border: '2px solid #0f172a',
-      willChange: 'transform'
-    }}
-  />
-</div>
+    // ✅ You were missing this return (
+    return (
+      <div
+        onClick={onTapAssign}
+        className="relative overflow-hidden rounded-full"
+        style={{
+          width: size,
+          height: size,
+          contain: 'paint',
+          transform: 'translateZ(0)',
+          backfaceVisibility: 'hidden',
+        }}
+      >
+        <canvas
+          ref={canvasRef}
+          aria-hidden
+          style={{ position: 'absolute', inset: 0, display: 'block' }}
+        />
+        <div
+          ref={tokenElRef}
+          aria-hidden
+          style={{
+            position: 'absolute',
+            width: 14, height: 14, left: 0, top: 0,
+            borderRadius: 9999,
+            background: '#fff',
+            border: '2px solid #0f172a',
+            willChange: 'transform'
+          }}
+        />
+      </div>
     );
   }
 ));
+
 CanvasWheel.displayName = 'CanvasWheel';
 
 // ---------------- Decks ----------------
