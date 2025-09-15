@@ -409,7 +409,7 @@ export default function ThreeWheel_WinsOnly() {
     animateSpins();
   }
 
-  function function nextRound() {
+  function nextRound() {
   if (!(phase === "roundEnd" || phase === "ended")) return;
 
   // Reset visual tokens immediately (imperative)
