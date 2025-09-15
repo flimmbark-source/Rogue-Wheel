@@ -38,29 +38,7 @@ function calcWheelSize(viewH: number, viewW: number, dockAllowance = 0) {
   return Math.max(MIN_WHEEL, Math.min(maxAllowed, raw));
 }
 
-// ---------------- Types ----------------
-type Side = "player" | "enemy";
-type TagId = "oddshift" | "parityflip" | "echoreserve";
-type Card = { id: string; name: string; number: number; tags: TagId[] };
-type VC = "Strongest" | "Weakest" | "ReserveSum" | "ClosestToTarget" | "Initiative";
-type Section = { id: VC; color: string; start: number; end: number; target?: number };
-type Fighter = { name: string; deck: Card[]; hand: Card[]; discard: Card[] };
 
-// ---------------- Helpers ----------------
-const uid = (() => { let i = 1; return () => `C${i++}`; })();
-const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-function shuffle<T>(arr: T[]): T[] { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
-function drawOne(f: Fighter): Fighter { const next = { ...f, deck: [...f.deck], hand: [...f.hand], discard: [...f.discard] }; if (next.deck.length === 0 && next.discard.length > 0) { next.deck = shuffle(next.discard); next.discard = []; } if (next.deck.length) next.hand.push(next.deck.shift()!); return next; }
-function refillTo(f: Fighter, target: number): Fighter { let cur = { ...f }; while (cur.hand.length < target) { const before = cur.hand.length; cur = drawOne(cur); if (cur.hand.length === before) break; } return cur; }
-function freshFive(f: Fighter): Fighter { const pool = shuffle([...f.deck, ...f.hand, ...f.discard]); const hand = pool.slice(0, 5); const deck = pool.slice(5); return { name: f.name, hand, deck, discard: [] }; }
-
-const VC_META: Record<VC, { icon: string; color: string; short: string; explain: string }> = {
-  Strongest: { icon: "💥", color: "#f43f5e", short: "STR", explain: "Higher value wins." },
-  Weakest: { icon: "🦊", color: "#10b981", short: "WEAK", explain: "Lower value wins." },
-  ReserveSum: { icon: "🗃️", color: "#0ea5e9", short: "RES", explain: "Compare sums of the two cards left in hand." },
-  ClosestToTarget: { icon: "🎯", color: "#f59e0b", short: "CL", explain: "Value closest to target wins." },
-  Initiative: { icon: "⚑", color: "#a78bfa", short: "INIT", explain: "Initiative holder wins." },
-};
 
 function inSection(index: number, s: Section) {
   if (index === 0) return false;
@@ -84,145 +62,6 @@ function genWheelSections(archetype: "bandit" | "sorcerer" | "beast" = "bandit")
   }
   return sections;
 }
-
-// ---------------- Wheel (persistent <canvas> base + imperative CSS token) ----------------
-
-type WheelHandle = { setVisualToken: (slice: number) => void };
-type CanvasWheelProps = { sections: Section[]; size: number; onTapAssign?: () => void; };
-
-const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
-  ({ sections, size, onTapAssign }, ref) => {
-    const canvasRef = useRef<HTMLCanvasElement | null>(null);
-    const tokenElRef = useRef<HTMLDivElement | null>(null);
-    const tokenSliceRef = useRef<number>(0);
-
-    // Small safety margin and alignment offsets
-    const CLIP_PAD = 3;
-    const WHEEL_OFFSET_X = -8; // tweak to move left/right
-    const WHEEL_OFFSET_Y =  -1; // tweak to move up/down
-
-    const drawBase = () => {
-      const canvas = canvasRef.current; if (!canvas) return;
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const cssW = Math.round(size), cssH = Math.round(size);
-
-      // ensure backing store matches CSS size
-      if (canvas.width !== cssW * dpr || canvas.height !== cssH * dpr) {
-        canvas.width = cssW * dpr;
-        canvas.height = cssH * dpr;
-        canvas.style.width = `${cssW}px`;
-        canvas.style.height = `${cssH}px`;
-      }
-
-      const ctx = canvas.getContext("2d"); if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      // center & radius (with small clip pad)
-      const centerX = cssW / 2 + WHEEL_OFFSET_X;
-      const centerY = cssH / 2 + WHEEL_OFFSET_Y;
-      const wheelR = cssW / 2 - (16 + CLIP_PAD);
-
-      const angPer = 360 / SLICES;
-      const sliceFill = (i: number) =>
-        sections.find((s) => inSection(i, s))?.color ?? "#334155";
-
-      ctx.clearRect(0, 0, cssW, cssH);
-
-      for (let i = 0; i < SLICES; i++) {
-        const startAng = (i * angPer - 90) * (Math.PI / 180);
-        const endAng   = ((i + 1) * angPer - 90) * (Math.PI / 180);
-
-        // slice
-        ctx.beginPath();
-        ctx.moveTo(centerX, centerY);
-        ctx.arc(centerX, centerY, wheelR, startAng, endAng, false);
-        ctx.closePath();
-        ctx.fillStyle = i === 0 ? "#6b7280" : sliceFill(i);
-        (ctx as any).globalAlpha = 0.9; ctx.fill(); (ctx as any).globalAlpha = 1;
-        ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 1; ctx.stroke();
-
-        // numbers
-        const midAng = (i + 0.5) * angPer;
-        const numPos = polar(centerX, centerY, wheelR * 0.6, midAng);
-        ctx.fillStyle = i === 0 ? "#ffffff" : "#0f172a";
-        ctx.font = "700 11px system-ui, -apple-system, Segoe UI, Roboto";
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(String(i), numPos.x, numPos.y);
-
-        // icons
-        if (i !== 0) {
-          const sec = sections.find((s) => inSection(i, s));
-          if (sec) {
-            const iconPos = polar(centerX, centerY, wheelR * 0.86, midAng);
-            ctx.font = "12px system-ui, Apple Color Emoji, Segoe UI Emoji";
-            ctx.fillStyle = "#ffffff";
-            ctx.fillText(VC_META[sec.id].icon, iconPos.x, iconPos.y);
-          }
-        }
-      }
-
-      // re-place the token at the new center after redraw
-      placeToken(tokenSliceRef.current);
-    };
-
-    // Move token imperatively (keeps React out of the loop)
-    const placeToken = (slice: number) => {
-      const el = tokenElRef.current; if (!el) return;
-      const wheelR = size / 2 - (16 + CLIP_PAD);
-      const angPer = 360 / SLICES;
-      const tokenAng = (slice + 0.5) * angPer;
-
-      // same center offsets as the drawing code
-      const cx = size / 2 + WHEEL_OFFSET_X;
-      const cy = size / 2 + WHEEL_OFFSET_Y;
-
-      const pos = polar(cx, cy, wheelR * 0.94, tokenAng);
-      const x = Math.round(pos.x - 7), y = Math.round(pos.y - 7);
-      el.style.transform = `translate(${x}px, ${y}px)`;
-    };
-
-    // redraw base when size/sections change
-    useEffect(() => { drawBase(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, [size, sections]);
-
-    // expose imperative API
-    useImperativeHandle(ref, () => ({
-      setVisualToken: (s: number) => { tokenSliceRef.current = s; placeToken(s); }
-    }), [size]);
-
-    return (
-      <div
-        onClick={onTapAssign}
-        className="relative overflow-hidden rounded-full"
-        style={{
-          width: size,
-          height: size,
-          contain: 'paint',
-          transform: 'translateZ(0)',
-          backfaceVisibility: 'hidden',
-        }}
-      >
-        <canvas
-          ref={canvasRef}
-          aria-hidden
-          style={{ position: 'absolute', inset: 0, display: 'block' }}
-        />
-        <div
-          ref={tokenElRef}
-          aria-hidden
-          style={{
-            position: 'absolute',
-            width: 14, height: 14, left: 0, top: 0,
-            borderRadius: 9999,
-            background: '#fff',
-            border: '2px solid #0f172a',
-            willChange: 'transform'
-          }}
-        />
-      </div>
-    );
-  }
-));
-CanvasWheel.displayName = 'CanvasWheel';
 
 // ---------------- Decks ----------------
 function starterDeck(): Card[] { const base: Card[] = Array.from({ length: 10 }, (_, n) => ({ id: uid(), name: `${n}`, number: n, tags: [] })); return shuffle(base); }
@@ -451,30 +290,6 @@ export default function ThreeWheel_WinsOnly() {
   }
 
   // ---------------- UI ----------------
-  const StSCard = memo(({ card, disabled, size = "sm" }: { card: Card; disabled?: boolean; size?: "sm" | "md" | "lg" }) => {
-    const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
-    const selected = selectedCardId === card.id;
-    return (
-      <button
-        draggable={!disabled}
-        onDragStart={(e) => { e.dataTransfer.setData('text/plain', card.id); setDragCardId(card.id); }}
-        onDragEnd={() => setDragCardId(null)}
-        onPointerDown={() => setSelectedCardId(card.id)}
-        onClick={(e) => { e.stopPropagation(); setSelectedCardId((prev) => prev === card.id ? null : prev ? prev : card.id); }}
-        disabled={disabled}
-        className={`relative select-none ${disabled ? 'opacity-60' : 'hover:scale-[1.02]'} transition will-change-transform ${selected ? 'ring-2 ring-amber-400' : ''}`}
-        style={{ width: dims.w, height: dims.h }}
-        aria-label={`Card ${card.number}`}
-      >
-        <div className={`absolute inset-0 rounded-xl border bg-gradient-to-br from-slate-600 to-slate-800 border-slate-400`}></div>
-        <div className="absolute inset-px rounded-[10px] bg-slate-900/85 backdrop-blur-[1px] border border-slate-700/70" />
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-3xl font-extrabold text-white/90">{card.number}</div>
-        </div>
-      </button>
-    );
-  });
-  StSCard.displayName = 'StSCard';
 
   const renderWheelPanel = (i: number) => {
   const pc = assign.player[i];
