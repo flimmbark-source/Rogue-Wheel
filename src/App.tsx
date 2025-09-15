@@ -179,29 +179,28 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
     contain: 'paint',
     transform: 'translateZ(0)',
     backfaceVisibility: 'hidden',
-    overflow: 'hidden',          // ⬅️ clip anything that overpaints
-    borderRadius: 50%           // ⬅️ circular mask
+    overflow: 'hidden',       // clip anything that overpaints
+    borderRadius: '50%'       // circular mask (as a string)
   }}
 >
-
-        <canvas
-          ref={canvasRef}
-          aria-hidden
-          style={{ position: 'absolute', inset: 0, display: 'block' }}
-        />
-        <div
-          ref={tokenElRef}
-          aria-hidden
-          style={{
-            position: 'absolute',
-            width: 14, height: 14, left: 0, top: 0,
-            borderRadius: 9999,
-            background: '#fff',
-            border: '2px solid #0f172a',
-            willChange: 'transform'
-          }}
-        />
-      </div>
+  <canvas
+    ref={canvasRef}
+    aria-hidden
+    style={{ position: 'absolute', inset: 0, display: 'block' }}
+  />
+  <div
+    ref={tokenElRef}
+    aria-hidden
+    style={{
+      position: 'absolute',
+      width: 14, height: 14, left: 0, top: 0,
+      borderRadius: 9999,
+      background: '#fff',
+      border: '2px solid #0f172a',
+      willChange: 'transform'
+    }}
+  />
+</div>
     );
   }
 ));
@@ -571,7 +570,7 @@ export default function ThreeWheel_WinsOnly() {
 
   {/* Wheel face (fixed width equals wheel size; centers wheel exactly) */}
   <div
-    className="relative flex items-center justify-center"
+    className="relative flex items-center justify-center rounded-full overflow-hidden"
     style={{ width: ws, height: ws }}
     onDragOver={onZoneDragOver}
     onDragEnter={onZoneDragOver}
