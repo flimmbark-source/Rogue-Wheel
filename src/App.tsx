@@ -100,6 +100,7 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
       const canvas = canvasRef.current; if (!canvas) return;
       const dpr = Math.max(1, window.devicePixelRatio || 1);
       const cssW = Math.round(size), cssH = Math.round(size);
+      const CLIP_PAD = 3;
 
       if (canvas.width !== cssW * dpr || canvas.height !== cssH * dpr) {
         canvas.width = cssW * dpr;
@@ -112,7 +113,7 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const center = { x: cssW / 2, y: cssH / 2 };
-      const wheelR = cssW / 2 - 16;
+      const wheelR = cssW / 2 - (16 + CLIP_PAD);
       const angPer = 360 / SLICES;
       const sliceFill = (i: number) => sections.find((s) => inSection(i, s))?.color ?? "#334155";
 
