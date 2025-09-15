@@ -569,7 +569,7 @@ export default function ThreeWheel_WinsOnly() {
 
   {/* Wheel face (fixed width equals wheel size; centers wheel exactly) */}
   <div
-    className="relative flex items-center justify-center rounded-full overflow-hidden"
+    className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
     style={{ width: ws, height: ws }}
     onDragOver={onZoneDragOver}
     onDragEnter={onZoneDragOver}
