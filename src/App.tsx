@@ -1170,7 +1170,7 @@ const HUDPanels = () => {
       rs !== null;
 
     return (
-      <div className="flex flex-col items-center w-full">
+      <div className="flex h-full flex-col items-center w-full">
         {/* HUD row (flag moved inside; absolute to avoid layout shift) */}
         <div
           className="relative flex min-w-0 items-center gap-2 rounded-lg border px-2 py-1 text-[12px] shadow w-full"
@@ -1247,11 +1247,11 @@ const HUDPanels = () => {
 
   return (
     <div className="w-full flex flex-col items-center">
-      <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-2 overflow-x-hidden">
-        <div className="min-w-0 w-full max-w-[420px] mx-auto">
+      <div className="grid w-full max-w-[900px] grid-cols-2 items-stretch gap-2 overflow-x-hidden">
+        <div className="min-w-0 w-full max-w-[420px] mx-auto h-full">
           <Panel side="player" />
         </div>
-        <div className="min-w-0 w-full max-w-[420px] mx-auto">
+        <div className="min-w-0 w-full max-w-[420px] mx-auto h-full">
           <Panel side="enemy" />
         </div>
       </div>
