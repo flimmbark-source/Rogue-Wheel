@@ -24,9 +24,7 @@ export default function MultiplayerRoute({
   onStart: (payload: StartPayload) => void;
 }) {
   // ---- UI state ----
-  const [mode, setMode] = useState<"idle" | "creating" | "joining" | "in-room">(
-    "idle"
-  );
+  const [mode, setMode] = useState<"idle" | "creating" | "joining" | "in-room">("idle");
   const [roomCode, setRoomCode] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [name, setName] = useState<string>(() => defaultName());
@@ -49,16 +47,21 @@ export default function MultiplayerRoute({
     setStatus(s);
   }
 
-  // Create Ably client lazily
   function ensureAbly() {
     if (ablyRef.current) return ablyRef.current;
     const key = import.meta.env.VITE_ABLY_API_KEY;
-    if (!key) {
-      throw new Error("Missing VITE_ABLY_API_KEY");
-    }
+    if (!key) throw new Error("Missing VITE_ABLY_API_KEY");
     const ably = new Realtime({ key, clientId });
     ablyRef.current = ably;
     return ably;
+  }
+
+  // Only A–Z without I/O (same alphabet used by makeRoomCode), max 4 chars
+  function sanitizeCode(input: string) {
+    const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ";
+    const up = (input || "").toUpperCase();
+    const out = up.split("").filter(ch => ALPHABET.includes(ch)).slice(0, 4).join("");
+    return out;
   }
 
   // Centralized member refresh that waits for sync to avoid partial sets
@@ -79,9 +82,16 @@ export default function MultiplayerRoute({
   }
 
   // Attach channel, subscribe presence, enter presence, seed list, and wire 'start'
-  async function connectRoom(code: string, options: ConnectOptions = {}) {
+  async function connectRoom(rawCode: string, options: ConnectOptions = {}) {
+    const code = sanitizeCode(rawCode);
+    if (!code || code.length !== 4) {
+      log("Invalid room code");
+      return false;
+    }
+
     const ably = ensureAbly();
-    const chan = ably.channels.get(`rw-rooms:${code.toUpperCase()}`);
+    const chanName = `rw:v1:rooms:${code}`; // versioned + sanitized
+    const chan = ably.channels.get(chanName);
     channelRef.current = chan;
 
     try {
@@ -92,12 +102,9 @@ export default function MultiplayerRoute({
       if (options.requireExistingMembers) {
         try {
           const existing = await chan.presence.get({ waitForSync: true } as any);
-          const others =
-            existing?.filter((p) => p.clientId && p.clientId !== clientId) ?? [];
+          const others = existing?.filter((p) => p.clientId && p.clientId !== clientId) ?? [];
           if (others.length === 0) {
-            log(
-              `Room ${code} not found. Ask the host to create it before joining.`
-            );
+            log(`Room ${code} not found. Ask the host to create it before joining.`);
             await chan.detach().catch(() => {});
             channelRef.current = null;
             return false;
@@ -139,6 +146,8 @@ export default function MultiplayerRoute({
         });
       });
 
+      // Only now, after a successful connect, set the visible room code
+      setRoomCode(code);
       setMode("in-room");
       log(`Joined room ${code}`);
       return true;
@@ -152,16 +161,10 @@ export default function MultiplayerRoute({
           chan.presence.unsubscribe();
         }
       } catch {}
-      try {
-        chan.unsubscribe();
-      } catch {}
-      try {
-        await chan.detach();
-      } catch {}
+      try { chan.unsubscribe(); } catch {}
+      try { await chan.detach(); } catch {}
       if (ablyRef.current && connectionListenerRef.current) {
-        try {
-          ablyRef.current.connection.off(connectionListenerRef.current as any);
-        } catch {}
+        try { ablyRef.current.connection.off(connectionListenerRef.current as any); } catch {}
         connectionListenerRef.current = null;
       }
       channelRef.current = null;
@@ -176,9 +179,7 @@ export default function MultiplayerRoute({
         try {
           await channelRef.current.presence.update({ name });
           await refreshMembers(channelRef.current);
-        } catch {
-          /* no-op */
-        }
+        } catch { /* no-op */ }
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,11 +191,8 @@ export default function MultiplayerRoute({
       try {
         const ch = channelRef.current;
         if (ch) {
-          if (presenceListenerRef.current) {
-            ch.presence.unsubscribe(presenceListenerRef.current as any);
-          } else {
-            ch.presence.unsubscribe();
-          }
+          if (presenceListenerRef.current) ch.presence.unsubscribe(presenceListenerRef.current as any);
+          else ch.presence.unsubscribe();
           ch.unsubscribe(); // remove message listeners (e.g., 'start')
           ch.presence.leave();
         }
@@ -208,7 +206,6 @@ export default function MultiplayerRoute({
   // --- actions ---
   async function onCreateRoom() {
     const code = makeRoomCode();
-    setRoomCode(code);
     setMode("creating");
     const created = await connectRoom(code);
     if (!created) {
@@ -219,9 +216,8 @@ export default function MultiplayerRoute({
   }
 
   async function onJoinRoom() {
-    if (!joinCode.trim()) return;
-    const code = joinCode.trim().toUpperCase();
-    setRoomCode(code);
+    const code = sanitizeCode(joinCode);
+    if (!code || code.length !== 4) return;
     setMode("joining");
     const joined = await connectRoom(code, { requireExistingMembers: true });
     if (!joined) {
@@ -235,11 +231,8 @@ export default function MultiplayerRoute({
     try {
       const ch = channelRef.current;
       if (ch) {
-        if (presenceListenerRef.current) {
-          ch.presence.unsubscribe(presenceListenerRef.current as any);
-        } else {
-          ch.presence.unsubscribe();
-        }
+        if (presenceListenerRef.current) ch.presence.unsubscribe(presenceListenerRef.current as any);
+        else ch.presence.unsubscribe();
         ch.unsubscribe();
         await ch.presence.leave();
       }
@@ -305,7 +298,7 @@ export default function MultiplayerRoute({
                 className="rounded-lg bg-black/40 px-3 py-2 ring-1 ring-white/10"
                 placeholder="Enter room code (e.g. ABQX)"
                 value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                onChange={(e) => setJoinCode(sanitizeCode(e.target.value))}
                 maxLength={4}
               />
               <button
@@ -334,9 +327,7 @@ export default function MultiplayerRoute({
                   {roomCode}
                 </div>
                 <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(roomCode).catch(() => {});
-                  }}
+                  onClick={() => { navigator.clipboard.writeText(roomCode).catch(() => {}); }}
                   className="rounded bg-white/10 px-2 py-1 text-sm hover:bg-white/15"
                 >
                   Copy
@@ -348,28 +339,20 @@ export default function MultiplayerRoute({
               <div className="text-sm opacity-80 mb-1">Players</div>
               <ul className="text-sm grid gap-1">
                 {members.map((m, i) => (
-                  <li
-                    key={m.clientId}
-                    className="flex items-center justify-between"
-                  >
+                  <li key={m.clientId} className="flex items-center justify-between">
                     <span>
                       {i === 0 ? "👑 " : "👤 "}
                       {m.name}{" "}
-                      <span className="opacity-60 text-xs">
-                        ({m.clientId.slice(0, 4)})
-                      </span>
+                      <span className="opacity-60 text-xs">({m.clientId.slice(0, 4)})</span>
                     </span>
                     {m.clientId === clientId && (
-                      <span className="rounded bg-white/10 px-2 py-0.5 text-xs">
-                        You
-                      </span>
+                      <span className="rounded bg-white/10 px-2 py-0.5 text-xs">You</span>
                     )}
                   </li>
                 ))}
               </ul>
               <div className="mt-2 text-xs opacity-70">
-                Host is the first to join. When 2+ players are here, host can
-                start.
+                Host is the first to join. When 2+ players are here, host can start.
               </div>
             </div>
 
@@ -413,10 +396,7 @@ function makeRoomCode() {
 
 function uid4() {
   // short client id
-  return (
-    Math.random().toString(36).slice(2, 6) +
-    Math.random().toString(36).slice(2, 6)
-  );
+  return Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
 }
 
 function defaultName() {
@@ -425,24 +405,14 @@ function defaultName() {
 }
 
 // Assign sides from presence order (host=left, first joiner=right)
-function assignSides(
-  members: { clientId: string; name: string }[]
-): Players {
+function assignSides(members: { clientId: string; name: string }[]): Players {
   // Ensure deterministic order (you already sort by presence timestamp above)
   const left = members[0];
   const right = members[1];
 
   // Side colors: left green, right orange (feel free to theme later)
   return {
-    left: {
-      id: left.clientId,
-      name: left.name,
-      color: "#22c55e",
-    },
-    right: {
-      id: right.clientId,
-      name: right.name,
-      color: "#f97316",
-    },
+    left:  { id: left.clientId,  name: left.name,  color: "#22c55e" },
+    right: { id: right.clientId, name: right.name, color: "#f97316" },
   };
 }
