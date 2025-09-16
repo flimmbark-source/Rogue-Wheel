@@ -26,7 +26,7 @@ import {
 } from "./game/types";
 import { easeInOutCubic, inSection } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
-import { makeFighter, freshFive } from "./game/decks";
+import { makeFighter, refillTo } from "./game/decks";
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 
 // components
@@ -297,12 +297,31 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
   return left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
 }
 
+// Moves played cards to discard, keeps reserves in hand, and draws up to five.
+function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
+  const playedIds = new Set(played.map((c) => c.id));
+  const next: Fighter = {
+    name: f.name,
+    deck: [...f.deck],
+    hand: f.hand.filter((c) => !playedIds.has(c.id)),
+    discard: [...f.discard, ...played],
+  };
+  return refillTo(next, 5);
+}
+
   // ---------------- Reveal / Resolve ----------------
   function onReveal() {
     if (!canReveal) return;
     setLockedWheelSize((s) => (s ?? wheelSize));
     setFreezeLayout(true);
     const enemyPicks = autoPickEnemy();
+    if (enemyPicks.some(Boolean)) {
+      const pickIds = new Set((enemyPicks.filter(Boolean) as Card[]).map((c) => c.id));
+      setEnemy((prev) => ({
+        ...prev,
+        hand: prev.hand.filter((card) => !pickIds.has(card.id)),
+      }));
+    }
     setAssign((a) => ({ ...a, enemy: enemyPicks }));
     setPhase("showEnemy");
     setSafeTimeout(() => {
@@ -317,6 +336,9 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
 
     const pReserve = computeReserveSum("player", played.map((pe) => pe.p));
     const eReserve = computeReserveSum("enemy", played.map((pe) => pe.e));
+
+    // 🔸 show these during showEnemy/anim immediately
+    setReserveSums({ player: pReserve, enemy: eReserve });
 
     type Outcome = { steps: number; targetSlice: number; section: Section; winner: LegacySide | null; tie: boolean; wheel: number; detail: string };
     const outcomes: Outcome[] = [];
@@ -398,25 +420,31 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
   }
 
   function nextRound() {
-  if (!(phase === "roundEnd" || phase === "ended")) return;
+    if (!(phase === "roundEnd" || phase === "ended")) return;
 
-  // Reset visual tokens immediately (imperative)
-  wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
+    const playerPlayed = assign.player.filter((c): c is Card => !!c);
+    const enemyPlayed = assign.enemy.filter((c): c is Card => !!c);
 
-  setFreezeLayout(false);
-  setLockedWheelSize(null);
-  setPlayer((p) => freshFive(p));
-  setEnemy((e) => freshFive(e));
-  setWheelSections([genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
-  setAssign({ player: [null, null, null], enemy: [null, null, null] });
+    // Reset visual tokens immediately (imperative)
+    wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
 
-  // Keep state in sync
-  setTokens([0, 0, 0]);
+    setFreezeLayout(false);
+    setLockedWheelSize(null);
+    setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
+    setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
+    setWheelSections([genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
+    setAssign({ player: [null, null, null], enemy: [null, null, null] });
+    setSelectedCardId(null);
+    setDragCardId(null);
+    setDragOverWheel(null);
 
-  setReserveSums(null);
-  setWheelHUD([null, null, null]);
-  setPhase("choose");
-  setRound((r) => r + 1);
+    // Keep state in sync
+    setTokens([0, 0, 0]);
+
+    setReserveSums(null);
+    setWheelHUD([null, null, null]);
+    setPhase("choose");
+    setRound((r) => r + 1);
   }
 
   // ---------------- UI ----------------
@@ -437,6 +465,9 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
   const assignToRight = (card: Card) => assignToWheelLocal(i, card);
 
   const ws = Math.round(lockedWheelSize ?? wheelSize);
+
+  const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
+  const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
 
   // --- layout numbers that must match the classes below ---
   const slotW    = 80;   // w-[80px] on both slots
@@ -538,13 +569,19 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
           onDrop={(e) => onZoneDrop(e, assignToLeft)}
           onClick={(e) => {
             e.stopPropagation();
-            if (selectedCardId) tapAssignIfSelected();
-            else if (leftSlot.card) clearAssign(i);
+            if (selectedCardId) {
+              // If a hand card is already selected, assign it here (this also swaps)
+              tapAssignIfSelected();
+            } else if (leftSlot.card) {
+              // 🔸 Arm this placed card for swapping (select it)
+              setSelectedCardId(leftSlot.card.id);
+            }
           }}
           className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
           style={{
-            backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-            borderColor:     dragOverWheel === i ? THEME.brass          : THEME.slotBorder,
+            backgroundColor: dragOverWheel === i || isLeftSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
+            borderColor:     dragOverWheel === i || isLeftSelected ? THEME.brass          : THEME.slotBorder,
+            boxShadow: isLeftSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
           }}
           aria-label={`Wheel ${i+1} left slot`}
         >
@@ -579,7 +616,11 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
         {/* Enemy slot */}
         <div
           className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
+          style={{
+            backgroundColor: dragOverWheel === i || isRightSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
+            borderColor:     dragOverWheel === i || isRightSelected ? THEME.brass          : THEME.slotBorder,
+            boxShadow: isRightSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
+          }}
           aria-label={`Wheel ${i+1} right slot`}
           data-drop="slot"
           data-idx={i}
@@ -589,8 +630,11 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
           onDrop={(e) => onZoneDrop(e, assignToRight)}
           onClick={(e) => {
             e.stopPropagation();
-            if (selectedCardId) tapAssignIfSelected();
-            else if (rightSlot.card) clearAssign(i);
+            if (selectedCardId) {
+              tapAssignIfSelected();
+            } else if (rightSlot.card) {
+              setSelectedCardId(rightSlot.card.id);
+            }
           }}
         >
           {rightSlot.card && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended")
@@ -636,7 +680,24 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
   className="pointer-events-auto"
   onClick={(e) => {
     e.stopPropagation();
-    setSelectedCardId((prev) => (prev === card.id ? null : card.id));
+    if (!selectedCardId) {
+      setSelectedCardId(card.id);
+      return;
+    }
+
+    if (selectedCardId === card.id) {
+      setSelectedCardId(null);
+      return;
+    }
+
+    const lane = localLegacySide === "player" ? assign.player : assign.enemy;
+    const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
+    if (slotIdx !== -1) {
+      assignToWheelLocal(slotIdx, card);
+      return;
+    }
+
+    setSelectedCardId(card.id);
   }}
   draggable
   onDragStart={(e) => {
@@ -692,7 +753,9 @@ const HUDPanels = () => {
     const win = isPlayer ? wins.player : wins.enemy;
     const rs = isPlayer ? rsP : rsE;
     const hasInit = initiative === side;
-    const isReserveVisible = phase === 'roundEnd' && rs !== null;
+    const isReserveVisible =
+      (phase === 'showEnemy' || phase === 'anim' || phase === 'roundEnd' || phase === 'ended') &&
+      rs !== null;
 
     return (
       <div className="flex flex-col items-center w-full">
