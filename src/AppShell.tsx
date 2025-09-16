@@ -56,7 +56,8 @@ export default function AppShell() {
   let localSide: Side;
   let localPlayerId: string;
   let extraProps: {
-    mpChannel?: ReturnType<Realtime["channels"]["get"]>;
+    roomCode?: string;
+    hostId?: string;
   } = {};
 
   if (view.mode === "mp" && (view.mpPayload ?? mpPayload)) {
@@ -67,7 +68,8 @@ export default function AppShell() {
     localSide = mp.localSide;
     localPlayerId = mp.players[localSide].id;
     extraProps = {
-      mpChannel: mp.channel,
+      roomCode: mp.roomCode,
+      hostId: mp.hostId,
     };
   } else {
     // Solo path (fabricate right-side AI)
@@ -90,8 +92,7 @@ export default function AppShell() {
       {...extraProps}
       // Optionally add:
       // onExit={() => setView({ key: "hub" })}
-      // mode={view.mode} roomCode={(view.mpPayload ?? mpPayload)?.roomCode}
-      // hostId={(view.mpPayload ?? mpPayload)?.hostId}
+      // mode={view.mode}
     />
   );
 }

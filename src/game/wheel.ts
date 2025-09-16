@@ -15,12 +15,13 @@ export const VC_META: Record<
 import { shuffle } from "./math";
 
 export function genWheelSections(
-  archetype: "bandit" | "sorcerer" | "beast" = "bandit"
+  archetype: "bandit" | "sorcerer" | "beast" = "bandit",
+  rng: () => number = Math.random
 ): Section[] {
   const lens = (() => {
-    if (archetype === "bandit") return shuffle([5, 4, 3, 2, 1]);
-    if (archetype === "sorcerer") return shuffle([5, 5, 2, 2, 1]);
-    return shuffle([6, 3, 3, 2, 1]);
+    if (archetype === "bandit") return shuffle([5, 4, 3, 2, 1], rng);
+    if (archetype === "sorcerer") return shuffle([5, 5, 2, 2, 1], rng);
+    return shuffle([6, 3, 3, 2, 1], rng);
   })();
   const kinds: VC[] = shuffle([
     "Strongest",
@@ -28,7 +29,7 @@ export function genWheelSections(
     "ReserveSum",
     "ClosestToTarget",
     "Initiative",
-  ]);
+  ], rng);
   let start = 1;
   const sections: Section[] = [];
   for (let i = 0; i < kinds.length; i++) {
@@ -40,7 +41,7 @@ export function genWheelSections(
       color: VC_META[id].color,
       start,
       end,
-      target: id === "ClosestToTarget" ? Math.floor(Math.random() * 16) : undefined,
+      target: id === "ClosestToTarget" ? Math.floor(rng() * 16) : undefined,
     });
     start = (start + len) % SLICES;
   }
