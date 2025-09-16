@@ -297,6 +297,26 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
   return left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
 }
 
+// 🔸 Guarantees we have exactly 5 cards in hand.
+// If the deck util ever returns fewer, we pad with neutral 0-value cards.
+// (Unique IDs prevent collisions; these behave like real cards with number 0.)
+function ensureFiveHand<F extends Fighter>(f: F): F {
+  const TARGET = 5;
+  if (f.hand.length >= TARGET) return f;
+  const padded = [...f.hand];
+  let n = f.hand.length;
+  while (n < TARGET) {
+    padded.push({
+      id: `pad-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: "Reserve",
+      number: 0,
+      kind: "normal", // matches your StSCard / isNormal expectations
+    } as any); // Card
+    n++;
+  }
+  return { ...f, hand: padded } as F;
+}
+
   // ---------------- Reveal / Resolve ----------------
   function onReveal() {
     if (!canReveal) return;
@@ -317,6 +337,9 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
 
     const pReserve = computeReserveSum("player", played.map((pe) => pe.p));
     const eReserve = computeReserveSum("enemy", played.map((pe) => pe.e));
+
+    // 🔸 show these during showEnemy/anim immediately
+    setReserveSums({ player: pReserve, enemy: eReserve });
 
     type Outcome = { steps: number; targetSlice: number; section: Section; winner: LegacySide | null; tie: boolean; wheel: number; detail: string };
     const outcomes: Outcome[] = [];
@@ -405,8 +428,8 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
 
   setFreezeLayout(false);
   setLockedWheelSize(null);
-  setPlayer((p) => freshFive(p));
-  setEnemy((e) => freshFive(e));
+  setPlayer((p) => ensureFiveHand(freshFive(p)));
+  setEnemy((e) => ensureFiveHand(freshFive(e)));
   setWheelSections([genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
   setAssign({ player: [null, null, null], enemy: [null, null, null] });
 
@@ -538,8 +561,13 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
           onDrop={(e) => onZoneDrop(e, assignToLeft)}
           onClick={(e) => {
             e.stopPropagation();
-            if (selectedCardId) tapAssignIfSelected();
-            else if (leftSlot.card) clearAssign(i);
+            if (selectedCardId) {
+              // If a hand card is already selected, assign it here (this also swaps)
+              tapAssignIfSelected();
+            } else if (leftSlot.card) {
+              // 🔸 Arm this placed card for swapping (select it)
+              setSelectedCardId(leftSlot.card.id);
+            }
           }}
           className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
           style={{
@@ -589,8 +617,11 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
           onDrop={(e) => onZoneDrop(e, assignToRight)}
           onClick={(e) => {
             e.stopPropagation();
-            if (selectedCardId) tapAssignIfSelected();
-            else if (rightSlot.card) clearAssign(i);
+            if (selectedCardId) {
+              tapAssignIfSelected();
+            } else if (rightSlot.card) {
+              setSelectedCardId(rightSlot.card.id);
+            }
           }}
         >
           {rightSlot.card && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended")
@@ -692,7 +723,9 @@ const HUDPanels = () => {
     const win = isPlayer ? wins.player : wins.enemy;
     const rs = isPlayer ? rsP : rsE;
     const hasInit = initiative === side;
-    const isReserveVisible = phase === 'roundEnd' && rs !== null;
+    const isReserveVisible =
+      (phase === 'showEnemy' || phase === 'anim' || phase === 'roundEnd' || phase === 'ended') &&
+      rs !== null;
 
     return (
       <div className="flex flex-col items-center w-full">
