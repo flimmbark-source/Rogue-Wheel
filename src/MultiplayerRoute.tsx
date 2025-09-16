@@ -30,13 +30,13 @@ export default function MultiplayerRoute({
 
   // ---- Ably core refs ----
   const ablyRef = useRef<Realtime | null>(null);
-  const channelRef = useRef<ReturnType<Realtime["channels"]["get"]> | null>(
-    null
-  );
-  const [members, setMembers] = useState<{ clientId: string; name: string }[]>(
-    []
-  );
+  const channelRef = useRef<ReturnType<Realtime["channels"]["get"]> | null>(null);
+  const [members, setMembers] = useState<{ clientId: string; name: string }[]>([]);
   const clientId = useMemo(() => uid4(), []);
+
+  // keep references to listeners so we can unsubscribe/cleanup precisely
+  const presenceListenerRef = useRef<((...args: any[]) => void) | null>(null);
+  const connectionListenerRef = useRef<((...args: any[]) => void) | null>(null);
 
   const isHost = members.length > 0 && members[0]?.clientId === clientId;
 
@@ -57,14 +57,10 @@ export default function MultiplayerRoute({
     return ably;
   }
 
-  function connectRoom(code: string) {
-    const ably = ensureAbly();
-    const chan = ably.channels.get(`rw-rooms:${code.toUpperCase()}`);
-    channelRef.current = chan;
-
-    // presence updates
-    chan.presence.subscribe(async () => {
-      const list = await chan.presence.get();
+  // Centralized member refresh that waits for sync to avoid partial sets
+  async function refreshMembers(chan: ReturnType<Realtime["channels"]["get"]>) {
+    try {
+      const list = await chan.presence.get({ waitForSync: true } as any);
       const mapped =
         list
           ?.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
@@ -73,37 +69,89 @@ export default function MultiplayerRoute({
             name: (p.data as any)?.name ?? "Player",
           })) ?? [];
       setMembers(mapped);
-    });
-
-    // start event
-    chan.subscribe("start", (msg) => {
-      const payload = msg.data as Omit<StartPayload, "localSide">;
-      // Determine THIS client's side from the published players map
-      const localSide: Side =
-        payload.players.left.id === clientId ? "left" : "right";
-
-      onStart({
-        ...payload,
-        localSide,
-      });
-    });
-
-    // Enter presence
-    chan.presence
-      .enter({ name })
-      .then(() => {
-        setMode("in-room");
-        log(`Joined room ${code}`);
-      })
-      .catch((e) => log(`Presence error: ${e?.message ?? e}`));
+    } catch (e: any) {
+      setStatus(`Presence get error: ${e?.message ?? e}`);
+    }
   }
 
-  // Cleanup on unmount or leaving room
+  // Attach channel, subscribe presence, enter presence, seed list, and wire 'start'
+  async function connectRoom(code: string) {
+    const ably = ensureAbly();
+    const chan = ably.channels.get(`rw-rooms:${code.toUpperCase()}`);
+    channelRef.current = chan;
+
+    try {
+      // 1) Ensure attached before presence ops
+      await chan.attach();
+
+      // 2) Subscribe to presence first (so we don't miss early events)
+      const onPresence = () => refreshMembers(chan);
+      presenceListenerRef.current = onPresence;
+      chan.presence.subscribe(["enter", "leave", "update"] as any, onPresence);
+
+      // 3) Enter presence with the current name
+      await chan.presence.enter({ name });
+
+      // 4) Seed initial list
+      await refreshMembers(chan);
+
+      // 5) Refresh when connection state changes (covers reconnects)
+      const onConn = () => refreshMembers(chan);
+      connectionListenerRef.current = onConn;
+      ably.connection.on(onConn);
+
+      // 6) Start event
+      chan.subscribe("start", (msg) => {
+        const payload = msg.data as Omit<StartPayload, "localSide">;
+        // Determine THIS client's side from the published players map
+        const localSide: Side =
+          payload.players.left.id === clientId ? "left" : "right";
+
+        onStart({
+          ...payload,
+          localSide,
+        });
+      });
+
+      setMode("in-room");
+      log(`Joined room ${code}`);
+    } catch (e: any) {
+      log(`Room connect error: ${e?.message ?? e}`);
+    }
+  }
+
+  // Optional: if the user edits their name while in-room, update presence
+  useEffect(() => {
+    (async () => {
+      if (mode === "in-room" && channelRef.current) {
+        try {
+          await channelRef.current.presence.update({ name });
+          await refreshMembers(channelRef.current);
+        } catch {
+          /* no-op */
+        }
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name]);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       try {
         const ch = channelRef.current;
-        ch?.presence?.leave();
+        if (ch) {
+          if (presenceListenerRef.current) {
+            ch.presence.unsubscribe(presenceListenerRef.current as any);
+          } else {
+            ch.presence.unsubscribe();
+          }
+          ch.unsubscribe(); // remove message listeners (e.g., 'start')
+          ch.presence.leave();
+        }
+        if (ablyRef.current && connectionListenerRef.current) {
+          ablyRef.current.connection.off(connectionListenerRef.current as any);
+        }
       } catch {}
     };
   }, []);
@@ -126,7 +174,19 @@ export default function MultiplayerRoute({
 
   async function onLeaveRoom() {
     try {
-      await channelRef.current?.presence.leave();
+      const ch = channelRef.current;
+      if (ch) {
+        if (presenceListenerRef.current) {
+          ch.presence.unsubscribe(presenceListenerRef.current as any);
+        } else {
+          ch.presence.unsubscribe();
+        }
+        ch.unsubscribe();
+        await ch.presence.leave();
+      }
+      if (ablyRef.current && connectionListenerRef.current) {
+        ablyRef.current.connection.off(connectionListenerRef.current as any);
+      }
     } catch {}
     setMembers([]);
     setMode("idle");
@@ -294,7 +354,10 @@ function makeRoomCode() {
 
 function uid4() {
   // short client id
-  return Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
+  return (
+    Math.random().toString(36).slice(2, 6) +
+    Math.random().toString(36).slice(2, 6)
+  );
 }
 
 function defaultName() {
@@ -303,7 +366,9 @@ function defaultName() {
 }
 
 // Assign sides from presence order (host=left, first joiner=right)
-function assignSides(members: { clientId: string; name: string }[]) : Players {
+function assignSides(
+  members: { clientId: string; name: string }[]
+): Players {
   // Ensure deterministic order (you already sort by presence timestamp above)
   const left = members[0];
   const right = members[1];
