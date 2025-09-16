@@ -927,8 +927,6 @@ const HUDPanels = () => {
     </div>
   );
 
-}
-
 // ---------------- Dev Self-Tests (lightweight) ----------------
 // These run once in dev consoles to catch regressions.
 if (typeof window !== 'undefined') {
