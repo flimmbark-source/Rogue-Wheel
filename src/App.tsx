@@ -36,7 +36,7 @@ import {
   type Players,
   LEGACY_FROM_SIDE,
 } from "./game/types";
-import { easeInOutCubic, inSection } from "./game/math";
+import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
 import { makeFighter, refillTo } from "./game/decks";
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
@@ -230,7 +230,31 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
   useEffect(() => { if (typeof window !== 'undefined' && !freezeLayout && lockedWheelSize === null) { setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth, handClearance)); } }, [handClearance, freezeLayout, lockedWheelSize]);
 
   // Per-wheel sections & tokens & active
-  const [wheelSections, setWheelSections] = useState<Section[][]>(() => [genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
+  const wheelRngRef = useRef<() => number>(() => Math.random());
+  const [wheelSections, setWheelSections] = useState<Section[][]>(() => {
+    const seeded = createSeededRng(seed);
+    wheelRngRef.current = seeded;
+    return [
+      genWheelSections("bandit", seeded),
+      genWheelSections("sorcerer", seeded),
+      genWheelSections("beast", seeded),
+    ];
+  });
+
+  const generateWheelSet = useCallback((): Section[][] => {
+    const rng = wheelRngRef.current ?? Math.random;
+    return [
+      genWheelSections("bandit", rng),
+      genWheelSections("sorcerer", rng),
+      genWheelSections("beast", rng),
+    ];
+  }, []);
+
+  useEffect(() => {
+    wheelRngRef.current = createSeededRng(seed);
+    setWheelSections(generateWheelSet());
+  }, [seed, generateWheelSet]);
+
   const [tokens, setTokens] = useState<[number, number, number]>([0, 0, 0]);
   const [active] = useState<[boolean, boolean, boolean]>([true, true, true]);
   const [wheelHUD, setWheelHUD] = useState<[string | null, string | null, string | null]>([null, null, null]);
@@ -656,11 +680,7 @@ const nextRoundCore = useCallback(
     setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
     setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
 
-    setWheelSections([
-      genWheelSections("bandit"),
-      genWheelSections("sorcerer"),
-      genWheelSections("beast"),
-    ]);
+    setWheelSections(generateWheelSet());
     setAssign({ player: [null, null, null], enemy: [null, null, null] });
 
     setSelectedCardId(null);
@@ -675,7 +695,7 @@ const nextRoundCore = useCallback(
 
     return true;
   },
-  [phase, wheelRefs, setFreezeLayout, setLockedWheelSize, setPlayer, setEnemy, setWheelSections, setAssign, setSelectedCardId, setDragCardId, setDragOverWheel, setTokens, setReserveSums, setWheelHUD, setPhase, setRound]
+  [phase, wheelRefs, setFreezeLayout, setLockedWheelSize, setPlayer, setEnemy, generateWheelSet, setWheelSections, setAssign, setSelectedCardId, setDragCardId, setDragOverWheel, setTokens, setReserveSums, setWheelHUD, setPhase, setRound]
 );
 
 function nextRound() {
