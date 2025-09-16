@@ -297,16 +297,42 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
   return left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
 }
 
-// Moves played cards to discard, keeps reserves in hand, and draws up to five.
+// Keep this: after a round, move only played cards out of hand, discard them, then draw.
 function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
   const playedIds = new Set(played.map((c) => c.id));
   const next: Fighter = {
     name: f.name,
     deck: [...f.deck],
-    hand: f.hand.filter((c) => !playedIds.has(c.id)),
+    hand: f.hand.filter((c) => !playedIds.has(c.id)), // keep reserves in hand
     discard: [...f.discard, ...played],
   };
-  return refillTo(next, 5);
+
+  // First, try to draw back to 5 using your existing deck util.
+  const refilled = refillTo(next, 5);
+
+  // Then, as a safety net, pad with neutral 0-cards if still short.
+  return ensureFiveHand(refilled, 5);
+}
+
+// Small helper to top-up a hand with neutral 0-value cards if needed.
+// Uses crypto.randomUUID() when available to avoid ID collisions.
+function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
+  if (f.hand.length >= TARGET) return f;
+
+  const padded = [...f.hand];
+  while (padded.length < TARGET) {
+    padded.push({
+      id: typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `pad-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      name: "Reserve",
+      number: 0,
+      kind: "normal",
+    } as unknown as Card);
+  }
+  return { ...f, hand: padded } as T;
+}
+
 }
 
   // ---------------- Reveal / Resolve ----------------
@@ -424,9 +450,28 @@ function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
 
     const playerPlayed = assign.player.filter((c): c is Card => !!c);
     const enemyPlayed = assign.enemy.filter((c): c is Card => !!c);
+    
+// 1) Immediately reset visual tokens (imperative, avoids flicker)
+wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
 
-    // Reset visual tokens immediately (imperative)
-    wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
+// 2) Reset layout + round state
+setFreezeLayout(false);
+setLockedWheelSize(null);
+
+// refill both hands (draw, then pad to exactly 5)
+setPlayer(p => ensureFiveHand(freshFive(p)));
+setEnemy(e => ensureFiveHand(freshFive(e)));
+
+// regenerate sections for next encounter (adjust types as needed)
+setWheelSections([
+  genWheelSections("bandit"),
+  genWheelSections("sorcerer"),
+  genWheelSections("beast"),
+]);
+
+// clear per-wheel assignments
+setAssign({ player: [null, null, null], enemy: [null, null, null] });
+
 
     setFreezeLayout(false);
     setLockedWheelSize(null);
