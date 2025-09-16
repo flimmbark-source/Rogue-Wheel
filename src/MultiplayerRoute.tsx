@@ -125,7 +125,29 @@ export default function MultiplayerRoute({
     try {
       const page = await chan.presence.get({ waitForSync: true } as any);
       const list = Array.isArray(page) ? page : page?.items ?? [];
-      applySnapshot(list as PresenceMessage[]);
+
+      
+// (optionally, at top of file if you need the type)
+/*
+import type { Types as AblyTypes } from "ably";
+*/
+
+const sorted = Array.from(list).sort(
+  (a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)
+);
+
+// keep your presence snapshot logic from the feature branch
+// applySnapshot(sorted as AblyTypes.PresenceMessage[]); // <- if you use the type
+applySnapshot(sorted as any); // <- or keep your original if you don't import the type
+
+// keep the UI mapping from main
+const mapped = sorted.map((p) => ({
+  clientId: p.clientId!,
+  name: (p.data as any)?.name ?? "Player",
+}));
+setMembers(mapped);
+
+
     } catch (e: any) {
       setStatus(`Presence get error: ${e?.message ?? e}`);
     }
@@ -369,7 +391,9 @@ async function onCreateRoom() {
       }
     } catch {}
     handoffRef.current = false;
+
     memberMapRef.current = new Map();
+
     setMembers([]);
     setMode("idle");
     setRoomCode("");
