@@ -126,6 +126,25 @@ export default function ThreeWheel_WinsOnly({
   // Phase state
   const [phase, setPhase] = useState<"choose" | "showEnemy" | "anim" | "roundEnd" | "ended">("choose");
 
+  const [resolveVotes, setResolveVotes] = useState<{ player: boolean; enemy: boolean }>({
+    player: false,
+    enemy: false,
+  });
+
+  const markResolveVote = useCallback((side: LegacySide) => {
+    setResolveVotes((prev) => {
+      if (prev[side]) return prev;
+      return { ...prev, [side]: true };
+    });
+  }, []);
+
+  const clearResolveVotes = useCallback(() => {
+    setResolveVotes((prev) => {
+      if (!prev.player && !prev.enemy) return prev;
+      return { player: false, enemy: false };
+    });
+  }, []);
+
   const [handClearance, setHandClearance] = useState<number>(0);
 
 function calcWheelSize(viewH: number, viewW: number, dockAllowance = 0) {
@@ -337,9 +356,11 @@ const storeReserveReport = useCallback(
     (side: LegacySide, laneIndex: number, card: Card) => {
       if (!active[laneIndex]) return false;
 
+
       const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
       const prevAtLane = lane[laneIndex];
       const fromIdx = lane.findIndex((c) => c?.id === card.id);
+
 
       if (prevAtLane && prevAtLane.id === card.id && fromIdx === laneIndex) {
         if (side === localLegacySide) {
@@ -383,9 +404,13 @@ const storeReserveReport = useCallback(
         }
       });
 
+
+      clearResolveVotes();
+
       return true;
     },
-    [active, localLegacySide]
+    [active, clearResolveVotes, localLegacySide]
+
   );
 
   const clearAssignFor = useCallback(
@@ -422,9 +447,13 @@ const storeReserveReport = useCallback(
         }
       });
 
+
+      clearResolveVotes();
+
+
       return true;
     },
-    [localLegacySide]
+    [clearResolveVotes, localLegacySide]
   );
 
   function assignToWheelLocal(i: number, card: Card) {
@@ -505,6 +534,8 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     (opts?: { force?: boolean }) => {
       if (!opts?.force && !canReveal) return false;
 
+      clearResolveVotes();
+
 
       if (isMultiplayer) {
         broadcastLocalReserve();
@@ -539,13 +570,22 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       return true;
     },
 
-    [canReveal, isMultiplayer, wheelSize, setFreezeLayout, setLockedWheelSize, setPhase, setSafeTimeout, resolveRound, setAssign, setEnemy, broadcastLocalReserve]
+    [broadcastLocalReserve, canReveal, clearResolveVotes, isMultiplayer, resolveRound, setAssign, setEnemy, setFreezeLayout, setLockedWheelSize, setPhase, setSafeTimeout, wheelSize]
 
   );
 
   function onReveal() {
     return revealRoundCore();
   }
+
+  useEffect(() => {
+    if (!isMultiplayer) return;
+    if (phase !== "choose") return;
+    if (!canReveal) return;
+    if (!resolveVotes.player || !resolveVotes.enemy) return;
+    revealRoundCore();
+  }, [canReveal, isMultiplayer, phase, resolveVotes, revealRoundCore]);
+
 
   function resolveRound(enemyPicks?: (Card | null)[]) {
     const played = [0, 1, 2].map((i) => ({ p: assign.player[i] as Card | null, e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null }));
@@ -663,14 +703,16 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     animateSpins();
   }
 
-const nextRoundCore = useCallback(
-  (opts?: { force?: boolean }) => {
-    const allow = opts?.force || phase === "roundEnd" || phase === "ended";
-    if (!allow) return false;
+  const nextRoundCore = useCallback(
+    (opts?: { force?: boolean }) => {
+      const allow = opts?.force || phase === "roundEnd" || phase === "ended";
+      if (!allow) return false;
 
-    const currentAssign = assignRef.current;
-    const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
-    const enemyPlayed = currentAssign.enemy.filter((c): c is Card => !!c);
+      clearResolveVotes();
+
+      const currentAssign = assignRef.current;
+      const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
+      const enemyPlayed = currentAssign.enemy.filter((c): c is Card => !!c);
 
     wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
 
@@ -695,7 +737,9 @@ const nextRoundCore = useCallback(
 
     return true;
   },
-  [phase, wheelRefs, setFreezeLayout, setLockedWheelSize, setPlayer, setEnemy, generateWheelSet, setWheelSections, setAssign, setSelectedCardId, setDragCardId, setDragOverWheel, setTokens, setReserveSums, setWheelHUD, setPhase, setRound]
+
+  [clearResolveVotes, generateWheelSet, phase, setAssign, setDragCardId, setDragOverWheel, setEnemy, setFreezeLayout, setLockedWheelSize, setPhase, setPlayer, setReserveSums, setSelectedCardId, setTokens, setWheelHUD, setWheelSections, setRound, wheelRefs]
+
 );
 
 function nextRound() {
@@ -718,7 +762,8 @@ function nextRound() {
         }
         case "reveal": {
           if (msg.side === localLegacySide) break;
-          if (phase === "choose" && canReveal) onReveal();
+
+          markResolveVote(msg.side);
           break;
         }
         case "nextRound": {
@@ -737,7 +782,9 @@ function nextRound() {
           break;
       }
     },
+
     [assignToWheelFor, canReveal, clearAssignFor, localLegacySide, nextRound, onReveal, phase, storeReserveReport]
+
   );
 
   useEffect(() => {
@@ -796,11 +843,20 @@ function nextRound() {
   }, [roomCode, localPlayerId]);
 
   const handleRevealClick = useCallback(() => {
-    const proceeded = onReveal();
-    if (proceeded && isMultiplayer) {
-      sendIntent({ type: "reveal", side: localLegacySide });
+
+    if (phase !== "choose" || !canReveal) return;
+
+    if (!isMultiplayer) {
+      onReveal();
+      return;
     }
-  }, [isMultiplayer, localLegacySide, onReveal, sendIntent]);
+
+    if (resolveVotes[localLegacySide]) return;
+
+    markResolveVote(localLegacySide);
+    sendIntent({ type: "reveal", side: localLegacySide });
+  }, [canReveal, isMultiplayer, localLegacySide, markResolveVote, onReveal, phase, resolveVotes, sendIntent]);
+
 
   const handleNextClick = useCallback(() => {
     const advanced = nextRound();
@@ -1260,6 +1316,22 @@ const HUDPanels = () => {
 };
 
 
+  const localResolveReady = resolveVotes[localLegacySide];
+  const remoteResolveReady = resolveVotes[remoteLegacySide];
+
+  const resolveButtonDisabled = !canReveal || (isMultiplayer && localResolveReady);
+  const resolveButtonLabel = isMultiplayer && localResolveReady ? "Ready" : "Resolve";
+
+  const resolveStatusText =
+    isMultiplayer && phase === "choose"
+      ? localResolveReady && !remoteResolveReady
+        ? `Waiting for ${namesByLegacy[remoteLegacySide]}...`
+        : !localResolveReady && remoteResolveReady
+        ? `${namesByLegacy[remoteLegacySide]} is ready.`
+        : null
+      : null;
+
+
   return (
     <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
       {/* Controls */}
@@ -1287,7 +1359,24 @@ const HUDPanels = () => {
               </div>
             </div>
           )}
-          {phase === "choose" && <button disabled={!canReveal} onClick={handleRevealClick} className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold disabled:opacity-50">Resolve</button>}
+
+          {phase === "choose" && (
+            <div className="flex flex-col items-end gap-1">
+              <button
+                disabled={resolveButtonDisabled}
+                onClick={handleRevealClick}
+                className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold disabled:opacity-50"
+              >
+                {resolveButtonLabel}
+              </button>
+              {isMultiplayer && resolveStatusText && (
+                <span className="text-[11px] italic text-amber-200 text-right leading-tight">
+                  {resolveStatusText}
+                </span>
+              )}
+            </div>
+          )}
+
           {(phase === "roundEnd" || phase === "ended") && <button onClick={handleNextClick} className="px-2.5 py-0.5 rounded bg-emerald-500 text-slate-900 font-semibold">Next</button>}
         </div>
       </div>
