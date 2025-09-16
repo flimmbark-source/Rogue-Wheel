@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Realtime } from "ably";
+import type { PresenceMessage } from "ably";
 import type { Players, Side } from "./game/types";
 
 // ----- Start payload now includes a Players map and localSide -----
@@ -43,6 +44,52 @@ export default function MultiplayerRoute({
   const [members, setMembers] = useState<{ clientId: string; name: string }[]>([]);
   const clientId = useMemo(() => uid4(), []);
 
+  type MemberEntry = { clientId: string; name: string; ts: number };
+  const memberMapRef = useRef<Map<string, MemberEntry>>(new Map());
+
+  const commitMembers = useCallback((map: Map<string, MemberEntry>) => {
+    const ordered = Array.from(map.values())
+      .sort((a, b) => {
+        if (a.ts !== b.ts) return a.ts - b.ts;
+        return a.clientId.localeCompare(b.clientId);
+      })
+      .map(({ clientId, name }) => ({ clientId, name }));
+    setMembers(ordered);
+  }, []);
+
+  const applySnapshot = useCallback((list: PresenceMessage[] | undefined | null) => {
+    const next = new Map<string, MemberEntry>();
+    if (Array.isArray(list)) {
+      for (const msg of list) {
+        if (!msg?.clientId) continue;
+        next.set(msg.clientId, {
+          clientId: msg.clientId,
+          name: (msg.data as any)?.name ?? "Player",
+          ts: msg.timestamp ?? Date.now(),
+        });
+      }
+    }
+    memberMapRef.current = next;
+    commitMembers(next);
+  }, [commitMembers]);
+
+  const applyPresenceUpdate = useCallback((msg: PresenceMessage | null | undefined) => {
+    if (!msg?.clientId) return;
+    const action = msg.action;
+    const ts = msg.timestamp ?? Date.now();
+    const map = new Map(memberMapRef.current);
+    const name = (msg.data as any)?.name ?? map.get(msg.clientId)?.name ?? "Player";
+
+    if (action === "leave" || action === "absent") {
+      map.delete(msg.clientId);
+    } else if (action === "enter" || action === "present" || action === "update") {
+      map.set(msg.clientId, { clientId: msg.clientId, name, ts });
+    }
+
+    memberMapRef.current = map;
+    commitMembers(map);
+  }, [commitMembers]);
+
   // keep references to listeners so we can unsubscribe/cleanup precisely
   const presenceListenerRef = useRef<((...args: any[]) => void) | null>(null);
   const connectionListenerRef = useRef<((...args: any[]) => void) | null>(null);
@@ -78,13 +125,27 @@ export default function MultiplayerRoute({
     try {
       const page = await chan.presence.get({ waitForSync: true } as any);
       const list = Array.isArray(page) ? page : page?.items ?? [];
-      const mapped = Array.from(list)
-        .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
-        .map((p) => ({
-          clientId: p.clientId!,
-          name: (p.data as any)?.name ?? "Player",
-        }));
-      setMembers(mapped);
+      
+// (optionally, at top of file if you need the type)
+/*
+import type { Types as AblyTypes } from "ably";
+*/
+
+const sorted = Array.from(list).sort(
+  (a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)
+);
+
+// keep your presence snapshot logic from the feature branch
+// applySnapshot(sorted as AblyTypes.PresenceMessage[]); // <- if you use the type
+applySnapshot(sorted as any); // <- or keep your original if you don't import the type
+
+// keep the UI mapping from main
+const mapped = sorted.map((p) => ({
+  clientId: p.clientId!,
+  name: (p.data as any)?.name ?? "Player",
+}));
+setMembers(mapped);
+
     } catch (e: any) {
       setStatus(`Presence get error: ${e?.message ?? e}`);
     }
@@ -111,7 +172,8 @@ export default function MultiplayerRoute({
       if (options.requireExistingMembers) {
         try {
           const existing = await chan.presence.get({ waitForSync: true } as any);
-          const others = existing?.filter((p) => p.clientId && p.clientId !== clientId) ?? [];
+          const items = Array.isArray(existing) ? existing : existing?.items ?? [];
+          const others = items.filter((p) => p.clientId && p.clientId !== clientId);
           if (others.length === 0) {
             log(`Room ${code} not found. Ask the host to create it before joining.`);
             await chan.detach().catch(() => {});
@@ -127,14 +189,24 @@ export default function MultiplayerRoute({
       }
 
       // 2) Subscribe to presence first (so we don't miss early events)
-      const onPresence = () => {
-        void refreshMembers(chan);
+      memberMapRef.current = new Map();
+      setMembers([]);
+
+      const onPresence = (msg: PresenceMessage) => {
+        applyPresenceUpdate(msg);
       };
       presenceListenerRef.current = onPresence;
       chan.presence.subscribe(onPresence);
 
       // 3) Enter presence with the current name
       await chan.presence.enter({ name });
+
+      {
+        const map = new Map(memberMapRef.current);
+        map.set(clientId, { clientId, name, ts: Date.now() });
+        memberMapRef.current = map;
+        commitMembers(map);
+      }
 
       // 4) Seed initial list
       await refreshMembers(chan);
@@ -219,6 +291,8 @@ export default function MultiplayerRoute({
         connectionListenerRef.current = null;
       }
       channelRef.current = null;
+      memberMapRef.current = new Map();
+      setMembers([]);
     }
     return false;
   }
@@ -229,6 +303,15 @@ export default function MultiplayerRoute({
       if (mode === "in-room" && channelRef.current) {
         try {
           await channelRef.current.presence.update({ name });
+
+          const current = memberMapRef.current.get(clientId);
+          if (current && current.name !== name) {
+            const map = new Map(memberMapRef.current);
+            map.set(clientId, { ...current, name });
+            memberMapRef.current = map;
+            commitMembers(map);
+          }
+
           await refreshMembers(channelRef.current);
         } catch { /* no-op */ }
       }
@@ -268,6 +351,7 @@ async function onCreateRoom() {
 
   const created = await connectRoom(code);
   if (!created) {
+    memberMapRef.current = new Map();
     setMembers([]);
     setMode("idle");
     setRoomCode("");
@@ -280,6 +364,7 @@ async function onCreateRoom() {
     setMode("joining");
     const joined = await connectRoom(code, { requireExistingMembers: true });
     if (!joined) {
+      memberMapRef.current = new Map();
       setMembers([]);
       setMode("idle");
       setRoomCode("");
@@ -304,6 +389,9 @@ async function onCreateRoom() {
       }
     } catch {}
     handoffRef.current = false;
+
+    memberMapRef.current = new Map();
+
     setMembers([]);
     setMode("idle");
     setRoomCode("");
