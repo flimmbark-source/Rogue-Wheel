@@ -1,5 +1,6 @@
 // src/AppShell.tsx
 import React, { useState } from "react";
+import type { Realtime } from "ably";
 import App from "./App";
 import HubRoute from "./HubRoute";
 import MultiplayerRoute from "./MultiplayerRoute";
@@ -12,6 +13,10 @@ type MPStartPayload = {
   hostId: string;
   players: Players;   // { left: {id,name,color}, right: {…} }
   localSide: Side;    // side for THIS client
+  channelName: string;
+  channel: ReturnType<Realtime["channels"]["get"]>;
+  clientId: string;
+  ably: Realtime;
 };
 
 type View =
@@ -50,6 +55,9 @@ export default function AppShell() {
   let players: Players;
   let localSide: Side;
   let localPlayerId: string;
+  let extraProps: {
+    mpChannel?: ReturnType<Realtime["channels"]["get"]>;
+  } = {};
 
   if (view.mode === "mp" && (view.mpPayload ?? mpPayload)) {
     // Multiplayer path (use payload from route)
@@ -58,6 +66,9 @@ export default function AppShell() {
     players = mp.players;
     localSide = mp.localSide;
     localPlayerId = mp.players[localSide].id;
+    extraProps = {
+      mpChannel: mp.channel,
+    };
   } else {
     // Solo path (fabricate right-side AI)
     seed = Math.floor(Math.random() * 2 ** 31);
@@ -76,6 +87,7 @@ export default function AppShell() {
       localPlayerId={localPlayerId}
       players={players}
       seed={seed}
+      {...extraProps}
       // Optionally add:
       // onExit={() => setView({ key: "hub" })}
       // mode={view.mode} roomCode={(view.mpPayload ?? mpPayload)?.roomCode}
