@@ -1,4 +1,5 @@
-import React, { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle, memo, startTransition } from "react";
+import React, { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle, memo, startTransition, useCallback } from "react";
+import type { Realtime } from "ably";
 import { motion } from "framer-motion";
 
 /**
@@ -33,6 +34,8 @@ import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 import CanvasWheel, { WheelHandle } from "./components/CanvasWheel";
 import StSCard from "./components/StSCard";
 
+type AblyChannel = ReturnType<Realtime["channels"]["get"]>;
+
 // ---------------- Constants ----------------
 const MIN_WHEEL = 160;
 const MAX_WHEEL = 200;
@@ -52,11 +55,13 @@ export default function ThreeWheel_WinsOnly({
   localPlayerId,
   players,
   seed,
+  mpChannel = null,
 }: {
   localSide: TwoSide;
   localPlayerId: string;
   players: Players;
   seed: number;
+  mpChannel?: AblyChannel | null;
 }) {
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; timeoutsRef.current.forEach(clearTimeout); timeoutsRef.current.clear(); }; }, []);
@@ -76,6 +81,12 @@ export default function ThreeWheel_WinsOnly({
     player: players.left.name,
     enemy: players.right.name,
   };
+
+  const isMultiplayer = !!mpChannel;
+  const mpChannelRef = useRef<AblyChannel | null>(mpChannel);
+  useEffect(() => {
+    mpChannelRef.current = mpChannel ?? null;
+  }, [mpChannel]);
 
   // Fighters & initiative
   const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
@@ -202,6 +213,52 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
 
   // Assignments
   const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>({ player: [null, null, null], enemy: [null, null, null] });
+  const assignRef = useRef(assign);
+  useEffect(() => {
+    assignRef.current = assign;
+  }, [assign]);
+
+  const reserveReportsRef = useRef<Record<LegacySide, { reserve: number; round: number } | null>>({
+    player: null,
+    enemy: null,
+  });
+  const storeReserveReport = useCallback((side: LegacySide, reserve: number, roundValue: number) => {
+    const prev = reserveReportsRef.current[side];
+    if (!prev || prev.reserve !== reserve || prev.round !== roundValue) {
+      reserveReportsRef.current[side] = { reserve, round: roundValue };
+      return true;
+    }
+    return false;
+  }, []);
+
+  type MPIntent =
+    | { type: "assign"; lane: number; side: LegacySide; card: Card }
+    | { type: "clear"; lane: number; side: LegacySide }
+    | { type: "reveal"; side: LegacySide }
+    | { type: "nextRound"; side: LegacySide }
+    | { type: "reserve"; side: LegacySide; reserve: number; round: number };
+
+  type MPWireIntent = MPIntent & { sender: string };
+
+  const publishIntent = useCallback(
+    (intent: MPIntent) => {
+      const channel = mpChannelRef.current;
+      if (!channel) return;
+      try {
+        void channel.publish("intent", { ...intent, sender: localPlayerId }).catch(() => {});
+      } catch {}
+    },
+    [localPlayerId]
+  );
+
+  const broadcastLocalReserve = useCallback(() => {
+    const lane = localLegacySide === "player" ? assignRef.current.player : assignRef.current.enemy;
+    const reserve = computeReserveSum(localLegacySide, lane);
+    const updated = storeReserveReport(localLegacySide, reserve, round);
+    if (isMultiplayer && updated) {
+      publishIntent({ type: "reserve", side: localLegacySide, reserve, round });
+    }
+  }, [isMultiplayer, localLegacySide, publishIntent, round, storeReserveReport, player, enemy]);
 
   // Drag state + tap-to-assign selected id
   const [dragCardId, setDragCardId] = useState<string | null>(null);
@@ -228,56 +285,144 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
   const wheelRefs = [useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null)];
 
   // ---- Assignment helpers (batched) ----
-  function assignToWheelLocal(i: number, card: Card) {
-    if (!active[i]) return;
+  const applyAssignFor = useCallback(
+    (side: LegacySide, laneIndex: number, card: Card, options?: { clearSelection?: boolean }) => {
+      let changed = false;
+      let previous: Card | null = null;
 
-    const isLocalPlayer = localLegacySide === "player";
+      setAssign((prev) => {
+        const lane = side === "player" ? prev.player : prev.enemy;
+        const current = lane[laneIndex];
+        const fromIdx = lane.findIndex((c) => c?.id === card.id);
+        previous = current ?? null;
 
-    startTransition(() => {
-      const lane = isLocalPlayer ? assign.player : assign.enemy;
-      const prevAtI = lane[i];
-      const fromIdx = lane.findIndex((c) => c?.id === card.id);
-      const nextLane = [...lane];
-      if (fromIdx !== -1) nextLane[fromIdx] = null;
-      nextLane[i] = card;
+        if (current && current.id === card.id && fromIdx === laneIndex) {
+          changed = false;
+          return prev;
+        }
 
-      setAssign((a) =>
-        isLocalPlayer ? { ...a, player: nextLane } : { ...a, enemy: nextLane }
-      );
+        changed = true;
+        const nextLane = [...lane];
+        if (fromIdx !== -1) nextLane[fromIdx] = null;
+        nextLane[laneIndex] = card;
 
-      if (isLocalPlayer) {
+        return side === "player"
+          ? { ...prev, player: nextLane }
+          : { ...prev, enemy: nextLane };
+      });
+
+      if (!changed) return false;
+
+      const restoreCard = previous && previous.id !== card.id ? previous : null;
+
+      if (side === "player") {
         setPlayer((p) => {
           let hand = p.hand.filter((c) => c.id !== card.id);
-          if (prevAtI && prevAtI.id !== card.id) hand = [...hand, prevAtI];
+          if (restoreCard && !hand.some((c) => c.id === restoreCard.id)) {
+            hand = [...hand, restoreCard];
+          }
           return { ...p, hand };
         });
       } else {
         setEnemy((e) => {
           let hand = e.hand.filter((c) => c.id !== card.id);
-          if (prevAtI && prevAtI.id !== card.id) hand = [...hand, prevAtI];
+          if (restoreCard && !hand.some((c) => c.id === restoreCard.id)) {
+            hand = [...hand, restoreCard];
+          }
           return { ...e, hand };
         });
       }
 
-      setSelectedCardId(null);
+      if (options?.clearSelection ?? side === localLegacySide) {
+        setSelectedCardId(null);
+      }
+
+      return true;
+    },
+    [localLegacySide]
+  );
+
+  const clearAssignFor = useCallback(
+    (side: LegacySide, laneIndex: number, options?: { clearSelection?: boolean }) => {
+      let removed: Card | null = null;
+      let changed = false;
+
+      setAssign((prev) => {
+        const lane = side === "player" ? prev.player : prev.enemy;
+        const current = lane[laneIndex];
+        if (!current) {
+          removed = null;
+          changed = false;
+          return prev;
+        }
+
+        changed = true;
+        removed = current;
+        const nextLane = [...lane];
+        nextLane[laneIndex] = null;
+
+        return side === "player"
+          ? { ...prev, player: nextLane }
+          : { ...prev, enemy: nextLane };
+      });
+
+      if (!changed || !removed) return false;
+
+      if (side === "player") {
+        setPlayer((p) => {
+          if (p.hand.some((c) => c.id === removed!.id)) return p;
+          return { ...p, hand: [...p.hand, removed!] };
+        });
+      } else {
+        setEnemy((e) => {
+          if (e.hand.some((c) => c.id === removed!.id)) return e;
+          return { ...e, hand: [...e.hand, removed!] };
+        });
+      }
+
+      if (options?.clearSelection ?? side === localLegacySide) {
+        setSelectedCardId((sel) => (sel === removed?.id ? null : sel));
+      }
+
+      return true;
+    },
+    [localLegacySide]
+  );
+
+  function assignToWheelLocal(i: number, card: Card) {
+    if (!active[i]) return;
+
+    let changed = false;
+    startTransition(() => {
+      changed = applyAssignFor(localLegacySide, i, card, { clearSelection: true });
     });
+
+    if (changed && isMultiplayer) {
+      publishIntent({ type: "assign", lane: i, side: localLegacySide, card });
+    }
   }
 
   function clearAssign(i: number) {
-    const isLocalPlayer = localLegacySide === "player";
-    const prev = (isLocalPlayer ? assign.player[i] : assign.enemy[i]);
-    if (!prev) return;
-
+    let changed = false;
     startTransition(() => {
-      if (isLocalPlayer) {
-        setAssign((a) => ({ ...a, player: a.player.map((c, idx) => (idx === i ? null : c)) }));
-        setPlayer((p) => ({ ...p, hand: [...p.hand, prev] }));
-      } else {
-        setAssign((a) => ({ ...a, enemy: a.enemy.map((c, idx) => (idx === i ? null : c)) }));
-        setEnemy((e) => ({ ...e, hand: [...e.hand, prev] }));
-      }
+      changed = clearAssignFor(localLegacySide, i, { clearSelection: false });
     });
+
+    if (changed && isMultiplayer) {
+      publishIntent({ type: "clear", lane: i, side: localLegacySide });
+    }
   }
+
+  const applyAssignForRef = useRef(applyAssignFor);
+  useEffect(() => {
+    applyAssignForRef.current = applyAssignFor;
+  }, [applyAssignFor]);
+
+  const clearAssignForRef = useRef(clearAssignFor);
+  useEffect(() => {
+    clearAssignForRef.current = clearAssignFor;
+  }, [clearAssignFor]);
+
 
 function autoPickEnemy(): (Card | null)[] {
   const hand = [...enemy.hand].filter(isNormal);   // ← guard
@@ -296,6 +441,10 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
   const left = hand.filter((c) => !usedIds.has(c.id));
   return left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
 }
+
+  useEffect(() => {
+    broadcastLocalReserve();
+  }, [broadcastLocalReserve, assign, player, enemy, localLegacySide, round, isMultiplayer]);
 
 // Keep this: after a round, move only played cards out of hand, discard them, then draw.
 function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
@@ -334,32 +483,90 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 }
 
   // ---------------- Reveal / Resolve ----------------
+  const revealRoundCore = useCallback(
+    (opts?: { force?: boolean }) => {
+      if (!opts?.force && !canReveal) return false;
+
+      if (isMultiplayer) {
+        broadcastLocalReserve();
+      }
+
+      setLockedWheelSize((s) => s ?? wheelSize);
+      setFreezeLayout(true);
+
+      let enemyPicks: (Card | null)[];
+
+      if (isMultiplayer) {
+        enemyPicks = [...assignRef.current.enemy];
+      } else {
+        enemyPicks = autoPickEnemy();
+        if (enemyPicks.some(Boolean)) {
+          const pickIds = new Set((enemyPicks.filter(Boolean) as Card[]).map((c) => c.id));
+          setEnemy((prev) => ({
+            ...prev,
+            hand: prev.hand.filter((card) => !pickIds.has(card.id)),
+          }));
+        }
+        setAssign((a) => ({ ...a, enemy: enemyPicks }));
+      }
+
+      setPhase("showEnemy");
+      setSafeTimeout(() => {
+        if (!mountedRef.current) return;
+        setPhase("anim");
+        resolveRound(enemyPicks);
+      }, 600);
+
+      return true;
+    },
+    [canReveal, isMultiplayer, wheelSize, setFreezeLayout, setLockedWheelSize, setPhase, setSafeTimeout, resolveRound, setAssign, setEnemy, broadcastLocalReserve]
+  );
+
   function onReveal() {
-    if (!canReveal) return;
-    setLockedWheelSize((s) => (s ?? wheelSize));
-    setFreezeLayout(true);
-    const enemyPicks = autoPickEnemy();
-    if (enemyPicks.some(Boolean)) {
-      const pickIds = new Set((enemyPicks.filter(Boolean) as Card[]).map((c) => c.id));
-      setEnemy((prev) => ({
-        ...prev,
-        hand: prev.hand.filter((card) => !pickIds.has(card.id)),
-      }));
+    const proceeded = revealRoundCore();
+    if (proceeded && isMultiplayer) {
+      publishIntent({ type: "reveal", side: localLegacySide });
     }
-    setAssign((a) => ({ ...a, enemy: enemyPicks }));
-    setPhase("showEnemy");
-    setSafeTimeout(() => {
-      if (!mountedRef.current) return;
-      setPhase("anim");
-      resolveRound(enemyPicks);
-    }, 600);
   }
+
+  const revealRoundCoreRef = useRef(revealRoundCore);
+  useEffect(() => {
+    revealRoundCoreRef.current = revealRoundCore;
+  }, [revealRoundCore]);
 
   function resolveRound(enemyPicks?: (Card | null)[]) {
     const played = [0, 1, 2].map((i) => ({ p: assign.player[i] as Card | null, e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null }));
 
-    const pReserve = computeReserveSum("player", played.map((pe) => pe.p));
-    const eReserve = computeReserveSum("enemy", played.map((pe) => pe.e));
+    const localPlayed = localLegacySide === "player"
+      ? played.map((pe) => pe.p)
+      : played.map((pe) => pe.e);
+    const remotePlayed = remoteLegacySide === "player"
+      ? played.map((pe) => pe.p)
+      : played.map((pe) => pe.e);
+
+    const localReserve = computeReserveSum(localLegacySide, localPlayed);
+    let remoteReserve: number;
+    let usedRemoteReport = false;
+
+    if (!isMultiplayer) {
+      remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+    } else {
+      const report = reserveReportsRef.current[remoteLegacySide];
+      if (report && report.round === round) {
+        remoteReserve = report.reserve;
+        usedRemoteReport = true;
+      } else {
+        remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+      }
+    }
+
+    storeReserveReport(localLegacySide, localReserve, round);
+    if (!isMultiplayer || !usedRemoteReport) {
+      storeReserveReport(remoteLegacySide, remoteReserve, round);
+    }
+
+    const pReserve = localLegacySide === "player" ? localReserve : remoteReserve;
+    const eReserve = localLegacySide === "enemy" ? localReserve : remoteReserve;
 
     // 🔸 show these during showEnemy/anim immediately
     setReserveSums({ player: pReserve, enemy: eReserve });
@@ -443,43 +650,99 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     animateSpins();
   }
 
+const nextRoundCore = useCallback(
+  (opts?: { force?: boolean }) => {
+    const allow = opts?.force || phase === "roundEnd" || phase === "ended";
+    if (!allow) return false;
+
+    const currentAssign = assignRef.current;
+    const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
+    const enemyPlayed = currentAssign.enemy.filter((c): c is Card => !!c);
+
+    wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
+
+    setFreezeLayout(false);
+    setLockedWheelSize(null);
+
+    setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
+    setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
+
+    setWheelSections([
+      genWheelSections("bandit"),
+      genWheelSections("sorcerer"),
+      genWheelSections("beast"),
+    ]);
+    setAssign({ player: [null, null, null], enemy: [null, null, null] });
+
+    setSelectedCardId(null);
+    setDragCardId(null);
+    setDragOverWheel(null);
+    setTokens([0, 0, 0]);
+    setReserveSums(null);
+    setWheelHUD([null, null, null]);
+
+    setPhase("choose");
+    setRound((r) => r + 1);
+
+    return true;
+  },
+  [phase, wheelRefs, setFreezeLayout, setLockedWheelSize, setPlayer, setEnemy, setWheelSections, setAssign, setSelectedCardId, setDragCardId, setDragOverWheel, setTokens, setReserveSums, setWheelHUD, setPhase, setRound]
+);
+
 function nextRound() {
-  if (!(phase === "roundEnd" || phase === "ended")) return;
-
-  const playerPlayed = assign.player.filter((c): c is Card => !!c);
-  const enemyPlayed  = assign.enemy.filter((c): c is Card => !!c);
-
-  // 1) Immediately reset visual tokens (imperative, avoids flicker)
-  wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
-
-  // 2) Reset layout lock
-  setFreezeLayout(false);
-  setLockedWheelSize(null);
-
-  // 3) Move played → discard; keep reserves; draw/pad to 5
-  setPlayer(p => settleFighterAfterRound(p, playerPlayed));
-  setEnemy(e => settleFighterAfterRound(e, enemyPlayed));
-
-  // 4) New wheels + clear assignments
-  setWheelSections([
-    genWheelSections("bandit"),
-    genWheelSections("sorcerer"),
-    genWheelSections("beast"),
-  ]);
-  setAssign({ player: [null, null, null], enemy: [null, null, null] });
-
-  // 5) Clear UI state
-  setSelectedCardId(null);
-  setDragCardId(null);
-  setDragOverWheel(null);
-  setTokens([0, 0, 0]);
-  setReserveSums(null);
-  setWheelHUD([null, null, null]);
-
-  // 6) Advance
-  setPhase("choose");
-  setRound(r => r + 1);
+  const advanced = nextRoundCore();
+  if (advanced && isMultiplayer) {
+    publishIntent({ type: "nextRound", side: localLegacySide });
+  }
 }
+
+  const nextRoundCoreRef = useRef(nextRoundCore);
+  useEffect(() => {
+    nextRoundCoreRef.current = nextRoundCore;
+  }, [nextRoundCore]);
+
+  useEffect(() => {
+    const channel = mpChannel;
+    if (!channel) return;
+
+    void channel.attach().catch(() => {});
+
+    const handler = (msg: any) => {
+      const data = msg?.data as MPWireIntent | undefined;
+      if (!data || typeof data !== "object") return;
+
+      const sender = data.sender ?? (msg?.clientId as string | undefined);
+      if (sender && sender === localPlayerId) return;
+
+      switch (data.type) {
+        case "assign":
+          applyAssignForRef.current?.(data.side, data.lane, data.card, { clearSelection: false });
+          break;
+        case "clear":
+          clearAssignForRef.current?.(data.side, data.lane, { clearSelection: false });
+          break;
+        case "reveal":
+          revealRoundCoreRef.current?.({ force: true });
+          break;
+        case "nextRound":
+          nextRoundCoreRef.current?.({ force: true });
+          break;
+        case "reserve":
+          if (typeof data.reserve === "number" && typeof data.round === "number") {
+            storeReserveReport(data.side, data.reserve, data.round);
+          }
+          break;
+        default:
+          break;
+      }
+    };
+
+    channel.subscribe("intent", handler);
+
+    return () => {
+      try { channel.unsubscribe("intent", handler); } catch {}
+    };
+  }, [mpChannel, localPlayerId, storeReserveReport]);
 
     
   // ---------------- UI ----------------

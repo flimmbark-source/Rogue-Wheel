@@ -1,15 +1,23 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Realtime } from "ably";
+import type { PresenceMessage } from "ably";
 import type { Players, Side } from "./game/types";
 
 // ----- Start payload now includes a Players map and localSide -----
-type StartPayload = {
+type StartMessagePayload = {
   roomCode: string;
   seed: number;
   hostId: string;
   players: Players;          // { left: {id,name,color}, right: {…} }
-  localSide: Side;           // side for THIS client
   playersArr?: { clientId: string; name: string }[]; // optional: raw list for debugging
+};
+
+type StartPayload = StartMessagePayload & {
+  localSide: Side;           // side for THIS client
+  channelName: string;       // reuse existing channel without reattaching
+  channel: ReturnType<Realtime["channels"]["get"]>;
+  clientId: string;          // keep track of our Ably client id
+  ably: Realtime;            // active realtime connection
 };
 
 type ConnectOptions = {
@@ -36,9 +44,57 @@ export default function MultiplayerRoute({
   const [members, setMembers] = useState<{ clientId: string; name: string }[]>([]);
   const clientId = useMemo(() => uid4(), []);
 
+  type MemberEntry = { clientId: string; name: string; ts: number };
+  const memberMapRef = useRef<Map<string, MemberEntry>>(new Map());
+
+  const commitMembers = useCallback((map: Map<string, MemberEntry>) => {
+    const ordered = Array.from(map.values())
+      .sort((a, b) => {
+        if (a.ts !== b.ts) return a.ts - b.ts;
+        return a.clientId.localeCompare(b.clientId);
+      })
+      .map(({ clientId, name }) => ({ clientId, name }));
+    setMembers(ordered);
+  }, []);
+
+  const applySnapshot = useCallback((list: PresenceMessage[] | undefined | null) => {
+    const next = new Map<string, MemberEntry>();
+    if (Array.isArray(list)) {
+      for (const msg of list) {
+        if (!msg?.clientId) continue;
+        next.set(msg.clientId, {
+          clientId: msg.clientId,
+          name: (msg.data as any)?.name ?? "Player",
+          ts: msg.timestamp ?? Date.now(),
+        });
+      }
+    }
+    memberMapRef.current = next;
+    commitMembers(next);
+  }, [commitMembers]);
+
+  const applyPresenceUpdate = useCallback((msg: PresenceMessage | null | undefined) => {
+    if (!msg?.clientId) return;
+    const action = msg.action;
+    const ts = msg.timestamp ?? Date.now();
+    const map = new Map(memberMapRef.current);
+    const name = (msg.data as any)?.name ?? map.get(msg.clientId)?.name ?? "Player";
+
+    if (action === "leave" || action === "absent") {
+      map.delete(msg.clientId);
+    } else if (action === "enter" || action === "present" || action === "update") {
+      map.set(msg.clientId, { clientId: msg.clientId, name, ts });
+    }
+
+    memberMapRef.current = map;
+    commitMembers(map);
+  }, [commitMembers]);
+
   // keep references to listeners so we can unsubscribe/cleanup precisely
   const presenceListenerRef = useRef<((...args: any[]) => void) | null>(null);
   const connectionListenerRef = useRef<((...args: any[]) => void) | null>(null);
+  const startListenerRef = useRef<((...args: any[]) => void) | null>(null);
+  const handoffRef = useRef(false);
 
   const isHost = members.length > 0 && members[0]?.clientId === clientId;
 
@@ -67,15 +123,9 @@ export default function MultiplayerRoute({
   // Centralized member refresh that waits for sync to avoid partial sets
   async function refreshMembers(chan: ReturnType<Realtime["channels"]["get"]>) {
     try {
-      const list = await chan.presence.get({ waitForSync: true } as any);
-      const mapped =
-        list
-          ?.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
-          .map((p) => ({
-            clientId: p.clientId!,
-            name: (p.data as any)?.name ?? "Player",
-          })) ?? [];
-      setMembers(mapped);
+      const page = await chan.presence.get({ waitForSync: true } as any);
+      const list = Array.isArray(page) ? page : page?.items ?? [];
+      applySnapshot(list as PresenceMessage[]);
     } catch (e: any) {
       setStatus(`Presence get error: ${e?.message ?? e}`);
     }
@@ -102,7 +152,8 @@ export default function MultiplayerRoute({
       if (options.requireExistingMembers) {
         try {
           const existing = await chan.presence.get({ waitForSync: true } as any);
-          const others = existing?.filter((p) => p.clientId && p.clientId !== clientId) ?? [];
+          const items = Array.isArray(existing) ? existing : existing?.items ?? [];
+          const others = items.filter((p) => p.clientId && p.clientId !== clientId);
           if (others.length === 0) {
             log(`Room ${code} not found. Ask the host to create it before joining.`);
             await chan.detach().catch(() => {});
@@ -118,14 +169,24 @@ export default function MultiplayerRoute({
       }
 
       // 2) Subscribe to presence first (so we don't miss early events)
-      const onPresence = () => {
-        void refreshMembers(chan);
+      memberMapRef.current = new Map();
+      setMembers([]);
+
+      const onPresence = (msg: PresenceMessage) => {
+        applyPresenceUpdate(msg);
       };
       presenceListenerRef.current = onPresence;
       chan.presence.subscribe(onPresence);
 
       // 3) Enter presence with the current name
       await chan.presence.enter({ name });
+
+      {
+        const map = new Map(memberMapRef.current);
+        map.set(clientId, { clientId, name, ts: Date.now() });
+        memberMapRef.current = map;
+        commitMembers(map);
+      }
 
       // 4) Seed initial list
       await refreshMembers(chan);
@@ -138,17 +199,49 @@ export default function MultiplayerRoute({
       ably.connection.on(onConn);
 
       // 6) Start event
-      chan.subscribe("start", (msg) => {
-        const payload = msg.data as Omit<StartPayload, "localSide">;
-        // Determine THIS client's side from the published players map
+      if (startListenerRef.current) {
+        try { chan.unsubscribe("start", startListenerRef.current as any); } catch {}
+        startListenerRef.current = null;
+      }
+
+      const onStartMessage = (msg: any) => {
+        const payload = msg.data as StartMessagePayload;
         const localSide: Side =
           payload.players.left.id === clientId ? "left" : "right";
+
+        try {
+          if (presenceListenerRef.current) {
+            chan.presence.unsubscribe(presenceListenerRef.current as any);
+            presenceListenerRef.current = null;
+          } else {
+            chan.presence.unsubscribe();
+          }
+        } catch {}
+
+        try {
+          chan.unsubscribe("start", onStartMessage as any);
+        } catch {}
+        startListenerRef.current = null;
+
+        if (ablyRef.current && connectionListenerRef.current) {
+          try { ablyRef.current.connection.off(connectionListenerRef.current as any); } catch {}
+          connectionListenerRef.current = null;
+        }
+
+        handoffRef.current = true;
 
         onStart({
           ...payload,
           localSide,
+          channelName: chanName,
+          channel: chan,
+          clientId,
+          ably,
         });
-      });
+      };
+
+      startListenerRef.current = onStartMessage;
+      chan.subscribe("start", onStartMessage);
 
       // Only now, after a successful connect, set the visible room code
       setRoomCode(code);
@@ -165,13 +258,21 @@ export default function MultiplayerRoute({
           chan.presence.unsubscribe();
         }
       } catch {}
-      try { chan.unsubscribe(); } catch {}
+      try {
+        if (startListenerRef.current) {
+          chan.unsubscribe("start", startListenerRef.current as any);
+          startListenerRef.current = null;
+        }
+        chan.unsubscribe();
+      } catch {}
       try { await chan.detach(); } catch {}
       if (ablyRef.current && connectionListenerRef.current) {
         try { ablyRef.current.connection.off(connectionListenerRef.current as any); } catch {}
         connectionListenerRef.current = null;
       }
       channelRef.current = null;
+      memberMapRef.current = new Map();
+      setMembers([]);
     }
     return false;
   }
@@ -182,6 +283,15 @@ export default function MultiplayerRoute({
       if (mode === "in-room" && channelRef.current) {
         try {
           await channelRef.current.presence.update({ name });
+
+          const current = memberMapRef.current.get(clientId);
+          if (current && current.name !== name) {
+            const map = new Map(memberMapRef.current);
+            map.set(clientId, { ...current, name });
+            memberMapRef.current = map;
+            commitMembers(map);
+          }
+
           await refreshMembers(channelRef.current);
         } catch { /* no-op */ }
       }
@@ -192,9 +302,14 @@ export default function MultiplayerRoute({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (handoffRef.current) return;
       try {
         const ch = channelRef.current;
         if (ch) {
+          if (startListenerRef.current) {
+            try { ch.unsubscribe("start", startListenerRef.current as any); } catch {}
+            startListenerRef.current = null;
+          }
           if (presenceListenerRef.current) ch.presence.unsubscribe(presenceListenerRef.current as any);
           else ch.presence.unsubscribe();
           ch.unsubscribe(); // remove message listeners (e.g., 'start')
@@ -216,6 +331,7 @@ async function onCreateRoom() {
 
   const created = await connectRoom(code);
   if (!created) {
+    memberMapRef.current = new Map();
     setMembers([]);
     setMode("idle");
     setRoomCode("");
@@ -228,6 +344,7 @@ async function onCreateRoom() {
     setMode("joining");
     const joined = await connectRoom(code, { requireExistingMembers: true });
     if (!joined) {
+      memberMapRef.current = new Map();
       setMembers([]);
       setMode("idle");
       setRoomCode("");
@@ -238,6 +355,10 @@ async function onCreateRoom() {
     try {
       const ch = channelRef.current;
       if (ch) {
+        if (startListenerRef.current) {
+          try { ch.unsubscribe("start", startListenerRef.current as any); } catch {}
+          startListenerRef.current = null;
+        }
         if (presenceListenerRef.current) ch.presence.unsubscribe(presenceListenerRef.current as any);
         else ch.presence.unsubscribe();
         ch.unsubscribe();
@@ -247,6 +368,8 @@ async function onCreateRoom() {
         ablyRef.current.connection.off(connectionListenerRef.current as any);
       }
     } catch {}
+    handoffRef.current = false;
+    memberMapRef.current = new Map();
     setMembers([]);
     setMode("idle");
     setRoomCode("");
@@ -264,7 +387,7 @@ async function onCreateRoom() {
     const players = assignSides(members);
 
     const seed = Math.floor(Math.random() * 2 ** 31);
-    const payload: Omit<StartPayload, "localSide"> = {
+    const payload: StartMessagePayload = {
       roomCode,
       seed,
       players,
