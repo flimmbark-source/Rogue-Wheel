@@ -356,6 +356,7 @@ const storeReserveReport = useCallback(
     (side: LegacySide, laneIndex: number, card: Card) => {
       if (!active[laneIndex]) return false;
 
+
       const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
       const prevAtLane = lane[laneIndex];
       const fromIdx = lane.findIndex((c) => c?.id === card.id);
@@ -402,11 +403,13 @@ const storeReserveReport = useCallback(
         }
       });
 
+
       clearResolveVotes();
 
       return true;
     },
     [active, clearResolveVotes, localLegacySide]
+
   );
 
   const clearAssignFor = useCallback(
@@ -443,7 +446,9 @@ const storeReserveReport = useCallback(
         }
       });
 
+
       clearResolveVotes();
+
 
       return true;
     },
@@ -750,7 +755,9 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
     return true;
   },
+
   [clearResolveVotes, generateWheelSet, phase, setAssign, setDragCardId, setDragOverWheel, setEnemy, setFreezeLayout, setLockedWheelSize, setPhase, setPlayer, setReserveSums, setSelectedCardId, setTokens, setWheelHUD, setWheelSections, setRound, wheelRefs]
+
 );
 
 function nextRound() {
@@ -773,6 +780,7 @@ function nextRound() {
         }
         case "reveal": {
           if (msg.side === localLegacySide) break;
+
           markResolveVote(msg.side);
           break;
         }
@@ -792,7 +800,10 @@ function nextRound() {
           break;
       }
     },
-    [assignToWheelFor, clearAssignFor, localLegacySide, markResolveVote, nextRound, phase, storeReserveReport]
+
+
+    [assignToWheelFor, canReveal, clearAssignFor, localLegacySide, nextRound, onReveal, phase, storeReserveReport]
+
   );
 
   useEffect(() => {
@@ -815,8 +826,10 @@ function nextRound() {
       return;
     }
 
+
     const key = import.meta.env.VITE_ABLY_API_KEY;
     if (!key) return;
+
 
     const ably = new Realtime({ key, clientId: localPlayerId });
     ablyRef.current = ably;
@@ -851,6 +864,7 @@ function nextRound() {
   }, [roomCode, localPlayerId]);
 
   const handleRevealClick = useCallback(() => {
+
     if (phase !== "choose" || !canReveal) return;
 
     if (!isMultiplayer) {
@@ -1249,7 +1263,7 @@ const HUDPanels = () => {
           <div className="flex items-center min-w-0 flex-1">
             <span className="truncate block font-semibold">{name}</span>
             {(isPlayer ? "player" : "enemy") === localLegacySide && (
-              <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px]"></span>
+              <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px]">You</span>
             )}
           </div>
           <div className="flex items-center gap-1 ml-1 flex-shrink-0">
