@@ -1182,7 +1182,7 @@ const HUDPanels = () => {
           }}
         >
           <div className="w-1.5 h-6 rounded" style={{ background: color }} />
-          <div className="flex items-center max-w-[36vw] sm:max-w-none min-w-0">
+          <div className="flex items-center min-w-0 flex-1">
             <span className="truncate block font-semibold">{name}</span>
             {(isPlayer ? "player" : "enemy") === localLegacySide && (
               <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px]"></span>
@@ -1193,7 +1193,7 @@ const HUDPanels = () => {
             <span className="text-base font-extrabold tabular-nums">{win}</span>
           </div>
           <div
-            className={`ml-2 rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap transition-opacity ${
+            className={`ml-2 hidden sm:flex rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap transition-opacity ${
               isReserveVisible ? 'opacity-100 visible' : 'opacity-0 invisible'
             }`}
             style={{
@@ -1223,6 +1223,22 @@ const HUDPanels = () => {
           )}
         </div>
 
+        {isReserveVisible && (
+          <div className="mt-1 w-full sm:hidden">
+            <div
+              className="w-full rounded-full border px-3 py-1 text-[11px] text-center"
+              style={{
+                background: '#1b1209ee',
+                borderColor: THEME.slotBorder,
+                color: THEME.textWarm,
+              }}
+              title={rs !== null ? `Reserve: ${rs}` : undefined}
+            >
+              Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
+            </div>
+          </div>
+        )}
+
         {/* (removed) old outside flag that was pushing layout down */}
         {/* {hasInit && <span className="mt-1" aria-label="Has initiative">⚑</span>} */}
       </div>
@@ -1231,7 +1247,7 @@ const HUDPanels = () => {
 
   return (
     <div className="w-full flex flex-col items-center">
-      <div className="w-full grid grid-cols-2 gap-2 overflow-x-hidden">
+      <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-2 overflow-x-hidden">
         <div className="min-w-0 w-full max-w-[420px] mx-auto">
           <Panel side="player" />
         </div>
