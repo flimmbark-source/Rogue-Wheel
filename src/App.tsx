@@ -78,6 +78,87 @@ function calcWheelSize(viewH: number, viewW: number, dockAllowance = 0) {
   return Math.max(MIN_WHEEL, Math.min(maxAllowed, raw));
 }
   
+  
+  // --- Mobile pointer-drag support ---
+const [isPtrDragging, setIsPtrDragging] = useState(false);
+const [ptrDragCard, setPtrDragCard] = useState<Card | null>(null);
+const ptrPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+function addTouchDragCss(on: boolean) {
+  const root = document.documentElement;
+  if (on) {
+    // store previous to restore later
+    (root as any).__prevTouchAction = root.style.touchAction;
+    (root as any).__prevOverscroll = root.style.overscrollBehavior;
+    root.style.touchAction = 'none';
+    root.style.overscrollBehavior = 'contain';
+  } else {
+    root.style.touchAction = (root as any).__prevTouchAction ?? '';
+    root.style.overscrollBehavior = (root as any).__prevOverscroll ?? '';
+    delete (root as any).__prevTouchAction;
+    delete (root as any).__prevOverscroll;
+  }
+}
+
+function getDropTargetAt(x: number, y: number): { kind: 'wheel' | 'slot'; idx: number } | null {
+  let el = document.elementFromPoint(x, y) as HTMLElement | null;
+  while (el) {
+    const d = (el as HTMLElement).dataset;
+    if (d.drop && d.idx) {
+      if (d.drop === 'wheel') return { kind: 'wheel', idx: Number(d.idx) };
+      if (d.drop === 'slot')  return { kind: 'slot',  idx: Number(d.idx) };
+    }
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function startPointerDrag(card: Card, e: React.PointerEvent) {
+  // only trigger for touch/pen; mouse still uses native DnD you already have
+  if (e.pointerType === 'mouse') return;
+  e.currentTarget.setPointerCapture?.(e.pointerId);
+  setSelectedCardId(card.id);
+  setDragCardId(card.id);
+  setPtrDragCard(card);
+  setIsPtrDragging(true);
+  addTouchDragCss(true);
+  ptrPos.current = { x: e.clientX, y: e.clientY };
+
+  const onMove = (ev: PointerEvent) => {
+    ptrPos.current = { x: ev.clientX, y: ev.clientY };
+    const t = getDropTargetAt(ev.clientX, ev.clientY);
+    setDragOverWheel(t && (t.kind === 'wheel' || t.kind === 'slot') ? t.idx : null);
+    // avoid scroll while dragging
+    ev.preventDefault?.();
+  };
+
+  const onUp = (ev: PointerEvent) => {
+    const t = getDropTargetAt(ev.clientX, ev.clientY);
+    if (t && active[t.idx]) {
+      // assign card to that wheel index (slot clicks already map to a wheel index)
+      assignToWheel(t.idx, card);
+    }
+    cleanup();
+  };
+
+  const onCancel = () => cleanup();
+
+  function cleanup() {
+    window.removeEventListener('pointermove', onMove, { capture: true } as any);
+    window.removeEventListener('pointerup', onUp, { capture: true } as any);
+    window.removeEventListener('pointercancel', onCancel, { capture: true } as any);
+    setIsPtrDragging(false);
+    setPtrDragCard(null);
+    setDragOverWheel(null);
+    setDragCardId(null);
+    addTouchDragCss(false);
+  }
+
+  window.addEventListener('pointermove', onMove, { passive: false, capture: true });
+  window.addEventListener('pointerup', onUp, { passive: false, capture: true });
+  window.addEventListener('pointercancel', onCancel, { passive: false, capture: true });
+}
+  
   // Responsive wheel size
   const [wheelSize, setWheelSize] = useState<number>(() => (typeof window !== 'undefined' ? calcWheelSize(window.innerHeight, window.innerWidth, 0) : MAX_WHEEL));
   useEffect(() => {
@@ -368,38 +449,41 @@ function computeReserveSum(who: Side, used: (Card | null)[]) {
     style={{ height: (ws + EXTRA_H) /* removed the - 3 */ }}
   >
         {/* Player slot */}
-        <div
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={onZoneDrop}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (selectedCardId) tapAssignIfSelected();
-            else if (pc)      clearAssign(i);
-          }}
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{
-            backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-            borderColor:     dragOverWheel === i ? THEME.brass          : THEME.slotBorder,
-            
-          }}
-          aria-label={`Wheel ${i+1} player slot`}
-        >
+<div
+  data-drop="slot"
+  data-idx={i}
+  onDragOver={onZoneDragOver}
+  onDragEnter={onZoneDragOver}
+  onDragLeave={onZoneLeave}
+  onDrop={onZoneDrop}
+  onClick={(e) => {
+    e.stopPropagation();
+    if (selectedCardId) tapAssignIfSelected();
+    else if (pc)      clearAssign(i);
+  }}
+  className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+  style={{
+    backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
+    borderColor:     dragOverWheel === i ? THEME.brass          : THEME.slotBorder,
+  }}
+  aria-label={`Wheel ${i+1} player slot`}
+>
           {pc ? <StSCard card={pc} size="sm" /> : <div className="text-[11px] opacity-80 text-center">Your card</div>}
         </div>
 
   {/* Wheel face (fixed width equals wheel size; centers wheel exactly) */}
   <div
-    className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
-    style={{ width: ws, height: ws }}
-    onDragOver={onZoneDragOver}
-    onDragEnter={onZoneDragOver}
-    onDragLeave={onZoneLeave}
-    onDrop={onZoneDrop}
-    onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
-    aria-label={`Wheel ${i+1}`}
-  >
+  data-drop="wheel"
+  data-idx={i}
+  className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
+  style={{ width: ws, height: ws }}
+  onDragOver={onZoneDragOver}
+  onDragEnter={onZoneDragOver}
+  onDragLeave={onZoneLeave}
+  onDrop={onZoneDrop}
+  onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
+  aria-label={`Wheel ${i+1}`}
+>
     <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
     <div
       aria-hidden
@@ -459,11 +543,13 @@ function computeReserveSum(who: Side, used: (Card | null)[]) {
   }}
   draggable
   onDragStart={(e) => {
+    // Desktop HTML5 drag
     setDragCardId(card.id);
     try { e.dataTransfer.setData("text/plain", card.id); } catch {}
     e.dataTransfer.effectAllowed = "move";
   }}
   onDragEnd={() => setDragCardId(null)}
+  onPointerDown={(e) => startPointerDrag(card, e)}   // ← NEW: touch/pen drag
   aria-pressed={isSelected}
   aria-label={`Select ${card.name}`}
 >
@@ -475,6 +561,25 @@ function computeReserveSum(who: Side, used: (Card | null)[]) {
             );
           })}
         </div>
+{/* Touch drag ghost (mobile) */}
+{isPtrDragging && ptrDragCard && (
+  <div
+    style={{
+      position: 'fixed',
+      left: 0,
+      top: 0,
+      transform: `translate(${ptrPos.current.x - 48}px, ${ptrPos.current.y - 64}px)`,
+      pointerEvents: 'none',
+      zIndex: 9999,
+    }}
+    aria-hidden
+  >
+    <div style={{ transform: 'scale(0.9)', filter: 'drop-shadow(0 6px 8px rgba(0,0,0,.35))' }}>
+      <StSCard card={ptrDragCard} />
+    </div>
+  </div>
+)}
+
       </div>
     );
   };
