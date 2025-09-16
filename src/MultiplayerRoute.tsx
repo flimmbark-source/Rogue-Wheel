@@ -118,9 +118,11 @@ export default function MultiplayerRoute({
       }
 
       // 2) Subscribe to presence first (so we don't miss early events)
-      const onPresence = () => refreshMembers(chan);
+      const onPresence = () => {
+        void refreshMembers(chan);
+      };
       presenceListenerRef.current = onPresence;
-      chan.presence.subscribe(["enter", "leave", "update"] as any, onPresence);
+      chan.presence.subscribe(onPresence);
 
       // 3) Enter presence with the current name
       await chan.presence.enter({ name });
@@ -129,7 +131,9 @@ export default function MultiplayerRoute({
       await refreshMembers(chan);
 
       // 5) Refresh when connection state changes (covers reconnects)
-      const onConn = () => refreshMembers(chan);
+      const onConn = () => {
+        void refreshMembers(chan);
+      };
       connectionListenerRef.current = onConn;
       ably.connection.on(onConn);
 
