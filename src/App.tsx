@@ -1,7 +1,16 @@
-import React, { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle, memo, startTransition, useCallback } from "react";
-import type { Realtime } from "ably";
+import React, {
+  useMemo,
+  useRef,
+  useState,
+  useEffect,
+  forwardRef,
+  useImperativeHandle,
+  memo,
+  startTransition,
+  useCallback,
+} from "react";
+import { Realtime } from "ably";
 import { motion } from "framer-motion";
-import React, { useMemo, useRef, useState, useEffect, useCallback, /* ... */ } from "react";
 
 
 /**
@@ -36,7 +45,19 @@ import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 import CanvasWheel, { WheelHandle } from "./components/CanvasWheel";
 import StSCard from "./components/StSCard";
 
-type AblyChannel = ReturnType<Realtime["channels"]["get"]>;
+type AblyRealtime = InstanceType<typeof Realtime>;
+type AblyChannel = ReturnType<AblyRealtime["channels"]["get"]>;
+
+// keep your local alias
+type LegacySide = "player" | "enemy";
+
+// your existing MPIntent union (merged from conflict)
+type MPIntent =
+  | { type: "assign"; lane: number; side: LegacySide; card: Card }
+  | { type: "clear"; lane: number; side: LegacySide }
+  | { type: "reveal"; side: LegacySide }
+  | { type: "nextRound"; side: LegacySide }
+  | { type: "reserve"; side: LegacySide; reserve: number; round: number };
 
 // ---------------- Constants ----------------
 const MIN_WHEEL = 160;
@@ -57,20 +78,21 @@ export default function ThreeWheel_WinsOnly({
   localPlayerId,
   players,
   seed,
-  mpChannel = null,
+  roomCode,
+  hostId,
 }: {
   localSide: TwoSide;
   localPlayerId: string;
   players: Players;
   seed: number;
-  mpChannel?: AblyChannel | null;
+  roomCode?: string;
+  hostId?: string;
 }) {
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; timeoutsRef.current.forEach(clearTimeout); timeoutsRef.current.clear(); }; }, []);
   const timeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const setSafeTimeout = (fn: () => void, ms: number) => { const id = setTimeout(() => { if (mountedRef.current) fn(); }, ms); timeoutsRef.current.add(id); return id; };
 
-  type LegacySide = "player" | "enemy";
   const localLegacySide: LegacySide = LEGACY_FROM_SIDE[localSide];
   const remoteLegacySide: LegacySide = localLegacySide === "player" ? "enemy" : "player";
 
@@ -84,11 +106,11 @@ export default function ThreeWheel_WinsOnly({
     enemy: players.right.name,
   };
 
-  const isMultiplayer = !!mpChannel;
-  const mpChannelRef = useRef<AblyChannel | null>(mpChannel);
-  useEffect(() => {
-    mpChannelRef.current = mpChannel ?? null;
-  }, [mpChannel]);
+  void hostId;
+
+  const isMultiplayer = !!roomCode;
+  const ablyRef = useRef<AblyRealtime | null>(null);
+  const chanRef = useRef<AblyChannel | null>(null);
 
   // Fighters & initiative
   const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
@@ -220,9 +242,6 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
     assignRef.current = assign;
   }, [assign]);
 
-// Use a local alias so this still works even if game/types Side = "left" | "right"
-type LegacySide = "player" | "enemy";
-
 const reserveReportsRef = useRef<
   Record<LegacySide, { reserve: number; round: number } | null>
 >({
@@ -242,24 +261,16 @@ const storeReserveReport = useCallback(
   []
 );
 
-type MPIntent =
-  | { type: "assign"; lane: number; side: LegacySide; card: Card }
-  | { type: "clear"; lane: number; side: LegacySide }
-  | { type: "reveal"; side: LegacySide }
-  | { type: "nextRound"; side: LegacySide }
-  | { type: "reserve"; side: LegacySide; reserve: number; round: number };
+  const handleMPIntentRef = useRef<(intent: MPIntent) => void>(() => {});
 
-  type MPWireIntent = MPIntent & { sender: string };
-
-  const publishIntent = useCallback(
+  const sendIntent = useCallback(
     (intent: MPIntent) => {
-      const channel = mpChannelRef.current;
-      if (!channel) return;
+      if (!roomCode) return;
       try {
-        void channel.publish("intent", { ...intent, sender: localPlayerId }).catch(() => {});
+        void chanRef.current?.publish("intent", intent);
       } catch {}
     },
-    [localPlayerId]
+    [roomCode]
   );
 
 
@@ -268,9 +279,9 @@ type MPIntent =
     const reserve = computeReserveSum(localLegacySide, lane);
     const updated = storeReserveReport(localLegacySide, reserve, round);
     if (isMultiplayer && updated) {
-      publishIntent({ type: "reserve", side: localLegacySide, reserve, round });
+      sendIntent({ type: "reserve", side: localLegacySide, reserve, round });
     }
-  }, [isMultiplayer, localLegacySide, publishIntent, round, storeReserveReport, player, enemy]);
+  }, [isMultiplayer, localLegacySide, round, sendIntent, storeReserveReport, player, enemy]);
 
 
   // Drag state + tap-to-assign selected id
@@ -298,104 +309,94 @@ type MPIntent =
   const wheelRefs = [useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null)];
 
   // ---- Assignment helpers (batched) ----
-  const applyAssignFor = useCallback(
-    (side: LegacySide, laneIndex: number, card: Card, options?: { clearSelection?: boolean }) => {
-      let changed = false;
-      let previous: Card | null = null;
+  const assignToWheelFor = useCallback(
+    (side: LegacySide, laneIndex: number, card: Card) => {
+      if (!active[laneIndex]) return false;
 
-      setAssign((prev) => {
-        const lane = side === "player" ? prev.player : prev.enemy;
-        const current = lane[laneIndex];
-        const fromIdx = lane.findIndex((c) => c?.id === card.id);
-        previous = current ?? null;
+      const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
+      const prevAtLane = lane[laneIndex];
+      const fromIdx = lane.findIndex((c) => c?.id === card.id);
 
-        if (current && current.id === card.id && fromIdx === laneIndex) {
-          changed = false;
-          return prev;
+      if (prevAtLane && prevAtLane.id === card.id && fromIdx === laneIndex) {
+        if (side === localLegacySide) {
+          setSelectedCardId(null);
+        }
+        return false;
+      }
+
+      const isPlayer = side === "player";
+
+      startTransition(() => {
+        setAssign((prev) => {
+          const laneArr = isPlayer ? prev.player : prev.enemy;
+          const nextLane = [...laneArr];
+          const existingIdx = nextLane.findIndex((c) => c?.id === card.id);
+          if (existingIdx !== -1) nextLane[existingIdx] = null;
+          nextLane[laneIndex] = card;
+          return isPlayer ? { ...prev, player: nextLane } : { ...prev, enemy: nextLane };
+        });
+
+        if (isPlayer) {
+          setPlayer((p) => {
+            let hand = p.hand.filter((c) => c.id !== card.id);
+            if (prevAtLane && prevAtLane.id !== card.id && !hand.some((c) => c.id === prevAtLane.id)) {
+              hand = [...hand, prevAtLane];
+            }
+            return { ...p, hand };
+          });
+        } else {
+          setEnemy((e) => {
+            let hand = e.hand.filter((c) => c.id !== card.id);
+            if (prevAtLane && prevAtLane.id !== card.id && !hand.some((c) => c.id === prevAtLane.id)) {
+              hand = [...hand, prevAtLane];
+            }
+            return { ...e, hand };
+          });
         }
 
-        changed = true;
-        const nextLane = [...lane];
-        if (fromIdx !== -1) nextLane[fromIdx] = null;
-        nextLane[laneIndex] = card;
-
-        return side === "player"
-          ? { ...prev, player: nextLane }
-          : { ...prev, enemy: nextLane };
+        if (side === localLegacySide) {
+          setSelectedCardId(null);
+        }
       });
-
-      if (!changed) return false;
-
-      const restoreCard = previous && previous.id !== card.id ? previous : null;
-
-      if (side === "player") {
-        setPlayer((p) => {
-          let hand = p.hand.filter((c) => c.id !== card.id);
-          if (restoreCard && !hand.some((c) => c.id === restoreCard.id)) {
-            hand = [...hand, restoreCard];
-          }
-          return { ...p, hand };
-        });
-      } else {
-        setEnemy((e) => {
-          let hand = e.hand.filter((c) => c.id !== card.id);
-          if (restoreCard && !hand.some((c) => c.id === restoreCard.id)) {
-            hand = [...hand, restoreCard];
-          }
-          return { ...e, hand };
-        });
-      }
-
-      if (options?.clearSelection ?? side === localLegacySide) {
-        setSelectedCardId(null);
-      }
 
       return true;
     },
-    [localLegacySide]
+    [active, localLegacySide]
   );
 
   const clearAssignFor = useCallback(
-    (side: LegacySide, laneIndex: number, options?: { clearSelection?: boolean }) => {
-      let removed: Card | null = null;
-      let changed = false;
+    (side: LegacySide, laneIndex: number) => {
+      const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
+      const prev = lane[laneIndex];
+      if (!prev) return false;
 
-      setAssign((prev) => {
-        const lane = side === "player" ? prev.player : prev.enemy;
-        const current = lane[laneIndex];
-        if (!current) {
-          removed = null;
-          changed = false;
-          return prev;
+      const isPlayer = side === "player";
+
+      startTransition(() => {
+        setAssign((prevState) => {
+          const laneArr = isPlayer ? prevState.player : prevState.enemy;
+          if (!laneArr[laneIndex]) return prevState;
+          const nextLane = [...laneArr];
+          nextLane[laneIndex] = null;
+          return isPlayer ? { ...prevState, player: nextLane } : { ...prevState, enemy: nextLane };
+        });
+
+        if (isPlayer) {
+          setPlayer((p) => {
+            if (p.hand.some((c) => c.id === prev.id)) return p;
+            return { ...p, hand: [...p.hand, prev] };
+          });
+        } else {
+          setEnemy((e) => {
+            if (e.hand.some((c) => c.id === prev.id)) return e;
+            return { ...e, hand: [...e.hand, prev] };
+          });
         }
 
-        changed = true;
-        removed = current;
-        const nextLane = [...lane];
-        nextLane[laneIndex] = null;
-
-        return side === "player"
-          ? { ...prev, player: nextLane }
-          : { ...prev, enemy: nextLane };
+        if (side === localLegacySide) {
+          setSelectedCardId((sel) => (sel === prev.id ? null : sel));
+        }
       });
-
-      if (!changed || !removed) return false;
-
-      if (side === "player") {
-        setPlayer((p) => {
-          if (p.hand.some((c) => c.id === removed!.id)) return p;
-          return { ...p, hand: [...p.hand, removed!] };
-        });
-      } else {
-        setEnemy((e) => {
-          if (e.hand.some((c) => c.id === removed!.id)) return e;
-          return { ...e, hand: [...e.hand, removed!] };
-        });
-      }
-
-      if (options?.clearSelection ?? side === localLegacySide) {
-        setSelectedCardId((sel) => (sel === removed?.id ? null : sel));
-      }
 
       return true;
     },
@@ -403,38 +404,18 @@ type MPIntent =
   );
 
   function assignToWheelLocal(i: number, card: Card) {
-    if (!active[i]) return;
-
-    let changed = false;
-    startTransition(() => {
-      changed = applyAssignFor(localLegacySide, i, card, { clearSelection: true });
-    });
-
+    const changed = assignToWheelFor(localLegacySide, i, card);
     if (changed && isMultiplayer) {
-      publishIntent({ type: "assign", lane: i, side: localLegacySide, card });
+      sendIntent({ type: "assign", lane: i, side: localLegacySide, card });
     }
   }
 
   function clearAssign(i: number) {
-    let changed = false;
-    startTransition(() => {
-      changed = clearAssignFor(localLegacySide, i, { clearSelection: false });
-    });
-
+    const changed = clearAssignFor(localLegacySide, i);
     if (changed && isMultiplayer) {
-      publishIntent({ type: "clear", lane: i, side: localLegacySide });
+      sendIntent({ type: "clear", lane: i, side: localLegacySide });
     }
   }
-
-  const applyAssignForRef = useRef(applyAssignFor);
-  useEffect(() => {
-    applyAssignForRef.current = applyAssignFor;
-  }, [applyAssignFor]);
-
-  const clearAssignForRef = useRef(clearAssignFor);
-  useEffect(() => {
-    clearAssignForRef.current = clearAssignFor;
-  }, [clearAssignFor]);
 
 
 function autoPickEnemy(): (Card | null)[] {
@@ -539,16 +520,8 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
   );
 
   function onReveal() {
-    const proceeded = revealRoundCore();
-    if (proceeded && isMultiplayer) {
-      publishIntent({ type: "reveal", side: localLegacySide });
-    }
+    return revealRoundCore();
   }
-
-  const revealRoundCoreRef = useRef(revealRoundCore);
-  useEffect(() => {
-    revealRoundCoreRef.current = revealRoundCore;
-  }, [revealRoundCore]);
 
   function resolveRound(enemyPicks?: (Card | null)[]) {
     const played = [0, 1, 2].map((i) => ({ p: assign.player[i] as Card | null, e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null }));
@@ -706,65 +679,118 @@ const nextRoundCore = useCallback(
 );
 
 function nextRound() {
-  const advanced = nextRoundCore();
-  if (advanced && isMultiplayer) {
-    publishIntent({ type: "nextRound", side: localLegacySide });
-  }
+  return nextRoundCore();
 }
 
-  const nextRoundCoreRef = useRef(nextRoundCore);
-  useEffect(() => {
-    nextRoundCoreRef.current = nextRoundCore;
-  }, [nextRoundCore]);
 
-  useEffect(() => {
-    const channel = mpChannel;
-    if (!channel) return;
-
-    void channel.attach().catch(() => {});
-
-    const handler = (msg: any) => {
-      const data = msg?.data as MPWireIntent | undefined;
-      if (!data || typeof data !== "object") return;
-
-      const sender = data.sender ?? (msg?.clientId as string | undefined);
-      if (sender && sender === localPlayerId) return;
-
-      switch (data.type) {
-        case "assign":
-          applyAssignForRef.current?.(data.side, data.lane, data.card, { clearSelection: false });
+  const handleMPIntent = useCallback(
+    (msg: MPIntent) => {
+      switch (msg.type) {
+        case "assign": {
+          if (msg.side === localLegacySide) break;
+          assignToWheelFor(msg.side, msg.lane, msg.card);
           break;
-        case "clear":
-          clearAssignForRef.current?.(data.side, data.lane, { clearSelection: false });
+        }
+        case "clear": {
+          if (msg.side === localLegacySide) break;
+          clearAssignFor(msg.side, msg.lane);
           break;
-        case "reveal":
-          revealRoundCoreRef.current?.({ force: true });
+        }
+        case "reveal": {
+          if (msg.side === localLegacySide) break;
+          if (phase === "choose" && canReveal) onReveal();
           break;
-        case "nextRound":
-          nextRoundCoreRef.current?.({ force: true });
+        }
+        case "nextRound": {
+          if (msg.side === localLegacySide) break;
+          if (phase === "roundEnd" || phase === "ended") nextRound();
           break;
-
-        case "reserve":
-          if (typeof data.reserve === "number" && typeof data.round === "number") {
-            storeReserveReport(data.side, data.reserve, data.round);
+        }
+        case "reserve": {
+          if (msg.side === localLegacySide) break;
+          if (typeof msg.reserve === "number" && typeof msg.round === "number") {
+            storeReserveReport(msg.side, msg.reserve, msg.round);
           }
           break;
-
+        }
         default:
           break;
       }
-    };
+    },
+    [assignToWheelFor, canReveal, clearAssignFor, localLegacySide, nextRound, onReveal, phase, storeReserveReport]
+  );
 
-    channel.subscribe("intent", handler);
+  useEffect(() => {
+    handleMPIntentRef.current = handleMPIntent;
+  }, [handleMPIntent]);
+
+  useEffect(() => {
+    if (!roomCode) {
+      try {
+        chanRef.current?.unsubscribe();
+      } catch {}
+      try {
+        chanRef.current?.detach();
+      } catch {}
+      chanRef.current = null;
+      if (ablyRef.current) {
+        try { ablyRef.current.close(); } catch {}
+        ablyRef.current = null;
+      }
+      return;
+    }
+
+    const key = import.meta.env.VITE_ABLY_API_KEY;
+    if (!key) return;
+
+    const ably = new Realtime({ key, clientId: localPlayerId });
+    ablyRef.current = ably;
+    const channel = ably.channels.get(`rw:v1:rooms:${roomCode}`);
+    chanRef.current = channel;
+
+    let activeSub = true;
+
+    (async () => {
+      try {
+        await channel.attach();
+        channel.subscribe("intent", (msg) => {
+          if (!activeSub) return;
+          const intent = msg?.data as MPIntent;
+          handleMPIntentRef.current(intent);
+        });
+      } catch {}
+    })();
 
     return () => {
-      try { channel.unsubscribe("intent", handler); } catch {}
+      activeSub = false;
+      try { channel.unsubscribe(); } catch {}
+      try { channel.detach(); } catch {}
+      try { ably.close(); } catch {}
+      if (chanRef.current === channel) {
+        chanRef.current = null;
+      }
+      if (ablyRef.current === ably) {
+        ablyRef.current = null;
+      }
     };
+  }, [roomCode, localPlayerId]);
 
-  }, [mpChannel, localPlayerId, storeReserveReport]);
+  const handleRevealClick = useCallback(() => {
+    const proceeded = onReveal();
+    if (proceeded && isMultiplayer) {
+      sendIntent({ type: "reveal", side: localLegacySide });
+    }
+  }, [isMultiplayer, localLegacySide, onReveal, sendIntent]);
+
+  const handleNextClick = useCallback(() => {
+    const advanced = nextRound();
+    if (advanced && isMultiplayer) {
+      sendIntent({ type: "nextRound", side: localLegacySide });
+    }
+  }, [isMultiplayer, localLegacySide, nextRound, sendIntent]);
 
 
-    
+
   // ---------------- UI ----------------
 
   const renderWheelPanel = (i: number) => {
@@ -1225,8 +1251,8 @@ const HUDPanels = () => {
               </div>
             </div>
           )}
-          {phase === "choose" && <button disabled={!canReveal} onClick={onReveal} className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold disabled:opacity-50">Resolve</button>}
-          {(phase === "roundEnd" || phase === "ended") && <button onClick={nextRound} className="px-2.5 py-0.5 rounded bg-emerald-500 text-slate-900 font-semibold">Next</button>}
+          {phase === "choose" && <button disabled={!canReveal} onClick={handleRevealClick} className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold disabled:opacity-50">Resolve</button>}
+          {(phase === "roundEnd" || phase === "ended") && <button onClick={handleNextClick} className="px-2.5 py-0.5 rounded bg-emerald-500 text-slate-900 font-semibold">Next</button>}
         </div>
       </div>
 

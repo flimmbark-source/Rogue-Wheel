@@ -250,8 +250,6 @@ setMembers(mapped);
           connectionListenerRef.current = null;
         }
 
-        handoffRef.current = true;
-
         onStart({
           ...payload,
           localSide,
