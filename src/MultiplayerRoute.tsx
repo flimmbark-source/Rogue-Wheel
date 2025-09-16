@@ -204,16 +204,19 @@ export default function MultiplayerRoute({
   }, []);
 
   // --- actions ---
-  async function onCreateRoom() {
-    const code = makeRoomCode();
-    setMode("creating");
-    const created = await connectRoom(code);
-    if (!created) {
-      setMembers([]);
-      setMode("idle");
-      setRoomCode("");
-    }
+async function onCreateRoom() {
+  const code = makeRoomCode();
+
+  setRoomCode(code);       // ✅ show it right away
+  setMode("creating");     // UI shows the Room box with the code
+
+  const created = await connectRoom(code);
+  if (!created) {
+    setMembers([]);
+    setMode("idle");
+    setRoomCode("");
   }
+}
 
   async function onJoinRoom() {
     const code = sanitizeCode(joinCode);
