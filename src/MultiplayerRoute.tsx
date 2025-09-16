@@ -125,6 +125,7 @@ export default function MultiplayerRoute({
     try {
       const page = await chan.presence.get({ waitForSync: true } as any);
       const list = Array.isArray(page) ? page : page?.items ?? [];
+
       
 // (optionally, at top of file if you need the type)
 /*
@@ -145,6 +146,7 @@ const mapped = sorted.map((p) => ({
   name: (p.data as any)?.name ?? "Player",
 }));
 setMembers(mapped);
+
 
     } catch (e: any) {
       setStatus(`Presence get error: ${e?.message ?? e}`);

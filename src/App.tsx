@@ -1,6 +1,8 @@
 import React, { useMemo, useRef, useState, useEffect, forwardRef, useImperativeHandle, memo, startTransition, useCallback } from "react";
 import type { Realtime } from "ably";
 import { motion } from "framer-motion";
+import React, { useMemo, useRef, useState, useEffect, useCallback, /* ... */ } from "react";
+
 
 /**
  * Three-Wheel Roguelike — Wins-Only, Low Mental Load (v2.4.17-fix1)
@@ -218,11 +220,34 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
     assignRef.current = assign;
   }, [assign]);
 
-  type MPIntent =
-    | { type: "assign"; lane: number; side: LegacySide; card: Card }
-    | { type: "clear"; lane: number; side: LegacySide }
-    | { type: "reveal"; side: LegacySide }
-    | { type: "nextRound"; side: LegacySide };
+// Use a local alias so this still works even if game/types Side = "left" | "right"
+type LegacySide = "player" | "enemy";
+
+const reserveReportsRef = useRef<
+  Record<LegacySide, { reserve: number; round: number } | null>
+>({
+  player: null,
+  enemy: null,
+});
+
+const storeReserveReport = useCallback(
+  (side: LegacySide, reserve: number, roundValue: number) => {
+    const prev = reserveReportsRef.current[side];
+    if (!prev || prev.reserve !== reserve || prev.round !== roundValue) {
+      reserveReportsRef.current[side] = { reserve, round: roundValue };
+      return true;
+    }
+    return false;
+  },
+  []
+);
+
+type MPIntent =
+  | { type: "assign"; lane: number; side: LegacySide; card: Card }
+  | { type: "clear"; lane: number; side: LegacySide }
+  | { type: "reveal"; side: LegacySide }
+  | { type: "nextRound"; side: LegacySide }
+  | { type: "reserve"; side: LegacySide; reserve: number; round: number };
 
   type MPWireIntent = MPIntent & { sender: string };
 
@@ -236,6 +261,17 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
     },
     [localPlayerId]
   );
+
+
+  const broadcastLocalReserve = useCallback(() => {
+    const lane = localLegacySide === "player" ? assignRef.current.player : assignRef.current.enemy;
+    const reserve = computeReserveSum(localLegacySide, lane);
+    const updated = storeReserveReport(localLegacySide, reserve, round);
+    if (isMultiplayer && updated) {
+      publishIntent({ type: "reserve", side: localLegacySide, reserve, round });
+    }
+  }, [isMultiplayer, localLegacySide, publishIntent, round, storeReserveReport, player, enemy]);
+
 
   // Drag state + tap-to-assign selected id
   const [dragCardId, setDragCardId] = useState<string | null>(null);
@@ -419,6 +455,10 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
   return left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
 }
 
+  useEffect(() => {
+    broadcastLocalReserve();
+  }, [broadcastLocalReserve, assign, player, enemy, localLegacySide, round, isMultiplayer]);
+
 // Keep this: after a round, move only played cards out of hand, discard them, then draw.
 function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
   const playedIds = new Set(played.map((c) => c.id));
@@ -460,6 +500,11 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     (opts?: { force?: boolean }) => {
       if (!opts?.force && !canReveal) return false;
 
+
+      if (isMultiplayer) {
+        broadcastLocalReserve();
+      }
+
       setLockedWheelSize((s) => s ?? wheelSize);
       setFreezeLayout(true);
 
@@ -488,7 +533,9 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
       return true;
     },
-    [canReveal, isMultiplayer, wheelSize, setFreezeLayout, setLockedWheelSize, setPhase, setSafeTimeout, resolveRound, setAssign, setEnemy]
+
+    [canReveal, isMultiplayer, wheelSize, setFreezeLayout, setLockedWheelSize, setPhase, setSafeTimeout, resolveRound, setAssign, setEnemy, broadcastLocalReserve]
+
   );
 
   function onReveal() {
@@ -506,8 +553,36 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
   function resolveRound(enemyPicks?: (Card | null)[]) {
     const played = [0, 1, 2].map((i) => ({ p: assign.player[i] as Card | null, e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null }));
 
-    const pReserve = computeReserveSum("player", played.map((pe) => pe.p));
-    const eReserve = computeReserveSum("enemy", played.map((pe) => pe.e));
+    const localPlayed = localLegacySide === "player"
+      ? played.map((pe) => pe.p)
+      : played.map((pe) => pe.e);
+    const remotePlayed = remoteLegacySide === "player"
+      ? played.map((pe) => pe.p)
+      : played.map((pe) => pe.e);
+
+    const localReserve = computeReserveSum(localLegacySide, localPlayed);
+    let remoteReserve: number;
+    let usedRemoteReport = false;
+
+    if (!isMultiplayer) {
+      remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+    } else {
+      const report = reserveReportsRef.current[remoteLegacySide];
+      if (report && report.round === round) {
+        remoteReserve = report.reserve;
+        usedRemoteReport = true;
+      } else {
+        remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+      }
+    }
+
+    storeReserveReport(localLegacySide, localReserve, round);
+    if (!isMultiplayer || !usedRemoteReport) {
+      storeReserveReport(remoteLegacySide, remoteReserve, round);
+    }
+
+    const pReserve = localLegacySide === "player" ? localReserve : remoteReserve;
+    const eReserve = localLegacySide === "enemy" ? localReserve : remoteReserve;
 
     // 🔸 show these during showEnemy/anim immediately
     setReserveSums({ player: pReserve, enemy: eReserve });
@@ -668,6 +743,13 @@ function nextRound() {
         case "nextRound":
           nextRoundCoreRef.current?.({ force: true });
           break;
+
+        case "reserve":
+          if (typeof data.reserve === "number" && typeof data.round === "number") {
+            storeReserveReport(data.side, data.reserve, data.round);
+          }
+          break;
+
         default:
           break;
       }
@@ -678,7 +760,9 @@ function nextRound() {
     return () => {
       try { channel.unsubscribe("intent", handler); } catch {}
     };
-  }, [mpChannel, localPlayerId]);
+
+  }, [mpChannel, localPlayerId, storeReserveReport]);
+
 
     
   // ---------------- UI ----------------
