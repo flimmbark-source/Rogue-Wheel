@@ -1185,7 +1185,7 @@ const HUDPanels = () => {
           <div className="flex items-center min-w-0 flex-1">
             <span className="truncate block font-semibold">{name}</span>
             {(isPlayer ? "player" : "enemy") === localLegacySide && (
-              <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px]"></span>
+              <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px]">You</span>
             )}
           </div>
           <div className="flex items-center gap-1 ml-1 flex-shrink-0">
