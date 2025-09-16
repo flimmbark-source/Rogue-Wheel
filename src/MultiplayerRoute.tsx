@@ -1,11 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Realtime } from "ably";
+import type { Players, Side } from "./game/types";
 
+// ----- Start payload now includes a Players map and localSide -----
 type StartPayload = {
   roomCode: string;
   seed: number;
-  players: { clientId: string; name: string }[];
   hostId: string;
+  players: Players;          // { left: {id,name,color}, right: {…} }
+  localSide: Side;           // side for THIS client
+  playersArr?: { clientId: string; name: string }[]; // optional: raw list for debugging
 };
 
 export default function MultiplayerRoute({
@@ -39,7 +43,6 @@ export default function MultiplayerRoute({
   // --- helpers ---
   function log(s: string) {
     setStatus(s);
-    // console.log(s); // keep if you want
   }
 
   // Create Ably client lazily
@@ -74,8 +77,15 @@ export default function MultiplayerRoute({
 
     // start event
     chan.subscribe("start", (msg) => {
-      const payload = msg.data as StartPayload;
-      onStart(payload);
+      const payload = msg.data as Omit<StartPayload, "localSide">;
+      // Determine THIS client's side from the published players map
+      const localSide: Side =
+        payload.players.left.id === clientId ? "left" : "right";
+
+      onStart({
+        ...payload,
+        localSide,
+      });
     });
 
     // Enter presence
@@ -94,10 +104,6 @@ export default function MultiplayerRoute({
       try {
         const ch = channelRef.current;
         ch?.presence?.leave();
-        if (ablyRef.current) {
-          // Let Ably close when no channels (optional)
-          // ablyRef.current.close();
-        }
       } catch {}
     };
   }, []);
@@ -130,15 +136,25 @@ export default function MultiplayerRoute({
 
   async function onStartGame() {
     if (!isHost) return;
+    if (members.length < 2) {
+      log("Need at least 2 players to start.");
+      return;
+    }
+
+    // --- Assign sides deterministically: host=left, first joiner=right
+    const players = assignSides(members);
+
     const seed = Math.floor(Math.random() * 2 ** 31);
-    const payload: StartPayload = {
+    const payload: Omit<StartPayload, "localSide"> = {
       roomCode,
       seed,
-      players: members,
-      hostId: clientId,
+      players,
+      hostId: members[0].clientId, // first in presence is host
+      playersArr: members,         // optional, for debugging/analytics
     };
+
     await channelRef.current?.publish("start", payload);
-    // Host’s client will also receive the 'start' and call onStart
+    // Host will also receive the 'start' event and flow through subscribe handler
   }
 
   return (
@@ -284,4 +300,25 @@ function uid4() {
 function defaultName() {
   const animals = ["Fox", "Bear", "Lynx", "Hawk", "Otter", "Wolf", "Drake"];
   return `Player ${animals[Math.floor(Math.random() * animals.length)]}`;
+}
+
+// Assign sides from presence order (host=left, first joiner=right)
+function assignSides(members: { clientId: string; name: string }[]) : Players {
+  // Ensure deterministic order (you already sort by presence timestamp above)
+  const left = members[0];
+  const right = members[1];
+
+  // Side colors: left green, right orange (feel free to theme later)
+  return {
+    left: {
+      id: left.clientId,
+      name: left.name,
+      color: "#22c55e",
+    },
+    right: {
+      id: right.clientId,
+      name: right.name,
+      color: "#f97316",
+    },
+  };
 }
