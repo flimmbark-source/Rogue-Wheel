@@ -76,14 +76,14 @@ export default function MultiplayerRoute({
   // Centralized member refresh that waits for sync to avoid partial sets
   async function refreshMembers(chan: ReturnType<Realtime["channels"]["get"]>) {
     try {
-      const list = await chan.presence.get({ waitForSync: true } as any);
-      const mapped =
-        list
-          ?.sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
-          .map((p) => ({
-            clientId: p.clientId!,
-            name: (p.data as any)?.name ?? "Player",
-          })) ?? [];
+      const page = await chan.presence.get({ waitForSync: true } as any);
+      const list = Array.isArray(page) ? page : page?.items ?? [];
+      const mapped = Array.from(list)
+        .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+        .map((p) => ({
+          clientId: p.clientId!,
+          name: (p.data as any)?.name ?? "Player",
+        }));
       setMembers(mapped);
     } catch (e: any) {
       setStatus(`Presence get error: ${e?.message ?? e}`);
