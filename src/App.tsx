@@ -514,6 +514,54 @@ function nextRound() {
   // panel width (border-box) so wheel is visually centered
   const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
 
+  const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
+    if (!slot.card) return null;
+    const card = slot.card;
+    const interactable = slot.side === localLegacySide && phase === "choose";
+
+    const handlePick = () => {
+      if (!interactable) return;
+      if (selectedCardId) {
+        tapAssignIfSelected();
+      } else {
+        setSelectedCardId(card.id);
+      }
+    };
+
+    const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
+      if (!interactable) return;
+      setSelectedCardId(card.id);
+      setDragCardId(card.id);
+      try { e.dataTransfer.setData("text/plain", card.id); } catch {}
+      e.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleDragEnd = () => {
+      setDragCardId(null);
+      setDragOverWheel(null);
+    };
+
+    const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (!interactable) return;
+      e.stopPropagation();
+      startPointerDrag(card, e);
+    };
+
+    return (
+      <StSCard
+        card={card}
+        size="sm"
+        disabled={!interactable}
+        selected={isSlotSelected}
+        onPick={handlePick}
+        draggable={interactable}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onPointerDown={handlePointerDown}
+      />
+    );
+  };
+
   const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
   const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
   const handleDropCommon = (id: string | null, assignCard: (card: Card) => void = assignToLeft) => {
@@ -621,7 +669,7 @@ function nextRound() {
           aria-label={`Wheel ${i+1} left slot`}
         >
           {leftSlot.card
-            ? <StSCard card={leftSlot.card} size="sm" />
+            ? renderSlotCard(leftSlot, isLeftSelected)
             : <div className="text-[11px] opacity-80 text-center">
                 {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
               </div>}
@@ -673,7 +721,7 @@ function nextRound() {
           }}
         >
           {rightSlot.card && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended")
-            ? <StSCard card={rightSlot.card} size="sm" disabled={rightSlot.side !== localLegacySide} />
+            ? renderSlotCard(rightSlot, isRightSelected)
             : <div className="text-[11px] opacity-60 text-center">
                 {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
               </div>}
