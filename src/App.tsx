@@ -361,7 +361,6 @@ const storeReserveReport = useCallback(
       const prevAtLane = lane[laneIndex];
       const fromIdx = lane.findIndex((c) => c?.id === card.id);
 
-
       if (prevAtLane && prevAtLane.id === card.id && fromIdx === laneIndex) {
         if (side === localLegacySide) {
           setSelectedCardId(null);
@@ -586,7 +585,6 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     revealRoundCore();
   }, [canReveal, isMultiplayer, phase, resolveVotes, revealRoundCore]);
 
-
   function resolveRound(enemyPicks?: (Card | null)[]) {
     const played = [0, 1, 2].map((i) => ({ p: assign.player[i] as Card | null, e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null }));
 
@@ -674,17 +672,37 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
       let pWins = wins.player, eWins = wins.enemy;
       let hudColors: [string | null, string | null, string | null] = [null, null, null];
+      const roundWinsCount: Record<LegacySide, number> = { player: 0, enemy: 0 };
       outcomes.forEach((o) => {
         if (o.tie) { appendLog(`Wheel ${o.wheel + 1} tie: ${o.detail} — no win.`); }
         else if (o.winner) {
-          if (o.section.id === "Initiative") setInitiative(o.winner);
           hudColors[o.wheel] = HUD_COLORS[o.winner];
+          roundWinsCount[o.winner] += 1;
           if (o.winner === "player") pWins++; else eWins++;
           appendLog(`Wheel ${o.wheel + 1} win -> ${o.winner} (${o.detail}).`);
         }
       });
 
       if (!mountedRef.current) return;
+
+      const prevInitiative = initiative;
+      const roundScore = `${roundWinsCount.player}-${roundWinsCount.enemy}`;
+      let nextInitiative: LegacySide;
+      let initiativeLog: string;
+      if (roundWinsCount.player === roundWinsCount.enemy) {
+        nextInitiative = prevInitiative === "player" ? "enemy" : "player";
+        initiativeLog = `Round ${round} tie (${roundScore}) — initiative swaps to ${namesByLegacy[nextInitiative]}.`;
+      } else if (roundWinsCount.player > roundWinsCount.enemy) {
+        nextInitiative = "player";
+        initiativeLog = `${namesByLegacy.player} wins the round ${roundScore} and takes initiative next round.`;
+      } else {
+        nextInitiative = "enemy";
+        initiativeLog = `${namesByLegacy.enemy} wins the round ${roundScore} and takes initiative next round.`;
+      }
+
+      setInitiative(nextInitiative);
+      appendLog(initiativeLog);
+
       setWheelHUD(hudColors);
       setWins({ player: pWins, enemy: eWins });
       setReserveSums({ player: pReserve, enemy: eReserve });
@@ -783,6 +801,7 @@ function nextRound() {
       }
     },
 
+
     [assignToWheelFor, canReveal, clearAssignFor, localLegacySide, nextRound, onReveal, phase, storeReserveReport]
 
   );
@@ -807,8 +826,10 @@ function nextRound() {
       return;
     }
 
+
     const key = import.meta.env.VITE_ABLY_API_KEY;
     if (!key) return;
+
 
     const ably = new Realtime({ key, clientId: localPlayerId });
     ablyRef.current = ably;
@@ -857,7 +878,6 @@ function nextRound() {
     sendIntent({ type: "reveal", side: localLegacySide });
   }, [canReveal, isMultiplayer, localLegacySide, markResolveVote, onReveal, phase, resolveVotes, sendIntent]);
 
-
   const handleNextClick = useCallback(() => {
     const advanced = nextRound();
     if (advanced && isMultiplayer) {
@@ -873,16 +893,8 @@ function nextRound() {
   const pc = assign.player[i];
   const ec = assign.enemy[i];
 
-  const leftSlot = localLegacySide === "player"
-    ? { side: "player" as const, card: pc, name: namesByLegacy.player }
-    : { side: "enemy"  as const, card: ec, name: namesByLegacy.enemy };
-
-  const rightSlot = localLegacySide === "player"
-    ? { side: "enemy"  as const, card: ec, name: namesByLegacy.enemy }
-    : { side: "player" as const, card: pc, name: namesByLegacy.player };
-
-  const assignToLeft  = (card: Card) => assignToWheelLocal(i, card);
-  const assignToRight = (card: Card) => assignToWheelLocal(i, card);
+  const leftSlot = { side: "player" as const, card: pc, name: namesByLegacy.player };
+  const rightSlot = { side: "enemy" as const, card: ec, name: namesByLegacy.enemy };
 
   const ws = Math.round(lockedWheelSize ?? wheelSize);
 
@@ -949,18 +961,26 @@ function nextRound() {
 
   const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
   const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
-  const handleDropCommon = (id: string | null, assignCard: (card: Card) => void = assignToLeft) => {
+  const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
     if (!id || !active[i]) return;
+    const intendedSide = targetSide ?? localLegacySide;
+    if (intendedSide !== localLegacySide) {
+      setDragOverWheel(null);
+      setDragCardId(null);
+      return;
+    }
+
     const isLocalPlayer = localLegacySide === "player";
     const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
     const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as Card | undefined;
     const card = fromHand || fromSlots || null;
-    if (card) assignCard(card as Card);
-    setDragOverWheel(null); setDragCardId(null);
+    if (card) assignToWheelLocal(i, card as Card);
+    setDragOverWheel(null);
+    setDragCardId(null);
   };
-  const onZoneDrop = (e: React.DragEvent, assignCard?: (card: Card) => void) => {
+  const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
     e.preventDefault();
-    handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, assignCard ?? assignToLeft);
+    handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
   };
 
   const tapAssignIfSelected = () => {
@@ -1034,9 +1054,10 @@ function nextRound() {
           onDragOver={onZoneDragOver}
           onDragEnter={onZoneDragOver}
           onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, assignToLeft)}
+          onDrop={(e) => onZoneDrop(e, "player")}
           onClick={(e) => {
             e.stopPropagation();
+            if (leftSlot.side !== localLegacySide) return;
             if (selectedCardId) {
               // If a hand card is already selected, assign it here (this also swaps)
               tapAssignIfSelected();
@@ -1095,9 +1116,10 @@ function nextRound() {
           onDragOver={onZoneDragOver}
           onDragEnter={onZoneDragOver}
           onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, assignToRight)}
+          onDrop={(e) => onZoneDrop(e, "enemy")}
           onClick={(e) => {
             e.stopPropagation();
+            if (rightSlot.side !== localLegacySide) return;
             if (selectedCardId) {
               tapAssignIfSelected();
             } else if (rightSlot.card) {
@@ -1359,7 +1381,6 @@ const HUDPanels = () => {
               </div>
             </div>
           )}
-
           {phase === "choose" && (
             <div className="flex flex-col items-end gap-1">
               <button
@@ -1376,7 +1397,6 @@ const HUDPanels = () => {
               )}
             </div>
           )}
-
           {(phase === "roundEnd" || phase === "ended") && <button onClick={handleNextClick} className="px-2.5 py-0.5 rounded bg-emerald-500 text-slate-900 font-semibold">Next</button>}
         </div>
       </div>
