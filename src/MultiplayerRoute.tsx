@@ -12,6 +12,10 @@ type StartPayload = {
   playersArr?: { clientId: string; name: string }[]; // optional: raw list for debugging
 };
 
+type ConnectOptions = {
+  requireExistingMembers?: boolean;
+};
+
 export default function MultiplayerRoute({
   onBack,
   onStart,
@@ -75,7 +79,7 @@ export default function MultiplayerRoute({
   }
 
   // Attach channel, subscribe presence, enter presence, seed list, and wire 'start'
-  async function connectRoom(code: string) {
+  async function connectRoom(code: string, options: ConnectOptions = {}) {
     const ably = ensureAbly();
     const chan = ably.channels.get(`rw-rooms:${code.toUpperCase()}`);
     channelRef.current = chan;
@@ -83,6 +87,28 @@ export default function MultiplayerRoute({
     try {
       // 1) Ensure attached before presence ops
       await chan.attach();
+
+      // If we're joining an existing room, verify someone else is already here
+      if (options.requireExistingMembers) {
+        try {
+          const existing = await chan.presence.get({ waitForSync: true } as any);
+          const others =
+            existing?.filter((p) => p.clientId && p.clientId !== clientId) ?? [];
+          if (others.length === 0) {
+            log(
+              `Room ${code} not found. Ask the host to create it before joining.`
+            );
+            await chan.detach().catch(() => {});
+            channelRef.current = null;
+            return false;
+          }
+        } catch (err: any) {
+          log(`Room lookup failed: ${err?.message ?? err}`);
+          await chan.detach().catch(() => {});
+          channelRef.current = null;
+          return false;
+        }
+      }
 
       // 2) Subscribe to presence first (so we don't miss early events)
       const onPresence = () => refreshMembers(chan);
@@ -115,9 +141,32 @@ export default function MultiplayerRoute({
 
       setMode("in-room");
       log(`Joined room ${code}`);
+      return true;
     } catch (e: any) {
       log(`Room connect error: ${e?.message ?? e}`);
+      try {
+        if (presenceListenerRef.current) {
+          chan.presence.unsubscribe(presenceListenerRef.current as any);
+          presenceListenerRef.current = null;
+        } else {
+          chan.presence.unsubscribe();
+        }
+      } catch {}
+      try {
+        chan.unsubscribe();
+      } catch {}
+      try {
+        await chan.detach();
+      } catch {}
+      if (ablyRef.current && connectionListenerRef.current) {
+        try {
+          ablyRef.current.connection.off(connectionListenerRef.current as any);
+        } catch {}
+        connectionListenerRef.current = null;
+      }
+      channelRef.current = null;
     }
+    return false;
   }
 
   // Optional: if the user edits their name while in-room, update presence
@@ -157,19 +206,29 @@ export default function MultiplayerRoute({
   }, []);
 
   // --- actions ---
-  function onCreateRoom() {
+  async function onCreateRoom() {
     const code = makeRoomCode();
     setRoomCode(code);
     setMode("creating");
-    connectRoom(code);
+    const created = await connectRoom(code);
+    if (!created) {
+      setMembers([]);
+      setMode("idle");
+      setRoomCode("");
+    }
   }
 
-  function onJoinRoom() {
+  async function onJoinRoom() {
     if (!joinCode.trim()) return;
     const code = joinCode.trim().toUpperCase();
     setRoomCode(code);
     setMode("joining");
-    connectRoom(code);
+    const joined = await connectRoom(code, { requireExistingMembers: true });
+    if (!joined) {
+      setMembers([]);
+      setMode("idle");
+      setRoomCode("");
+    }
   }
 
   async function onLeaveRoom() {
