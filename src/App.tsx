@@ -773,11 +773,9 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
   [clearResolveVotes, generateWheelSet, phase, setAssign, setDragCardId, setDragOverWheel, setEnemy, setFreezeLayout, setLockedWheelSize, setPhase, setPlayer, setReserveSums, setSelectedCardId, setTokens, setWheelHUD, setWheelSections, setRound, wheelRefs]
 
-
 function nextRound() {
   return nextRoundCore();
 }
-
 
   const handleMPIntent = useCallback(
     (msg: MPIntent) => {
