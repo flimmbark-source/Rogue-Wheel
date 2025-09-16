@@ -333,8 +333,6 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
   return { ...f, hand: padded } as T;
 }
 
-}
-
   // ---------------- Reveal / Resolve ----------------
   function onReveal() {
     if (!canReveal) return;
@@ -445,53 +443,45 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     animateSpins();
   }
 
-  function nextRound() {
-    if (!(phase === "roundEnd" || phase === "ended")) return;
+function nextRound() {
+  if (!(phase === "roundEnd" || phase === "ended")) return;
 
-    const playerPlayed = assign.player.filter((c): c is Card => !!c);
-    const enemyPlayed = assign.enemy.filter((c): c is Card => !!c);
+  const playerPlayed = assign.player.filter((c): c is Card => !!c);
+  const enemyPlayed  = assign.enemy.filter((c): c is Card => !!c);
+
+  // 1) Immediately reset visual tokens (imperative, avoids flicker)
+  wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
+
+  // 2) Reset layout lock
+  setFreezeLayout(false);
+  setLockedWheelSize(null);
+
+  // 3) Move played → discard; keep reserves; draw/pad to 5
+  setPlayer(p => settleFighterAfterRound(p, playerPlayed));
+  setEnemy(e => settleFighterAfterRound(e, enemyPlayed));
+
+  // 4) New wheels + clear assignments
+  setWheelSections([
+    genWheelSections("bandit"),
+    genWheelSections("sorcerer"),
+    genWheelSections("beast"),
+  ]);
+  setAssign({ player: [null, null, null], enemy: [null, null, null] });
+
+  // 5) Clear UI state
+  setSelectedCardId(null);
+  setDragCardId(null);
+  setDragOverWheel(null);
+  setTokens([0, 0, 0]);
+  setReserveSums(null);
+  setWheelHUD([null, null, null]);
+
+  // 6) Advance
+  setPhase("choose");
+  setRound(r => r + 1);
+}
+
     
-// 1) Immediately reset visual tokens (imperative, avoids flicker)
-wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
-
-// 2) Reset layout + round state
-setFreezeLayout(false);
-setLockedWheelSize(null);
-
-// refill both hands (draw, then pad to exactly 5)
-setPlayer(p => ensureFiveHand(freshFive(p)));
-setEnemy(e => ensureFiveHand(freshFive(e)));
-
-// regenerate sections for next encounter (adjust types as needed)
-setWheelSections([
-  genWheelSections("bandit"),
-  genWheelSections("sorcerer"),
-  genWheelSections("beast"),
-]);
-
-// clear per-wheel assignments
-setAssign({ player: [null, null, null], enemy: [null, null, null] });
-
-
-    setFreezeLayout(false);
-    setLockedWheelSize(null);
-    setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
-    setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
-    setWheelSections([genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
-    setAssign({ player: [null, null, null], enemy: [null, null, null] });
-    setSelectedCardId(null);
-    setDragCardId(null);
-    setDragOverWheel(null);
-
-    // Keep state in sync
-    setTokens([0, 0, 0]);
-
-    setReserveSums(null);
-    setWheelHUD([null, null, null]);
-    setPhase("choose");
-    setRound((r) => r + 1);
-  }
-
   // ---------------- UI ----------------
 
   const renderWheelPanel = (i: number) => {
