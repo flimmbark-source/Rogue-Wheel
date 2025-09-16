@@ -26,7 +26,7 @@ import {
 } from "./game/types";
 import { easeInOutCubic, inSection } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
-import { makeFighter, freshFive } from "./game/decks";
+import { makeFighter, refillTo } from "./game/decks";
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 
 // components
@@ -297,24 +297,40 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
   return left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
 }
 
-// 🔸 Guarantees we have exactly 5 cards in hand.
-// If the deck util ever returns fewer, we pad with neutral 0-value cards.
-// (Unique IDs prevent collisions; these behave like real cards with number 0.)
-function ensureFiveHand<F extends Fighter>(f: F): F {
-  const TARGET = 5;
+// Keep this: after a round, move only played cards out of hand, discard them, then draw.
+function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
+  const playedIds = new Set(played.map((c) => c.id));
+  const next: Fighter = {
+    name: f.name,
+    deck: [...f.deck],
+    hand: f.hand.filter((c) => !playedIds.has(c.id)), // keep reserves in hand
+    discard: [...f.discard, ...played],
+  };
+
+  // First, try to draw back to 5 using your existing deck util.
+  const refilled = refillTo(next, 5);
+
+  // Then, as a safety net, pad with neutral 0-cards if still short.
+  return ensureFiveHand(refilled, 5);
+}
+
+// Small helper to top-up a hand with neutral 0-value cards if needed.
+// Uses crypto.randomUUID() when available to avoid ID collisions.
+function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
   if (f.hand.length >= TARGET) return f;
+
   const padded = [...f.hand];
-  let n = f.hand.length;
-  while (n < TARGET) {
+  while (padded.length < TARGET) {
     padded.push({
-      id: `pad-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      id: typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `pad-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name: "Reserve",
       number: 0,
-      kind: "normal", // matches your StSCard / isNormal expectations
-    } as any); // Card
-    n++;
+      kind: "normal",
+    } as unknown as Card);
   }
-  return { ...f, hand: padded } as F;
+  return { ...f, hand: padded } as T;
 }
 
   // ---------------- Reveal / Resolve ----------------
@@ -323,6 +339,13 @@ function ensureFiveHand<F extends Fighter>(f: F): F {
     setLockedWheelSize((s) => (s ?? wheelSize));
     setFreezeLayout(true);
     const enemyPicks = autoPickEnemy();
+    if (enemyPicks.some(Boolean)) {
+      const pickIds = new Set((enemyPicks.filter(Boolean) as Card[]).map((c) => c.id));
+      setEnemy((prev) => ({
+        ...prev,
+        hand: prev.hand.filter((card) => !pickIds.has(card.id)),
+      }));
+    }
     setAssign((a) => ({ ...a, enemy: enemyPicks }));
     setPhase("showEnemy");
     setSafeTimeout(() => {
@@ -420,28 +443,45 @@ function ensureFiveHand<F extends Fighter>(f: F): F {
     animateSpins();
   }
 
-  function nextRound() {
+function nextRound() {
   if (!(phase === "roundEnd" || phase === "ended")) return;
 
-  // Reset visual tokens immediately (imperative)
+  const playerPlayed = assign.player.filter((c): c is Card => !!c);
+  const enemyPlayed  = assign.enemy.filter((c): c is Card => !!c);
+
+  // 1) Immediately reset visual tokens (imperative, avoids flicker)
   wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
 
+  // 2) Reset layout lock
   setFreezeLayout(false);
   setLockedWheelSize(null);
-  setPlayer((p) => ensureFiveHand(freshFive(p)));
-  setEnemy((e) => ensureFiveHand(freshFive(e)));
-  setWheelSections([genWheelSections("bandit"), genWheelSections("sorcerer"), genWheelSections("beast")]);
+
+  // 3) Move played → discard; keep reserves; draw/pad to 5
+  setPlayer(p => settleFighterAfterRound(p, playerPlayed));
+  setEnemy(e => settleFighterAfterRound(e, enemyPlayed));
+
+  // 4) New wheels + clear assignments
+  setWheelSections([
+    genWheelSections("bandit"),
+    genWheelSections("sorcerer"),
+    genWheelSections("beast"),
+  ]);
   setAssign({ player: [null, null, null], enemy: [null, null, null] });
 
-  // Keep state in sync
+  // 5) Clear UI state
+  setSelectedCardId(null);
+  setDragCardId(null);
+  setDragOverWheel(null);
   setTokens([0, 0, 0]);
-
   setReserveSums(null);
   setWheelHUD([null, null, null]);
-  setPhase("choose");
-  setRound((r) => r + 1);
-  }
 
+  // 6) Advance
+  setPhase("choose");
+  setRound(r => r + 1);
+}
+
+    
   // ---------------- UI ----------------
 
   const renderWheelPanel = (i: number) => {
@@ -460,6 +500,9 @@ function ensureFiveHand<F extends Fighter>(f: F): F {
   const assignToRight = (card: Card) => assignToWheelLocal(i, card);
 
   const ws = Math.round(lockedWheelSize ?? wheelSize);
+
+  const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
+  const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
 
   // --- layout numbers that must match the classes below ---
   const slotW    = 80;   // w-[80px] on both slots
@@ -571,8 +614,9 @@ function ensureFiveHand<F extends Fighter>(f: F): F {
           }}
           className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
           style={{
-            backgroundColor: dragOverWheel === i ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-            borderColor:     dragOverWheel === i ? THEME.brass          : THEME.slotBorder,
+            backgroundColor: dragOverWheel === i || isLeftSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
+            borderColor:     dragOverWheel === i || isLeftSelected ? THEME.brass          : THEME.slotBorder,
+            boxShadow: isLeftSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
           }}
           aria-label={`Wheel ${i+1} left slot`}
         >
@@ -607,7 +651,11 @@ function ensureFiveHand<F extends Fighter>(f: F): F {
         {/* Enemy slot */}
         <div
           className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{ backgroundColor: THEME.slotBg, borderColor: THEME.slotBorder }}
+          style={{
+            backgroundColor: dragOverWheel === i || isRightSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
+            borderColor:     dragOverWheel === i || isRightSelected ? THEME.brass          : THEME.slotBorder,
+            boxShadow: isRightSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
+          }}
           aria-label={`Wheel ${i+1} right slot`}
           data-drop="slot"
           data-idx={i}
@@ -667,7 +715,24 @@ function ensureFiveHand<F extends Fighter>(f: F): F {
   className="pointer-events-auto"
   onClick={(e) => {
     e.stopPropagation();
-    setSelectedCardId((prev) => (prev === card.id ? null : card.id));
+    if (!selectedCardId) {
+      setSelectedCardId(card.id);
+      return;
+    }
+
+    if (selectedCardId === card.id) {
+      setSelectedCardId(null);
+      return;
+    }
+
+    const lane = localLegacySide === "player" ? assign.player : assign.enemy;
+    const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
+    if (slotIdx !== -1) {
+      assignToWheelLocal(slotIdx, card);
+      return;
+    }
+
+    setSelectedCardId(card.id);
   }}
   draggable
   onDragStart={(e) => {
@@ -851,7 +916,6 @@ const HUDPanels = () => {
 
     </div>
   );
-
 }
 
 // ---------------- Dev Self-Tests (lightweight) ----------------
