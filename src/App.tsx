@@ -1833,22 +1833,21 @@ useEffect(() => {
   </>
 )}
 
+    </div>  {/* end of main wrapper */}
+  );
+} // end of ThreeWheel_WinsOnly component
 
 // ---------------- Dev Self-Tests (lightweight) ----------------
-// These run once in dev consoles to catch regressions.
 if (typeof window !== 'undefined') {
   try {
-    // inSection should exclude 0 and handle wrap
     const s: Section = { id: "Strongest", color: "#fff", start: 14, end: 2 } as any;
     console.assert(!inSection(0, s), 'slice 0 excluded');
     console.assert(inSection(14, s) && inSection(15, s) && inSection(1, s) && inSection(2, s), 'wrap includes 14,15,1,2');
   } catch {}
   try {
-    // sections cover 15 slices total (1..15)
     const secs = genWheelSections("bandit");
     const len = (sec: Section) => (sec.start <= sec.end ? (sec.end - sec.start + 1) : (SLICES - sec.start + (sec.end + 1)));
     const sum = secs.reduce((a, s) => a + len(s), 0);
     console.assert(sum === 15, 'sections cover 15 slices');
   } catch {}
 }
-
