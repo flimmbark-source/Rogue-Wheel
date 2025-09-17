@@ -85,7 +85,7 @@ export default function MultiplayerRoute({
         if (!msg?.clientId) continue;
         const data = (msg.data ?? {}) as any;
         const rawTargetWins = data?.targetWins;
-        const prev = prevMap.get(msg.clientId);
+        const prev = map.get(msg.clientId);
         const serverTs = typeof msg.timestamp === "number" ? msg.timestamp : undefined;
         const ts =
           serverTs !== undefined
@@ -136,6 +136,7 @@ export default function MultiplayerRoute({
       if (serverTs !== undefined) return serverTs;
       return Date.now();
     })();
+            
     const name = data?.name ?? existing?.name ?? "Player";
     const rawTargetWins = data?.targetWins;
     const memberTargetWins =
