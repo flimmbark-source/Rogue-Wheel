@@ -26,7 +26,10 @@ export type HubShellProps = {
   onQuit?: () => void;
   version?: string;
   profileName?: string;
-  onProfile?: () => void; 
+  onProfile?: () => void;
+  profileLevel?: number;
+  profileExp?: number;
+  profileExpToNext?: number;
 };
 
 export interface MenuItem {
@@ -50,7 +53,34 @@ export default function RogueWheelHub(props: HubShellProps) {
     version = "v0.1.0",
     profileName = "Adventurer",
     onProfile, // ← NEW
+    profileLevel = 1,
+    profileExp = 0,
+    profileExpToNext = 200,
   } = props;
+
+  const profileProgress = profileExpToNext > 0 ? Math.min(1, profileExp / profileExpToNext) : 0;
+
+  const profileBadge = (
+    <div className="flex items-center gap-4">
+      <div className="text-left">
+        <div className="text-[11px] uppercase tracking-wide text-amber-200/70">Profile</div>
+        <div className="text-sm font-semibold text-amber-50">{profileName}</div>
+        <div className="mt-1 h-1.5 w-32 rounded-full bg-black/45">
+          <div
+            className="h-1.5 rounded-full bg-amber-300 transition-[width] duration-500"
+            style={{ width: `${Math.min(100, profileProgress * 100)}%` }}
+          />
+        </div>
+        <div className="mt-0.5 text-[11px] text-amber-100/80">
+          {profileExp}/{profileExpToNext} XP
+        </div>
+      </div>
+      <div className="text-right">
+        <div className="text-[11px] uppercase tracking-wide text-amber-200/70">Level</div>
+        <div className="text-2xl font-bold text-amber-200 leading-none">{profileLevel}</div>
+      </div>
+    </div>
+  );
 
   // Fallbacks so buttons still do something if handlers aren’t wired
   const safeOnNew = onNew ?? (() => {
@@ -134,11 +164,11 @@ export default function RogueWheelHub(props: HubShellProps) {
               className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25 hover:bg-black/45 focus:outline-none focus:ring-2 focus:ring-amber-300"
               aria-label="Open Profile"
             >
-              Profile: {profileName}
+              {profileBadge}
             </button>
           ) : (
             <div className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25">
-              Profile: {profileName}
+              {profileBadge}
             </div>
           )}
         </div>
