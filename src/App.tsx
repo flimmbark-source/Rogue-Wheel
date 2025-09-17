@@ -1641,14 +1641,10 @@ const HUDPanels = () => {
       : null;
 
   const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
-
-  const [victoryCollapsed, setVictoryCollapsed] = useState(false);
-
-  useEffect(() => {
-    if (phase !== "ended") {
-      setVictoryCollapsed(false);
-    }
-  }, [phase]);
+  const [victoryCollapsed, setVictoryCollapsed] = useState(false); // or true if you want banner-first
+useEffect(() => {
+  if (phase !== "ended") setVictoryCollapsed(false); // reset when leaving "ended"
+}, [phase]);
 
   return (
     <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
@@ -1753,15 +1749,25 @@ const HUDPanels = () => {
 
     {!victoryCollapsed && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-3">
-        <div className="w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl space-y-4">
+        <div className="relative w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl space-y-4">
+          {/* Minimize */}
+          <button
+            onClick={() => setVictoryCollapsed(true)}
+            className="absolute top-3 right-3 rounded-full border border-slate-600 bg-slate-800/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:bg-slate-700"
+          >
+            Minimize
+          </button>
+
           <div className={`text-3xl font-bold ${localWon ? "text-emerald-300" : "text-rose-300"}`}>
             {localWon ? "Victory" : "Defeat"}
           </div>
+
           <div className="text-sm text-slate-200">
             {localWon
               ? `You reached ${TARGET_WINS} wins.`
               : `${winnerName ?? remoteName} reached ${TARGET_WINS} wins.`}
           </div>
+
           <div className="rounded-md border border-slate-700 bg-slate-800/80 px-4 py-3 text-sm text-slate-100">
             <div className="font-semibold tracking-wide uppercase text-xs text-slate-400">Final Score</div>
             <div className="mt-2 flex items-center justify-center gap-3 text-base font-semibold">
@@ -1820,12 +1826,6 @@ const HUDPanels = () => {
                 Exit to Main Menu
               </button>
             )}
-            <button
-              onClick={() => setVictoryCollapsed(true)}
-              className="mt-2 w-full rounded border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
-            >
-              Collapse
-            </button>
           </div>
         </div>
       </div>
