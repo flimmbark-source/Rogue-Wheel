@@ -7,6 +7,10 @@ import MultiplayerRoute from "./MultiplayerRoute";
 import type { Players, Side } from "./game/types";
 import ProfilePage from "./ProfilePage";
 
+type MPStartPayload = Parameters<
+  NonNullable<React.ComponentProps<typeof MultiplayerRoute>["onStart"]>
+>[0];
+
 type View =
   | { key: "hub" }
   | { key: "mp" }
@@ -59,7 +63,7 @@ export default function AppShell() {
   let players: Players;
   let localSide: Side;
   let localPlayerId: string;
-  let extraProps: { roomCode?: string; hostId?: string } = {};
+  let extraProps: { roomCode?: string; hostId?: string; targetWins?: number } = {};
 
   if (view.mode === "mp" && (view.mpPayload ?? mpPayload)) {
     const mp = (view.mpPayload ?? mpPayload)!;
@@ -67,7 +71,7 @@ export default function AppShell() {
     players = mp.players;
     localSide = mp.localSide;
     localPlayerId = mp.players[localSide].id;
-    extraProps = { roomCode: mp.roomCode, hostId: mp.hostId };
+    extraProps = { roomCode: mp.roomCode, hostId: mp.hostId, targetWins: mp.targetWins };
   } else {
     seed = Math.floor(Math.random() * 2 ** 31);
     players = {

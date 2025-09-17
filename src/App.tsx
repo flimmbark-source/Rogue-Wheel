@@ -89,6 +89,7 @@ export default function ThreeWheel_WinsOnly({
   seed,
   roomCode,
   hostId,
+  targetWins,
   onExit,
 }: {
   localSide: TwoSide;
@@ -97,6 +98,7 @@ export default function ThreeWheel_WinsOnly({
   seed: number;
   roomCode?: string;
   hostId?: string;
+  targetWins?: number;
   onExit?: () => void;
 }) {
   const mountedRef = useRef(true);
@@ -116,6 +118,11 @@ export default function ThreeWheel_WinsOnly({
     player: players.left.name,
     enemy: players.right.name,
   };
+
+  const winGoal =
+    typeof targetWins === "number" && Number.isFinite(targetWins)
+      ? Math.max(1, Math.min(15, Math.round(targetWins)))
+      : TARGET_WINS;
 
 
   const hostLegacySide: LegacySide = (() => {
@@ -208,7 +215,7 @@ export default function ThreeWheel_WinsOnly({
   const hasRecordedResultRef = useRef(false);
 
   const matchWinner: LegacySide | null =
-    wins.player >= TARGET_WINS ? "player" : wins.enemy >= TARGET_WINS ? "enemy" : null;
+    wins.player >= winGoal ? "player" : wins.enemy >= winGoal ? "enemy" : null;
   const localWinsCount = localLegacySide === "player" ? wins.player : wins.enemy;
   const remoteWinsCount = localLegacySide === "player" ? wins.enemy : wins.player;
   const localWon = matchWinner ? matchWinner === localLegacySide : false;
@@ -832,12 +839,12 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setReserveSums({ player: pReserve, enemy: eReserve });
       clearAdvanceVotes();
       setPhase("roundEnd");
-      if (pWins >= TARGET_WINS || eWins >= TARGET_WINS) {
+      if (pWins >= winGoal || eWins >= winGoal) {
         clearRematchVotes();
         setPhase("ended");
         const localWins = localLegacySide === "player" ? pWins : eWins;
         appendLog(
-          localWins >= TARGET_WINS
+          localWins >= winGoal
             ? "You win the match!"
             : `${namesByLegacy[remoteLegacySide]} wins the match!`
         );
@@ -1653,7 +1660,7 @@ const HUDPanels = () => {
         <div className="flex items-center gap-3">
           <div><span className="opacity-70">Round</span> <span className="font-semibold">{round}</span></div>
           <div><span className="opacity-70">Phase</span> <span className="font-semibold">{phase}</span></div>
-          <div><span className="opacity-70">Goal</span> <span className="font-semibold">First to {TARGET_WINS} wins</span></div>
+          <div><span className="opacity-70">Goal</span> <span className="font-semibold">First to {winGoal} wins</span></div>
         </div>
         <div className="flex items-center gap-2 relative">
           <button onClick={() => setShowRef((v) => !v)} className="px-2.5 py-0.5 rounded bg-slate-700 text-white border border-slate-600 hover:bg-slate-600">Reference</button>
@@ -1661,7 +1668,7 @@ const HUDPanels = () => {
             <div className="absolute top-[110%] right-0 w-80 rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50">
               <div className="flex items-center justify-between mb-1"><div className="font-semibold">Reference</div><button onClick={() => setShowRef(false)} className="text-xl leading-none text-slate-300 hover:text-white">×</button></div>
               <div className="text-[12px] space-y-2">
-                <div>Place <span className="font-semibold">1 card next to each wheel</span>, then <span className="font-semibold">press the Resolve button</span>. Where the <span className="font-semibold">token stops</span> decides the winnning rule, and the player who matches it gets <span className="font-semibold">1 win</span>. First to <span className="font-semibold">7</span> wins takes the match.</div>
+                <div>Place <span className="font-semibold">1 card next to each wheel</span>, then <span className="font-semibold">press the Resolve button</span>. Where the <span className="font-semibold">token stops</span> decides the winnning rule, and the player who matches it gets <span className="font-semibold">1 win</span>. First to <span className="font-semibold">{winGoal}</span> wins takes the match.</div>
                 <ul className="list-disc pl-5 space-y-1">
                   <li>💥 Strongest — higher value wins</li>
                   <li>🦊 Weakest — lower value wins</li>
@@ -1781,8 +1788,8 @@ const HUDPanels = () => {
 
           <div className="text-sm text-slate-200">
             {localWon
-              ? `You reached ${TARGET_WINS} wins.`
-              : `${winnerName ?? remoteName} reached ${TARGET_WINS} wins.`}
+              ? `You reached ${winGoal} wins.`
+              : `${winnerName ?? remoteName} reached ${winGoal} wins.`}
           </div>
 
           <div className="rounded-md border border-slate-700 bg-slate-800/80 px-4 py-3 text-sm text-slate-100">
