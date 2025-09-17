@@ -26,6 +26,21 @@ const VERSION = 2;
 const MAX_DECK_SIZE = 10;
 const MAX_COPIES_PER_DECK = 2;
 
+type SafeStorage = Pick<Storage, "getItem" | "setItem"> | null;
+
+function resolveStorage(): SafeStorage {
+  try {
+    if (typeof window === "undefined") return null;
+    if (!("localStorage" in window)) return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+const storage: SafeStorage = resolveStorage();
+let memoryState: LocalState | null = null;
+
 // Node/browser-safe UID (no imports)
 function uid(prefix = "id") {
   if (typeof globalThis.crypto !== "undefined" && "randomUUID" in globalThis.crypto) {
@@ -64,9 +79,26 @@ function seed(): LocalState {
 
 // ===== Load/save =====
 function loadStateRaw(): LocalState {
-  const raw = localStorage.getItem(KEY);
+  if (!storage) {
+    if (!memoryState) memoryState = seed();
+    return memoryState;
+  }
+
+  let raw: string | null = null;
+  try {
+    raw = storage.getItem(KEY);
+  } catch {
+    memoryState = memoryState ?? seed();
+    return memoryState;
+  }
   if (!raw) {
-    const s = seed(); localStorage.setItem(KEY, JSON.stringify(s)); return s;
+    const s = seed();
+    try {
+      storage.setItem(KEY, JSON.stringify(s));
+    } catch {
+      memoryState = s;
+    }
+    return s;
   }
   try {
     const s = JSON.parse(raw) as LocalState;
@@ -84,10 +116,26 @@ function loadStateRaw(): LocalState {
     }
     return s;
   } catch {
-    const s = seed(); localStorage.setItem(KEY, JSON.stringify(s)); return s;
+    const s = seed();
+    try {
+      storage.setItem(KEY, JSON.stringify(s));
+    } catch {
+      memoryState = s;
+    }
+    return s;
   }
 }
-function saveState(state: LocalState) { localStorage.setItem(KEY, JSON.stringify(state)); }
+function saveState(state: LocalState) {
+  if (!storage) {
+    memoryState = state;
+    return;
+  }
+  try {
+    storage.setItem(KEY, JSON.stringify(state));
+  } catch {
+    memoryState = state;
+  }
+}
 
 // ===== Helpers =====
 const findActive = (s: LocalState) => s.decks.find(d => d.isActive) ?? s.decks[0];

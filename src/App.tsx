@@ -207,7 +207,6 @@ export default function ThreeWheel_WinsOnly({
   const [levelUpFlash, setLevelUpFlash] = useState(false);
   const hasRecordedResultRef = useRef(false);
 
-
   const matchWinner: LegacySide | null =
     wins.player >= TARGET_WINS ? "player" : wins.enemy >= TARGET_WINS ? "enemy" : null;
   const localWinsCount = localLegacySide === "player" ? wins.player : wins.enemy;
