@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Realtime } from "ably";
 import type { PresenceMessage } from "ably";
-import type { Players, Side } from "./game/types";
+import { TARGET_WINS, type Players, type Side } from "./game/types";
 
-// ----- Start payload now includes a Players map and localSide -----
+// ----- Start payload now includes targetWins (wins goal) -----
 type StartMessagePayload = {
   roomCode: string;
   seed: number;
   hostId: string;
   players: Players;          // { left: {id,name,color}, right: {…} }
   playersArr?: { clientId: string; name: string }[]; // optional: raw list for debugging
+  targetWins: number;        // 👈 merged feature: game wins goal
 };
 
 type StartPayload = StartMessagePayload & {
@@ -38,57 +39,132 @@ export default function MultiplayerRoute({
   const [name, setName] = useState<string>(() => defaultName());
   const [status, setStatus] = useState<string>("");
 
+  // Rounds to win (host controls)
+  const [targetWins, setTargetWins] = useState<number>(TARGET_WINS);
+  const [targetWinsInput, setTargetWinsInput] = useState<string>(String(TARGET_WINS));
+
   // ---- Ably core refs ----
   const ablyRef = useRef<Realtime | null>(null);
   const channelRef = useRef<ReturnType<Realtime["channels"]["get"]> | null>(null);
-  const [members, setMembers] = useState<{ clientId: string; name: string }[]>([]);
+
+  // members list (UI) and authoritative presence map
+  const [members, setMembers] = useState<
+    { clientId: string; name: string; targetWins?: number }[]
+  >([]);
   const clientId = useMemo(() => uid4(), []);
 
-  type MemberEntry = { clientId: string; name: string; ts: number };
+  type MemberEntry = {
+    clientId: string;
+    name: string;
+    ts: number;
+    targetWins?: number;
+  };
   const memberMapRef = useRef<Map<string, MemberEntry>>(new Map());
 
+  // Commit member map -> UI array; also sync host's targetWins to all clients
   const commitMembers = useCallback((map: Map<string, MemberEntry>) => {
-    const ordered = Array.from(map.values())
-      .sort((a, b) => {
-        if (a.ts !== b.ts) return a.ts - b.ts;
-        return a.clientId.localeCompare(b.clientId);
-      })
-      .map(({ clientId, name }) => ({ clientId, name }));
-    setMembers(ordered);
+    const ordered = Array.from(map.values()).sort((a, b) => {
+      if (a.ts !== b.ts) return a.ts - b.ts;
+      return a.clientId.localeCompare(b.clientId);
+    });
+
+    setMembers(
+      ordered.map(({ clientId, name, targetWins }) => ({ clientId, name, targetWins }))
+    );
+
+    // host is first; mirror host's wins goal locally
+    const host = ordered[0];
+    const hostTargetWins = host?.targetWins;
+    if (typeof hostTargetWins === "number" && Number.isFinite(hostTargetWins)) {
+      setTargetWins(clampTargetWins(hostTargetWins));
+    }
   }, []);
 
-  const applySnapshot = useCallback((list: PresenceMessage[] | undefined | null) => {
+  const applySnapshot = useCallback(
+  (list: PresenceMessage[] | undefined | null) => {
+    const prevMap = memberMapRef.current;
     const next = new Map<string, MemberEntry>();
+
     if (Array.isArray(list)) {
       for (const msg of list) {
         if (!msg?.clientId) continue;
+        const data = (msg.data ?? {}) as any;
+        const rawTargetWins = data?.targetWins;
+        const prev = prevMap.get(msg.clientId);
+        const serverTs = typeof msg.timestamp === "number" ? msg.timestamp : undefined;
+        const ts =
+          serverTs !== undefined
+            ? prev?.ts !== undefined
+              ? Math.min(prev.ts, serverTs)
+              : serverTs
+            : prev?.ts ?? Date.now();
+
         next.set(msg.clientId, {
           clientId: msg.clientId,
-          name: (msg.data as any)?.name ?? "Player",
-          ts: msg.timestamp ?? Date.now(),
+          name: data?.name ?? "Player",
+          ts,
+          targetWins:
+            typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
+              ? clampTargetWins(rawTargetWins)
+              : prev?.targetWins,
         });
       }
     }
-    memberMapRef.current = next;
-    commitMembers(next);
-  }, [commitMembers]);
 
-  const applyPresenceUpdate = useCallback((msg: PresenceMessage | null | undefined) => {
-    if (!msg?.clientId) return;
-    const action = msg.action;
-    const ts = msg.timestamp ?? Date.now();
-    const map = new Map(memberMapRef.current);
-    const name = (msg.data as any)?.name ?? map.get(msg.clientId)?.name ?? "Player";
-
-    if (action === "leave" || action === "absent") {
-      map.delete(msg.clientId);
-    } else if (action === "enter" || action === "present" || action === "update") {
-      map.set(msg.clientId, { clientId: msg.clientId, name, ts });
+    // Keep ourselves if snapshot raced our own presence
+    if (!next.has(clientId)) {
+      const existingSelf = prevMap.get(clientId);
+      if (existingSelf) next.set(clientId, existingSelf);
     }
 
-    memberMapRef.current = map;
-    commitMembers(map);
-  }, [commitMembers]);
+    memberMapRef.current = next;
+    commitMembers(next);
+  },
+  [clientId, commitMembers]
+);
+
+  // Incremental presence updates
+  const applyPresenceUpdate = useCallback(
+    (msg: PresenceMessage | null | undefined) => {
+      if (!msg?.clientId) return;
+      const action = msg.action;
+      const serverTs = typeof msg.timestamp === "number" ? msg.timestamp : undefined;
+      const isJoin = action === "enter" || action === "present";
+
+      const map = new Map(memberMapRef.current);
+      const existing = map.get(msg.clientId);
+      const data = (msg.data ?? {}) as any;
+
+      const ts = (() => {
+        if (isJoin) {
+          if (serverTs !== undefined) {
+            return existing?.ts !== undefined ? Math.min(existing.ts, serverTs) : serverTs;
+          }
+          return existing?.ts ?? Date.now();
+        }
+        if (existing?.ts !== undefined) return existing.ts;
+        if (serverTs !== undefined) return serverTs;
+        return Date.now();
+      })();
+
+      const name = data?.name ?? existing?.name ?? "Player";
+      const rawTargetWins = data?.targetWins;
+      const memberTargetWins =
+        typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
+          ? clampTargetWins(rawTargetWins)
+          : existing?.targetWins;
+
+      if (action === "leave" || action === "absent") {
+        map.delete(msg.clientId);
+      } else if (action === "enter" || action === "present" || action === "update") {
+        map.set(msg.clientId, { clientId: msg.clientId, name, ts, targetWins: memberTargetWins });
+      }
+
+      memberMapRef.current = map;
+      commitMembers(map);
+    },
+    [commitMembers]
+  );
 
   // keep references to listeners so we can unsubscribe/cleanup precisely
   const presenceListenerRef = useRef<((...args: any[]) => void) | null>(null);
@@ -125,29 +201,10 @@ export default function MultiplayerRoute({
     try {
       const page = await chan.presence.get({ waitForSync: true } as any);
       const list = Array.isArray(page) ? page : page?.items ?? [];
-
-      
-// (optionally, at top of file if you need the type)
-/*
-import type { Types as AblyTypes } from "ably";
-*/
-
-const sorted = Array.from(list).sort(
-  (a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)
-);
-
-// keep your presence snapshot logic from the feature branch
-// applySnapshot(sorted as AblyTypes.PresenceMessage[]); // <- if you use the type
-applySnapshot(sorted as any); // <- or keep your original if you don't import the type
-
-// keep the UI mapping from main
-const mapped = sorted.map((p) => ({
-  clientId: p.clientId!,
-  name: (p.data as any)?.name ?? "Player",
-}));
-setMembers(mapped);
-
-
+      const sorted = Array.from(list).sort(
+        (a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)
+      );
+      applySnapshot(sorted as any);
     } catch (e: any) {
       setStatus(`Presence get error: ${e?.message ?? e}`);
     }
@@ -200,18 +257,25 @@ setMembers(mapped);
       presenceListenerRef.current = onPresence;
       chan.presence.subscribe(onPresence);
 
-      // 3) Enter presence with the current name
-      await chan.presence.enter({ name });
+// 3) Enter presence with the current name and targetWins
+await chan.presence.enter({ name, targetWins });
 
-      {
-        const map = new Map(memberMapRef.current);
-        map.set(clientId, { clientId, name, ts: Date.now() });
-        memberMapRef.current = map;
-        commitMembers(map);
-      }
+// Seed self immediately so the UI shows the host right away
+{
+  const self: MemberEntry = {
+    clientId,
+    name,
+    ts: Date.now(),
+    targetWins,
+  };
+  const map = new Map<string, MemberEntry>([[clientId, self]]);
+  memberMapRef.current = map;
+  commitMembers(map); // <- updates the UI list
+}
 
-      // 4) Seed initial list
-      await refreshMembers(chan);
+// 4) Seed initial list from the server (will merge/backfill others)
+await refreshMembers(chan);
+
 
       // 5) Refresh when connection state changes (covers reconnects)
       const onConn = () => {
@@ -297,27 +361,32 @@ setMembers(mapped);
     return false;
   }
 
-  // Optional: if the user edits their name while in-room, update presence
+  // Keep the input string mirrored to state if host changes wins elsewhere
+  useEffect(() => {
+    setTargetWinsInput(targetWins.toString());
+  }, [targetWins]);
+
+  // If name/targetWins change while in-room, update presence & local cache
   useEffect(() => {
     (async () => {
       if (mode === "in-room" && channelRef.current) {
         try {
-          await channelRef.current.presence.update({ name });
+          await channelRef.current.presence.update({ name, targetWins });
 
           const current = memberMapRef.current.get(clientId);
-          if (current && current.name !== name) {
-            const map = new Map(memberMapRef.current);
-            map.set(clientId, { ...current, name });
-            memberMapRef.current = map;
-            commitMembers(map);
-          }
-
-          await refreshMembers(channelRef.current);
+          const map = new Map(memberMapRef.current);
+          map.set(clientId, {
+            clientId,
+            name,
+            targetWins,
+            ts: current?.ts ?? Date.now(),
+          });
+          memberMapRef.current = map;
+          commitMembers(map);
         } catch { /* no-op */ }
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name]);
+  }, [clientId, commitMembers, mode, name, targetWins]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -343,20 +412,20 @@ setMembers(mapped);
   }, []);
 
   // --- actions ---
-async function onCreateRoom() {
-  const code = makeRoomCode();
+  async function onCreateRoom() {
+    const code = makeRoomCode();
 
-  setRoomCode(code);       // ✅ show it right away
-  setMode("creating");     // UI shows the Room box with the code
+    setRoomCode(code);       // show it right away
+    setMode("creating");
 
-  const created = await connectRoom(code);
-  if (!created) {
-    memberMapRef.current = new Map();
-    setMembers([]);
-    setMode("idle");
-    setRoomCode("");
+    const created = await connectRoom(code);
+    if (!created) {
+      memberMapRef.current = new Map();
+      setMembers([]);
+      setMode("idle");
+      setRoomCode("");
+    }
   }
-}
 
   async function onJoinRoom() {
     const code = sanitizeCode(joinCode);
@@ -396,6 +465,8 @@ async function onCreateRoom() {
     setMode("idle");
     setRoomCode("");
     setJoinCode("");
+    setTargetWins(TARGET_WINS);
+    setTargetWinsInput(TARGET_WINS.toString());
   }
 
   async function onStartGame() {
@@ -408,6 +479,7 @@ async function onCreateRoom() {
     // --- Assign sides deterministically: host=left, first joiner=right
     const players = assignSides(members);
 
+    const winsGoal = clampTargetWins(targetWins);
     const seed = Math.floor(Math.random() * 2 ** 31);
     const payload: StartMessagePayload = {
       roomCode,
@@ -415,11 +487,39 @@ async function onCreateRoom() {
       players,
       hostId: members[0].clientId, // first in presence is host
       playersArr: members,         // optional, for debugging/analytics
+      targetWins: winsGoal,        // 👈 pass wins goal into the game
     };
 
     await channelRef.current?.publish("start", payload);
     // Host will also receive the 'start' event and flow through subscribe handler
   }
+
+  // --- host-only input handlers for “Rounds to win” ---
+  const handleTargetWinsChange = useCallback((value: string) => {
+    // only digits (allow empty while typing)
+    if (!/^\d*$/.test(value)) return;
+    setTargetWinsInput(value);
+    if (value === "") return;
+
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      setTargetWins(clampTargetWins(parsed));
+    }
+  }, []);
+
+  const handleTargetWinsBlur = useCallback(() => {
+    if (targetWinsInput === "") {
+      setTargetWins(TARGET_WINS);
+      setTargetWinsInput(TARGET_WINS.toString());
+      return;
+    }
+    const parsed = Number.parseInt(targetWinsInput, 10);
+    if (Number.isFinite(parsed)) {
+      const clamped = clampTargetWins(parsed);
+      setTargetWins(clamped);
+      setTargetWinsInput(clamped.toString());
+    }
+  }, [targetWinsInput]);
 
   return (
     <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-100 p-4">
@@ -484,6 +584,30 @@ async function onCreateRoom() {
                 >
                   Copy
                 </button>
+              </div>
+            </div>
+
+            <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-white/10">
+              <div className="text-sm opacity-80 mb-1">Rounds to win</div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  min={1}
+                  max={25}
+                  disabled={!isHost}
+                  className="w-24 rounded-lg bg-black/40 px-3 py-2 text-center ring-1 ring-white/10 disabled:opacity-60"
+                  value={targetWinsInput}
+                  onChange={(e) => handleTargetWinsChange(e.target.value)}
+                  onBlur={handleTargetWinsBlur}
+                />
+                {!isHost && (
+                  <span className="rounded bg-white/10 px-2 py-0.5 text-xs">Host controls this</span>
+                )}
+              </div>
+              <div className="mt-1 text-xs opacity-70">
+                First player to reach {targetWins} round wins takes the match.
               </div>
             </div>
 
@@ -556,13 +680,19 @@ function defaultName() {
   return `Player ${animals[Math.floor(Math.random() * animals.length)]}`;
 }
 
+function clampTargetWins(value: number) {
+  if (!Number.isFinite(value)) return TARGET_WINS;
+  const rounded = Math.round(value);
+  const clamped = Math.max(1, Math.min(25, rounded));
+  return clamped;
+}
+
 // Assign sides from presence order (host=left, first joiner=right)
 function assignSides(members: { clientId: string; name: string }[]): Players {
   // Ensure deterministic order (you already sort by presence timestamp above)
   const left = members[0];
   const right = members[1];
 
-  // Side colors: left green, right orange (feel free to theme later)
   return {
     left:  { id: left.clientId,  name: left.name,  color: "#22c55e" },
     right: { id: right.clientId, name: right.name, color: "#f97316" },
