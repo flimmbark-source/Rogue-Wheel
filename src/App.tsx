@@ -38,7 +38,15 @@ import {
 } from "./game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
-import { starterDeck, makeFighter, drawOne, refillTo, freshFive } from "./player/profileStore";
+import {
+  makeFighter,
+  drawOne,
+  refillTo,
+  freshFive,
+  recordMatchResult,
+  type MatchResultSummary,
+  type LevelProgress,
+} from "./player/profileStore";
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 
 // components
@@ -194,10 +202,57 @@ export default function ThreeWheel_WinsOnly({
     });
   }, []);
 
+  const [matchSummary, setMatchSummary] = useState<MatchResultSummary | null>(null);
+  const [xpDisplay, setXpDisplay] = useState<LevelProgress | null>(null);
+  const [levelUpFlash, setLevelUpFlash] = useState(false);
+  const hasRecordedResultRef = useRef(false);
+
 
   useEffect(() => {
     setInitiative(hostId ? hostLegacySide : localLegacySide);
   }, [hostId, hostLegacySide, localLegacySide]);
+
+  useEffect(() => {
+    if (phase === "ended") {
+      if (!hasRecordedResultRef.current) {
+        const summary = recordMatchResult({ didWin: localWon });
+        hasRecordedResultRef.current = true;
+        setMatchSummary(summary);
+
+        if (summary.didWin) {
+          setXpDisplay(summary.before);
+          setLevelUpFlash(false);
+          if (summary.segments.length === 0) {
+            setXpDisplay(summary.after);
+          }
+          summary.segments.forEach((segment, idx) => {
+            setSafeTimeout(() => {
+              setXpDisplay({
+                level: segment.level,
+                exp: segment.exp,
+                expToNext: segment.expToNext,
+                percent: segment.percent,
+              });
+              if (segment.leveledUp) {
+                setLevelUpFlash(true);
+                setSafeTimeout(() => setLevelUpFlash(false), 900);
+              }
+            }, 600 * (idx + 1));
+          });
+        } else {
+          setXpDisplay(null);
+          setLevelUpFlash(false);
+        }
+      }
+    } else {
+      hasRecordedResultRef.current = false;
+      if (phase === "choose" && wins.player === 0 && wins.enemy === 0) {
+        setMatchSummary(null);
+        setXpDisplay(null);
+        setLevelUpFlash(false);
+      }
+    }
+  }, [phase, localWon, wins.player, wins.enemy]);
 
   const [handClearance, setHandClearance] = useState<number>(0);
 
@@ -1578,6 +1633,8 @@ const HUDPanels = () => {
   const localName = namesByLegacy[localLegacySide];
   const remoteName = namesByLegacy[remoteLegacySide];
 
+  const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
+
 
   return (
     <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
@@ -1677,6 +1734,31 @@ const HUDPanels = () => {
                 <span className="text-rose-300">{remoteName}</span>
               </div>
             </div>
+            {localWon && matchSummary?.didWin && xpDisplay && (
+              <div className="rounded-md border border-emerald-500/40 bg-emerald-900/15 px-4 py-3 text-sm text-emerald-50">
+                <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-emerald-200/80">
+                  <span>Level {xpDisplay.level}</span>
+                  <span>
+                    {xpDisplay.exp} / {xpDisplay.expToNext} XP
+                  </span>
+                </div>
+                <div className="mt-2 h-2 rounded-full bg-emerald-950/50">
+                  <div
+                    className="h-2 rounded-full bg-emerald-400 transition-[width] duration-500"
+                    style={{ width: `${xpProgressPercent}%` }}
+                  />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-xs text-emerald-100/90">
+                  <span>+{matchSummary.expGained} XP</span>
+                  <span>Win streak: {matchSummary.streak}</span>
+                </div>
+                {levelUpFlash && (
+                  <div className="mt-2 text-base font-semibold uppercase tracking-wide text-amber-200">
+                    Level up!
+                  </div>
+                )}
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               <button
                 disabled={isMultiplayer && localRematchReady}

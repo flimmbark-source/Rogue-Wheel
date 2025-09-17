@@ -6,15 +6,23 @@ import type { Card, Fighter } from "../game/types";
 
 // ===== Local persistence types (module-scoped) =====
 type CardId = string;
-type InventoryItem = { cardId: CardId; qty: number };
-type DeckCard = { cardId: CardId; qty: number };
-type Deck = { id: string; name: string; isActive: boolean; cards: DeckCard[] };
-type Profile = { id: string; displayName: string; mmr: number; createdAt: number };
+export type InventoryItem = { cardId: CardId; qty: number };
+export type DeckCard = { cardId: CardId; qty: number };
+export type Deck = { id: string; name: string; isActive: boolean; cards: DeckCard[] };
+export type Profile = {
+  id: string;
+  displayName: string;
+  mmr: number;
+  createdAt: number;
+  level: number;
+  exp: number;
+  winStreak: number;
+};
 type LocalState = { version: number; profile: Profile; inventory: InventoryItem[]; decks: Deck[] };
 
 // ===== Storage/config =====
 const KEY = "rw:single:state";
-const VERSION = 1;
+const VERSION = 2;
 const MAX_DECK_SIZE = 10;
 const MAX_COPIES_PER_DECK = 2;
 
@@ -40,7 +48,15 @@ const SEED_DECK: Deck = {
 function seed(): LocalState {
   return {
     version: VERSION,
-    profile: { id: uid("user"), displayName: "Local Player", mmr: 1000, createdAt: Date.now() },
+    profile: {
+      id: uid("user"),
+      displayName: "Local Player",
+      mmr: 1000,
+      createdAt: Date.now(),
+      level: 1,
+      exp: 0,
+      winStreak: 0,
+    },
     inventory: SEED_INVENTORY,
     decks: [SEED_DECK],
   };
@@ -55,6 +71,17 @@ function loadStateRaw(): LocalState {
   try {
     const s = JSON.parse(raw) as LocalState;
     if (!(s as any).version) (s as any).version = VERSION;
+    if (s.version < 2) {
+      s.version = 2;
+      if (!s.profile) {
+        s.profile = seed().profile;
+      } else {
+        if (typeof s.profile.level !== "number") s.profile.level = 1;
+        if (typeof s.profile.exp !== "number") s.profile.exp = 0;
+        if (typeof s.profile.winStreak !== "number") s.profile.winStreak = 0;
+      }
+      saveState(s);
+    }
     return s;
   } catch {
     const s = seed(); localStorage.setItem(KEY, JSON.stringify(s)); return s;
@@ -74,8 +101,93 @@ const setQty = (d: Deck, id: string, q: number) => {
 const ownAtLeast = (inv: InventoryItem[], id: string, need: number) =>
   (inv.find(i => i.cardId === id)?.qty ?? 0) >= need;
 
+const EXP_BASE = 100;
+
+export type LevelProgress = { level: number; exp: number; expToNext: number; percent: number };
+export type LevelProgressSegment = LevelProgress & { leveledUp?: boolean };
+
+export function expRequiredForLevel(level: number): number {
+  return (level + 1) * EXP_BASE;
+}
+
+const toLevelProgress = (profile: Profile): LevelProgress => {
+  const expToNext = expRequiredForLevel(profile.level);
+  const percent = expToNext > 0 ? Math.min(1, profile.exp / expToNext) : 0;
+  return { level: profile.level, exp: profile.exp, expToNext, percent };
+};
+
+export type MatchResultSummary = {
+  didWin: boolean;
+  expGained: number;
+  streak: number;
+  before: LevelProgress;
+  after: LevelProgress;
+  segments: LevelProgressSegment[];
+  levelUps: number;
+};
+
+export function recordMatchResult({ didWin }: { didWin: boolean }): MatchResultSummary {
+  const state = loadStateRaw();
+  const profile = state.profile;
+  const before = toLevelProgress(profile);
+
+  let expGained = 0;
+  let levelUps = 0;
+  const segments: LevelProgressSegment[] = [];
+
+  if (didWin) {
+    const streakBefore = typeof profile.winStreak === "number" ? profile.winStreak : 0;
+    const streakAfter = streakBefore + 1;
+    profile.winStreak = streakAfter;
+
+    expGained = 50 + 25 * Math.max(0, streakAfter - 1);
+
+    let remaining = expGained;
+    let curLevel = profile.level;
+    let curExp = profile.exp;
+
+    while (remaining > 0) {
+      const needForLevel = expRequiredForLevel(curLevel) - curExp;
+      if (remaining >= needForLevel) {
+        curExp += needForLevel;
+        segments.push({ level: curLevel, exp: curExp, expToNext: expRequiredForLevel(curLevel), percent: 1, leveledUp: true });
+        remaining -= needForLevel;
+        curLevel += 1;
+        curExp = 0;
+        levelUps += 1;
+        segments.push({ level: curLevel, exp: curExp, expToNext: expRequiredForLevel(curLevel), percent: 0 });
+      } else {
+        curExp += remaining;
+        const expToNext = expRequiredForLevel(curLevel);
+        segments.push({ level: curLevel, exp: curExp, expToNext, percent: expToNext > 0 ? Math.min(1, curExp / expToNext) : 0 });
+        remaining = 0;
+      }
+    }
+
+    profile.level = curLevel;
+    profile.exp = curExp;
+  } else {
+    profile.winStreak = 0;
+  }
+
+  const after = toLevelProgress(profile);
+  saveState(state);
+
+  return {
+    didWin,
+    expGained,
+    streak: profile.winStreak,
+    before,
+    after,
+    segments,
+    levelUps,
+  };
+}
+
 // ===== Public profile/deck management API (used by UI) =====
-export function getProfileBundle() {
+export type ProfileBundle = { profile: Profile; inventory: InventoryItem[]; decks: Deck[]; active: Deck | undefined };
+
+export function getProfileBundle(): ProfileBundle {
   const s = loadStateRaw();
   return { profile: s.profile, inventory: s.inventory, decks: s.decks, active: findActive(s) };
 }
