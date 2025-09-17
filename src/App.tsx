@@ -208,6 +208,16 @@ export default function ThreeWheel_WinsOnly({
   const hasRecordedResultRef = useRef(false);
 
 
+  const matchWinner: LegacySide | null =
+    wins.player >= TARGET_WINS ? "player" : wins.enemy >= TARGET_WINS ? "enemy" : null;
+  const localWinsCount = localLegacySide === "player" ? wins.player : wins.enemy;
+  const remoteWinsCount = localLegacySide === "player" ? wins.enemy : wins.player;
+  const localWon = matchWinner ? matchWinner === localLegacySide : false;
+  const winnerName = matchWinner ? namesByLegacy[matchWinner] : null;
+  const localName = namesByLegacy[localLegacySide];
+  const remoteName = namesByLegacy[remoteLegacySide];
+
+
   useEffect(() => {
     setInitiative(hostId ? hostLegacySide : localLegacySide);
   }, [hostId, hostLegacySide, localLegacySide]);
@@ -1624,17 +1634,7 @@ const HUDPanels = () => {
         : null
       : null;
 
-  const matchWinner: LegacySide | null =
-    wins.player >= TARGET_WINS ? "player" : wins.enemy >= TARGET_WINS ? "enemy" : null;
-  const localWinsCount = localLegacySide === "player" ? wins.player : wins.enemy;
-  const remoteWinsCount = localLegacySide === "player" ? wins.enemy : wins.player;
-  const localWon = matchWinner ? matchWinner === localLegacySide : false;
-  const winnerName = matchWinner ? namesByLegacy[matchWinner] : null;
-  const localName = namesByLegacy[localLegacySide];
-  const remoteName = namesByLegacy[remoteLegacySide];
-
   const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
-
 
   return (
     <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
