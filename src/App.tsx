@@ -1753,10 +1753,25 @@ const HUDPanels = () => {
           {/* Minimize */}
           <button
             onClick={() => setVictoryCollapsed(true)}
+            
             className="group absolute top-2 right-2 flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700/70 bg-slate-800/80 text-slate-200 transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
             aria-label="Minimize results"
             title="Minimize"
           >
+            <div className="flex flex-col items-end text-right leading-none">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-200/80 transition group-hover:text-emerald-100">
+                Hide
+              </span>
+              <svg
+                aria-hidden
+                focusable="false"
+                className="mt-1 h-5 w-5 text-emerald-200 transition group-hover:text-emerald-100"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path d="M4 10a1 1 0 0 1 1-1h6.586L9.293 6.707a1 1 0 1 1 1.414-1.414l4.5 4.5a1 1 0 0 1 0 1.414l-4.5 4.5a1 1 0 0 1-1.414-1.414L11.586 11H5a1 1 0 0 1-1-1Z" />
+              </svg>
+            </div>
             <span className="text-lg font-semibold leading-none text-slate-200 transition group-hover:text-white">–</span>
           </button>
 
