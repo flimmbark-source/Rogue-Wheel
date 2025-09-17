@@ -85,10 +85,20 @@ export default function MultiplayerRoute({
         const data = (msg.data ?? {}) as any;
         const rawTargetWins = data?.targetWins;
         const prev = memberMapRef.current.get(msg.clientId);
+
+        const serverTs = typeof msg.timestamp === "number" ? msg.timestamp : undefined;
+        const ts =
+          serverTs !== undefined
+            ? prev?.ts !== undefined
+              ? Math.min(prev.ts, serverTs)
+              : serverTs
+            : prev?.ts ?? Date.now();
+
         next.set(msg.clientId, {
           clientId: msg.clientId,
           name: data?.name ?? "Player",
-          ts: prev?.ts ?? msg.timestamp ?? Date.now(),
+          ts,
+
           targetWins:
             typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
               ? clampTargetWins(rawTargetWins)
@@ -106,7 +116,21 @@ export default function MultiplayerRoute({
     const map = new Map(memberMapRef.current);
     const data = (msg.data ?? {}) as any;
     const existing = map.get(msg.clientId);
-    const ts = existing?.ts ?? msg.timestamp ?? Date.now();
+
+    const serverTs = typeof msg.timestamp === "number" ? msg.timestamp : undefined;
+    const isJoinAction = action === "enter" || action === "present";
+    const ts = (() => {
+      if (isJoinAction) {
+        if (serverTs !== undefined) {
+          return existing?.ts !== undefined ? Math.min(existing.ts, serverTs) : serverTs;
+        }
+        return existing?.ts ?? Date.now();
+      }
+      if (existing?.ts !== undefined) return existing.ts;
+      if (serverTs !== undefined) return serverTs;
+      return Date.now();
+    })();
+
     const name = data?.name ?? existing?.name ?? "Player";
     const rawTargetWins = data?.targetWins;
     const memberTargetWins =
