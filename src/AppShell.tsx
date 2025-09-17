@@ -4,6 +4,7 @@ import type { Realtime } from "ably";
 import App from "./App";
 import HubRoute from "./HubRoute";
 import MultiplayerRoute from "./MultiplayerRoute";
+import ProfilePage from "./features/profile/ProfilePage";
 import type { Players, Side } from "./game/types";
 
 // Shape emitted by MultiplayerRoute.onStart
@@ -22,6 +23,7 @@ type MPStartPayload = {
 type View =
   | { key: "hub" }
   | { key: "mp" }
+  | { key: "profile" }
   | { key: "game"; mode: "solo" | "mp"; mpPayload?: MPStartPayload };
 
 export default function AppShell() {
@@ -33,8 +35,13 @@ export default function AppShell() {
       <HubRoute
         onStart={() => setView({ key: "game", mode: "solo" })}
         onMultiplayer={() => setView({ key: "mp" })}
+        onProfile={() => setView({ key: "profile" })}
       />
     );
+  }
+
+  if (view.key === "profile") {
+    return <ProfilePage onBack={() => setView({ key: "hub" })} />;
   }
 
   if (view.key === "mp") {

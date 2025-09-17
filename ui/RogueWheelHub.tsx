@@ -5,6 +5,7 @@ const ICONS = {
   swords: "⚔️",
   settings: "⚙️",
   power: "⏻",
+  profile: "🧙",
   book: "📖",
 };
 
@@ -22,6 +23,7 @@ export type HubShellProps = {
   onContinue?: () => void;
   onNew?: () => void;
   onMultiplayer?: () => void;
+  onProfile?: () => void;
   onHowTo?: () => void;
   onSettings?: () => void;
   onQuit?: () => void;
@@ -71,11 +73,12 @@ export default function RogueWheelHub(props: HubShellProps) {
         : null,
       { key: "new", label: hasSave ? "New Run" : "Play", onClick: safeOnNew, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.swords}</span> },
       { key: "mp", label: "Multiplayer", onClick: props.onMultiplayer, icon: <span className="h-4 w-4 flex items-center justify-center">🧑‍🤝‍🧑</span> },
+      { key: "profile", label: "Profile", onClick: props.onProfile, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.profile}</span> },
       { key: "howto", label: "How to Play", onClick: () => { onHowTo?.(); setShowHowTo(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.book}</span> },
       { key: "settings", label: "Options", onClick: () => { onSettings?.(); setShowOptions(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.settings}</span> },
       { key: "quit", label: "Quit", onClick: onQuit, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.power}</span> },
     ].filter(Boolean) as MenuItem[],
-    [hasSave, safeOnContinue, safeOnNew, onHowTo, onSettings, onQuit, props.onMultiplayer]
+    [hasSave, safeOnContinue, safeOnNew, onHowTo, onSettings, onQuit, props.onMultiplayer, props.onProfile]
   );
 
   // Keyboard navigation
