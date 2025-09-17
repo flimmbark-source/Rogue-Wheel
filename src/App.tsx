@@ -207,6 +207,7 @@ export default function ThreeWheel_WinsOnly({
   const [levelUpFlash, setLevelUpFlash] = useState(false);
   const hasRecordedResultRef = useRef(false);
 
+
   const matchWinner: LegacySide | null =
     wins.player >= TARGET_WINS ? "player" : wins.enemy >= TARGET_WINS ? "enemy" : null;
   const localWinsCount = localLegacySide === "player" ? wins.player : wins.enemy;
@@ -215,6 +216,7 @@ export default function ThreeWheel_WinsOnly({
   const winnerName = matchWinner ? namesByLegacy[matchWinner] : null;
   const localName = namesByLegacy[localLegacySide];
   const remoteName = namesByLegacy[remoteLegacySide];
+
 
   useEffect(() => {
     setInitiative(hostId ? hostLegacySide : localLegacySide);
@@ -1631,6 +1633,8 @@ const HUDPanels = () => {
         ? `${namesByLegacy[remoteLegacySide]} is ready.`
         : null
       : null;
+
+  const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
 
   const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
 
