@@ -84,10 +84,11 @@ export default function MultiplayerRoute({
         if (!msg?.clientId) continue;
         const data = (msg.data ?? {}) as any;
         const rawTargetWins = data?.targetWins;
+        const prev = memberMapRef.current.get(msg.clientId);
         next.set(msg.clientId, {
           clientId: msg.clientId,
           name: data?.name ?? "Player",
-          ts: msg.timestamp ?? Date.now(),
+          ts: prev?.ts ?? msg.timestamp ?? Date.now(),
           targetWins:
             typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
               ? clampTargetWins(rawTargetWins)
@@ -102,10 +103,10 @@ export default function MultiplayerRoute({
   const applyPresenceUpdate = useCallback((msg: PresenceMessage | null | undefined) => {
     if (!msg?.clientId) return;
     const action = msg.action;
-    const ts = msg.timestamp ?? Date.now();
     const map = new Map(memberMapRef.current);
     const data = (msg.data ?? {}) as any;
     const existing = map.get(msg.clientId);
+    const ts = existing?.ts ?? msg.timestamp ?? Date.now();
     const name = data?.name ?? existing?.name ?? "Player";
     const rawTargetWins = data?.targetWins;
     const memberTargetWins =
