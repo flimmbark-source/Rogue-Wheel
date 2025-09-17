@@ -23,7 +23,6 @@ export default function AppShell() {
         onStart={() => setView({ key: "game", mode: "solo" })}
         onMultiplayer={() => setView({ key: "mp" })}
         onProfile={() => setView({ key: "profile" })}
-        onProfile={() => { console.log("→ profile"); setView({ key: "profile" }); }}
       />
     );
   }
@@ -79,12 +78,18 @@ export default function AppShell() {
     localPlayerId = "local";
   }
 
+  const exitToMenu = () => {
+    setView({ key: "hub" });
+    setMpPayload(null);
+  };
+
   return (
     <App
       localSide={localSide}
       localPlayerId={localPlayerId}
       players={players}
       seed={seed}
+      onExit={exitToMenu}
       {...extraProps}
     />
   );
