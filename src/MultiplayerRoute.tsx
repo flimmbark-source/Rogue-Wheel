@@ -43,6 +43,7 @@ export default function MultiplayerRoute({
     TARGET_WINS.toString()
   );
 
+
   // ---- Ably core refs ----
   const ablyRef = useRef<Realtime | null>(null);
   const channelRef = useRef<ReturnType<Realtime["channels"]["get"]> | null>(null);
@@ -72,8 +73,7 @@ export default function MultiplayerRoute({
     const host = ordered[0];
     const hostTargetWins = host?.targetWins;
     if (typeof hostTargetWins === "number" && Number.isFinite(hostTargetWins)) {
-      const clamped = clampTargetWins(hostTargetWins);
-      setTargetWins(clamped);
+    setTargetWins(clampTargetWins(hostTargetWins));
     }
   }, [setMembers, setTargetWins]);
 
@@ -452,6 +452,7 @@ async function onCreateRoom() {
     setJoinCode("");
     setTargetWins(TARGET_WINS);
     setTargetWinsInput(TARGET_WINS.toString());
+
   }
 
   async function onStartGame() {
@@ -549,12 +550,17 @@ async function onCreateRoom() {
               <div className="text-sm opacity-80 mb-1">Rounds to win</div>
               <div className="flex items-center gap-2">
                 <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  value={targetWinsInput}
-                  onChange={(e) => handleTargetWinsChange(e.target.value)}
-                  onBlur={handleTargetWinsBlur}
+<input
+  type="number"
+  inputMode="numeric"
+  pattern="[0-9]*"
+  min={1}
+  max={25}
+  value={targetWinsInput}
+  onChange={(e) => handleTargetWinsChange(e.target.value)}
+  onBlur={handleTargetWinsBlur}
+/>
+
                   disabled={!isHost}
                   className="w-24 rounded-lg bg-black/40 px-3 py-2 text-center ring-1 ring-white/10 disabled:opacity-60"
                 />
@@ -639,7 +645,8 @@ function defaultName() {
 function clampTargetWins(value: number) {
   if (!Number.isFinite(value)) return TARGET_WINS;
   const rounded = Math.round(value);
-  const clamped = Math.max(1, rounded);
+  const clamped = Math.max(1, Math.min(25, rounded));
+
   return clamped;
 }
 
