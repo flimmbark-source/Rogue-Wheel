@@ -38,7 +38,15 @@ import {
 } from "./game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
-import { starterDeck, makeFighter, drawOne, refillTo, freshFive } from "./player/profileStore";
+import {
+  makeFighter,
+  drawOne,
+  refillTo,
+  freshFive,
+  recordMatchResult,
+  type MatchResultSummary,
+  type LevelProgress,
+} from "./player/profileStore";
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 
 // components
@@ -194,10 +202,65 @@ export default function ThreeWheel_WinsOnly({
     });
   }, []);
 
+  const [matchSummary, setMatchSummary] = useState<MatchResultSummary | null>(null);
+  const [xpDisplay, setXpDisplay] = useState<LevelProgress | null>(null);
+  const [levelUpFlash, setLevelUpFlash] = useState(false);
+  const hasRecordedResultRef = useRef(false);
+
+  const matchWinner: LegacySide | null =
+    wins.player >= TARGET_WINS ? "player" : wins.enemy >= TARGET_WINS ? "enemy" : null;
+  const localWinsCount = localLegacySide === "player" ? wins.player : wins.enemy;
+  const remoteWinsCount = localLegacySide === "player" ? wins.enemy : wins.player;
+  const localWon = matchWinner ? matchWinner === localLegacySide : false;
+  const winnerName = matchWinner ? namesByLegacy[matchWinner] : null;
+  const localName = namesByLegacy[localLegacySide];
+  const remoteName = namesByLegacy[remoteLegacySide];
 
   useEffect(() => {
     setInitiative(hostId ? hostLegacySide : localLegacySide);
   }, [hostId, hostLegacySide, localLegacySide]);
+
+  useEffect(() => {
+    if (phase === "ended") {
+      if (!hasRecordedResultRef.current) {
+        const summary = recordMatchResult({ didWin: localWon });
+        hasRecordedResultRef.current = true;
+        setMatchSummary(summary);
+
+        if (summary.didWin) {
+          setXpDisplay(summary.before);
+          setLevelUpFlash(false);
+          if (summary.segments.length === 0) {
+            setXpDisplay(summary.after);
+          }
+          summary.segments.forEach((segment, idx) => {
+            setSafeTimeout(() => {
+              setXpDisplay({
+                level: segment.level,
+                exp: segment.exp,
+                expToNext: segment.expToNext,
+                percent: segment.percent,
+              });
+              if (segment.leveledUp) {
+                setLevelUpFlash(true);
+                setSafeTimeout(() => setLevelUpFlash(false), 900);
+              }
+            }, 600 * (idx + 1));
+          });
+        } else {
+          setXpDisplay(null);
+          setLevelUpFlash(false);
+        }
+      }
+    } else {
+      hasRecordedResultRef.current = false;
+      if (phase === "choose" && wins.player === 0 && wins.enemy === 0) {
+        setMatchSummary(null);
+        setXpDisplay(null);
+        setLevelUpFlash(false);
+      }
+    }
+  }, [phase, localWon, wins.player, wins.enemy]);
 
   const [handClearance, setHandClearance] = useState<number>(0);
 
@@ -692,7 +755,15 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
         case "Strongest": if (pVal === eVal) tie = true; else winner = pVal > eVal ? "player" : "enemy"; detail = `Strongest ${pVal} vs ${eVal}`; break;
         case "Weakest": if (pVal === eVal) tie = true; else winner = pVal < eVal ? "player" : "enemy"; detail = `Weakest ${pVal} vs ${eVal}`; break;
         case "ReserveSum": if (pReserve === eReserve) tie = true; else winner = pReserve > eReserve ? "player" : "enemy"; detail = `Reserve ${pReserve} vs ${eReserve}`; break;
-        case "ClosestToTarget": { const t = section.target ?? 0; const pd = Math.abs(pVal - t), ed = Math.abs(eVal - t); if (pd === ed) tie = true; else winner = pd < ed ? "player" : "enemy"; detail = `Closest to ${t}: ${pVal} vs ${eVal}`; break; }
+        case "ClosestToTarget": {
+          const t = targetSlice === 0 ? (section.target ?? 0) : targetSlice;
+          const pd = Math.abs(pVal - t);
+          const ed = Math.abs(eVal - t);
+          if (pd === ed) tie = true;
+          else winner = pd < ed ? "player" : "enemy";
+          detail = `Closest to ${t}: ${pVal} vs ${eVal}`;
+          break;
+        }
         case "Initiative": winner = initiative; detail = `Initiative -> ${winner}`; break;
         default: tie = true; detail = `Slice 0: no section`; break;
       }
@@ -1569,15 +1640,11 @@ const HUDPanels = () => {
         : null
       : null;
 
-  const matchWinner: LegacySide | null =
-    wins.player >= TARGET_WINS ? "player" : wins.enemy >= TARGET_WINS ? "enemy" : null;
-  const localWinsCount = localLegacySide === "player" ? wins.player : wins.enemy;
-  const remoteWinsCount = localLegacySide === "player" ? wins.enemy : wins.player;
-  const localWon = matchWinner ? matchWinner === localLegacySide : false;
-  const winnerName = matchWinner ? namesByLegacy[matchWinner] : null;
-  const localName = namesByLegacy[localLegacySide];
-  const remoteName = namesByLegacy[remoteLegacySide];
-
+  const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
+  const [victoryCollapsed, setVictoryCollapsed] = useState(false); // or true if you want banner-first
+  useEffect(() => {
+    if (phase !== "ended") setVictoryCollapsed(false); // reset when leaving "ended"
+  }, [phase]);
 
   return (
     <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
@@ -1656,72 +1723,148 @@ const HUDPanels = () => {
 {/* Docked hand overlay */}
 <HandDock onMeasure={setHandClearance} />
 
-      {phase === "ended" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-3">
-          <div className="w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl space-y-4">
-            <div className={`text-3xl font-bold ${localWon ? "text-emerald-300" : "text-rose-300"}`}>
-              {localWon ? "Victory" : "Defeat"}
-            </div>
-            <div className="text-sm text-slate-200">
-              {localWon
-                ? `You reached ${TARGET_WINS} wins.`
-                : `${winnerName ?? remoteName} reached ${TARGET_WINS} wins.`}
-            </div>
-            <div className="rounded-md border border-slate-700 bg-slate-800/80 px-4 py-3 text-sm text-slate-100">
-              <div className="font-semibold tracking-wide uppercase text-xs text-slate-400">Final Score</div>
-              <div className="mt-2 flex items-center justify-center gap-3 text-base font-semibold">
-                <span className="text-emerald-300">{localName}</span>
-                <span className="px-2 py-0.5 rounded bg-slate-900/60 text-slate-200 tabular-nums">{localWinsCount}</span>
-                <span className="text-slate-500">—</span>
-                <span className="px-2 py-0.5 rounded bg-slate-900/60 text-slate-200 tabular-nums">{remoteWinsCount}</span>
-                <span className="text-rose-300">{remoteName}</span>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <button
-                disabled={isMultiplayer && localRematchReady}
-                onClick={handleRematchClick}
-                className="w-full rounded bg-emerald-500 px-4 py-2 font-semibold text-slate-900 disabled:opacity-50"
+{/* Ended overlay (banner + modal) */}
+{phase === "ended" && (
+  <>
+    {victoryCollapsed ? (
+      <button
+        onClick={() => setVictoryCollapsed(false)}
+        className={`fixed top-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border px-4 py-2 text-sm font-semibold shadow-lg transition hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ${
+          localWon
+            ? "border-emerald-500/40 bg-emerald-900/70 text-emerald-100"
+            : "border-slate-700 bg-slate-900/80 text-slate-100"
+        }`}
+      >
+        <span className="rounded-full bg-slate-950/40 px-2 py-0.5 text-xs uppercase tracking-wide">
+          {localWon ? "Victory" : "Defeat"}
+        </span>
+        <span className="text-xs opacity-80">Tap to reopen results</span>
+        {localWon && matchSummary?.expGained ? (
+          <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] text-emerald-100">
+            +{matchSummary.expGained} XP
+          </span>
+        ) : null}
+      </button>
+    ) : null}
+
+    {!victoryCollapsed && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-3">
+        <div className="relative w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl space-y-4">
+          {/* Minimize */}
+          <button
+            onClick={() => setVictoryCollapsed(true)}
+            
+            className="group absolute top-2 right-2 flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700/70 bg-slate-800/80 text-slate-200 transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
+            aria-label="Minimize results"
+            title="Minimize"
+          >
+            <div className="flex flex-col items-end text-right leading-none">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-200/80 transition group-hover:text-emerald-100">
+                Hide
+              </span>
+              <svg
+                aria-hidden
+                focusable="false"
+                className="mt-1 h-5 w-5 text-emerald-200 transition group-hover:text-emerald-100"
+                viewBox="0 0 20 20"
+                fill="currentColor"
               >
-                {rematchButtonLabel}
-              </button>
-              {isMultiplayer && rematchStatusText && (
-                <span className="text-[11px] italic text-amber-200 leading-tight">
-                  {rematchStatusText}
-                </span>
-              )}
-              {onExit && (
-                <button
-                  onClick={handleExitClick}
-                  className="w-full rounded border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
-                >
-                  Exit to Main Menu
-                </button>
-              )}
+                <path d="M4 10a1 1 0 0 1 1-1h6.586L9.293 6.707a1 1 0 1 1 1.414-1.414l4.5 4.5a1 1 0 0 1 0 1.414l-4.5 4.5a1 1 0 0 1-1.414-1.414L11.586 11H5a1 1 0 0 1-1-1Z" />
+              </svg>
+            </div>
+            <span className="text-lg font-semibold leading-none text-slate-200 transition group-hover:text-white">–</span>
+          </button>
+
+          <div className={`text-3xl font-bold ${localWon ? "text-emerald-300" : "text-rose-300"}`}>
+            {localWon ? "Victory" : "Defeat"}
+          </div>
+
+          <div className="text-sm text-slate-200">
+            {localWon
+              ? `You reached ${TARGET_WINS} wins.`
+              : `${winnerName ?? remoteName} reached ${TARGET_WINS} wins.`}
+          </div>
+
+          <div className="rounded-md border border-slate-700 bg-slate-800/80 px-4 py-3 text-sm text-slate-100">
+            <div className="font-semibold tracking-wide uppercase text-xs text-slate-400">Final Score</div>
+            <div className="mt-2 flex items-center justify-center gap-3 text-base font-semibold">
+              <span className="text-emerald-300">{localName}</span>
+              <span className="px-2 py-0.5 rounded bg-slate-900/60 text-slate-200 tabular-nums">{localWinsCount}</span>
+              <span className="text-slate-500">—</span>
+              <span className="px-2 py-0.5 rounded bg-slate-900/60 text-slate-200 tabular-nums">{remoteWinsCount}</span>
+              <span className="text-rose-300">{remoteName}</span>
             </div>
           </div>
-        </div>
-      )}
 
-    </div>
-  );
-}
+          {localWon && matchSummary?.didWin && xpDisplay && (
+            <div className="rounded-md border border-emerald-500/40 bg-emerald-900/15 px-4 py-3 text-sm text-emerald-50">
+              <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-emerald-200/80">
+                <span>Level {xpDisplay.level}</span>
+                <span>
+                  {xpDisplay.exp} / {xpDisplay.expToNext} XP
+                </span>
+              </div>
+              <div className="mt-2 h-2 rounded-full bg-emerald-950/50">
+                <div
+                  className="h-2 rounded-full bg-emerald-400 transition-[width] duration-500"
+                  style={{ width: `${xpProgressPercent}%` }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-emerald-100/90">
+                <span>+{matchSummary.expGained} XP</span>
+                <span>Win streak: {matchSummary.streak}</span>
+              </div>
+              {levelUpFlash && (
+                <div className="mt-2 text-base font-semibold uppercase tracking-wide text-amber-200">
+                  Level up!
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            <button
+              disabled={isMultiplayer && localRematchReady}
+              onClick={handleRematchClick}
+              className="w-full rounded bg-emerald-500 px-4 py-2 font-semibold text-slate-900 disabled:opacity-50"
+            >
+              {rematchButtonLabel}
+            </button>
+            {isMultiplayer && rematchStatusText && (
+              <span className="text-[11px] italic text-amber-200 leading-tight">
+                {rematchStatusText}
+              </span>
+            )}
+            {onExit && (
+              <button
+                onClick={handleExitClick}
+                className="w-full rounded border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+              >
+                Exit to Main Menu
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+  </>
+  )}
+  
+      </div>
+    );
+  }
 
 // ---------------- Dev Self-Tests (lightweight) ----------------
-// These run once in dev consoles to catch regressions.
 if (typeof window !== 'undefined') {
   try {
-    // inSection should exclude 0 and handle wrap
     const s: Section = { id: "Strongest", color: "#fff", start: 14, end: 2 } as any;
     console.assert(!inSection(0, s), 'slice 0 excluded');
     console.assert(inSection(14, s) && inSection(15, s) && inSection(1, s) && inSection(2, s), 'wrap includes 14,15,1,2');
   } catch {}
   try {
-    // sections cover 15 slices total (1..15)
     const secs = genWheelSections("bandit");
     const len = (sec: Section) => (sec.start <= sec.end ? (sec.end - sec.start + 1) : (SLICES - sec.start + (sec.end + 1)));
     const sum = secs.reduce((a, s) => a + len(s), 0);
     console.assert(sum === 15, 'sections cover 15 slices');
   } catch {}
 }
-
