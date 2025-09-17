@@ -38,7 +38,10 @@ export default function MultiplayerRoute({
   const [joinCode, setJoinCode] = useState("");
   const [name, setName] = useState<string>(() => defaultName());
   const [status, setStatus] = useState<string>("");
+
+  // Rounds to win (host controls)
   const [targetWins, setTargetWins] = useState<number>(TARGET_WINS);
+  const [targetWinsInput, setTargetWinsInput] = useState<string>(String(TARGET_WINS));
 
   // ---- Ably core refs ----
   const ablyRef = useRef<Realtime | null>(null);
@@ -66,12 +69,13 @@ export default function MultiplayerRoute({
       ordered.map(({ clientId, name, targetWins }) => ({ clientId, name, targetWins }))
     );
 
+    // host is first (ordered[0]); sync host's targetWins to everyone
     const host = ordered[0];
     const hostTargetWins = host?.targetWins;
     if (typeof hostTargetWins === "number" && Number.isFinite(hostTargetWins)) {
       setTargetWins(clampTargetWins(hostTargetWins));
     }
-  }, [setMembers, setTargetWins]);
+  }, []);
 
   const applySnapshot = useCallback((list: PresenceMessage[] | undefined | null) => {
     const next = new Map<string, MemberEntry>();
@@ -127,6 +131,36 @@ export default function MultiplayerRoute({
 
   const isHost = members.length > 0 && members[0]?.clientId === clientId;
 
+  // Handlers for the rounds input
+  const handleTargetWinsChange = useCallback(
+    (value: string) => {
+      // only digits (allow empty while typing)
+      if (!/^\d*$/.test(value)) return;
+      setTargetWinsInput(value);
+      if (value === "") return;
+
+      const parsed = Number.parseInt(value, 10);
+      if (Number.isFinite(parsed)) {
+        setTargetWins(clampTargetWins(parsed));
+      }
+    },
+    []
+  );
+
+  const handleTargetWinsBlur = useCallback(() => {
+    if (targetWinsInput === "") {
+      setTargetWins(TARGET_WINS);
+      setTargetWinsInput(TARGET_WINS.toString());
+      return;
+    }
+    const parsed = Number.parseInt(targetWinsInput, 10);
+    if (Number.isFinite(parsed)) {
+      const clamped = clampTargetWins(parsed);
+      setTargetWins(clamped);
+      setTargetWinsInput(clamped.toString());
+    }
+  }, [targetWinsInput]);
+
   // --- helpers ---
   function log(s: string) {
     setStatus(s);
@@ -157,7 +191,6 @@ export default function MultiplayerRoute({
       const sorted = Array.from(list).sort(
         (a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)
       );
-
       applySnapshot(sorted as any);
     } catch (e: any) {
       setStatus(`Presence get error: ${e?.message ?? e}`);
@@ -211,7 +244,7 @@ export default function MultiplayerRoute({
       presenceListenerRef.current = onPresence;
       chan.presence.subscribe(onPresence);
 
-      // 3) Enter presence with the current name
+      // 3) Enter presence with the current name and targetWins
       await chan.presence.enter({ name, targetWins });
 
       {
@@ -313,7 +346,12 @@ export default function MultiplayerRoute({
     return false;
   }
 
-  // Optional: if the user edits their name while in-room, update presence
+  // Keep input string in sync if host changes targetWins elsewhere
+  useEffect(() => {
+    setTargetWinsInput(targetWins.toString());
+  }, [targetWins]);
+
+  // If name/targetWins change while in-room, update presence & local cache
   useEffect(() => {
     (async () => {
       if (mode === "in-room" && channelRef.current) {
@@ -359,20 +397,20 @@ export default function MultiplayerRoute({
   }, []);
 
   // --- actions ---
-async function onCreateRoom() {
-  const code = makeRoomCode();
+  async function onCreateRoom() {
+    const code = makeRoomCode();
 
-  setRoomCode(code);       // ✅ show it right away
-  setMode("creating");     // UI shows the Room box with the code
+    setRoomCode(code);       // show it right away
+    setMode("creating");
 
-  const created = await connectRoom(code);
-  if (!created) {
-    memberMapRef.current = new Map();
-    setMembers([]);
-    setMode("idle");
-    setRoomCode("");
+    const created = await connectRoom(code);
+    if (!created) {
+      memberMapRef.current = new Map();
+      setMembers([]);
+      setMode("idle");
+      setRoomCode("");
+    }
   }
-}
 
   async function onJoinRoom() {
     const code = sanitizeCode(joinCode);
@@ -413,6 +451,7 @@ async function onCreateRoom() {
     setRoomCode("");
     setJoinCode("");
     setTargetWins(TARGET_WINS);
+    setTargetWinsInput(TARGET_WINS.toString());
   }
 
   async function onStartGame() {
@@ -511,17 +550,15 @@ async function onCreateRoom() {
               <div className="flex items-center gap-2">
                 <input
                   type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   min={1}
-                  max={15}
-                  value={targetWins}
-                  onChange={(e) => {
-                    const next = Number.parseInt(e.target.value, 10);
-                    setTargetWins(
-                      Number.isFinite(next) ? clampTargetWins(next) : TARGET_WINS
-                    );
-                  }}
+                  max={25}
                   disabled={!isHost}
                   className="w-24 rounded-lg bg-black/40 px-3 py-2 text-center ring-1 ring-white/10 disabled:opacity-60"
+                  value={targetWinsInput}
+                  onChange={(e) => handleTargetWinsChange(e.target.value)}
+                  onBlur={handleTargetWinsBlur}
                 />
                 {!isHost && (
                   <span className="rounded bg-white/10 px-2 py-0.5 text-xs">Host controls this</span>
@@ -604,7 +641,7 @@ function defaultName() {
 function clampTargetWins(value: number) {
   if (!Number.isFinite(value)) return TARGET_WINS;
   const rounded = Math.round(value);
-  const clamped = Math.max(1, Math.min(15, rounded));
+  const clamped = Math.max(1, Math.min(25, rounded));
   return clamped;
 }
 
