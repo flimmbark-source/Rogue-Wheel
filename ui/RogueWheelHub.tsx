@@ -42,7 +42,7 @@ export interface MenuItem {
 export default function RogueWheelHub(props: HubShellProps) {
   const {
     backgroundUrl = "/fantasy-hero.jpg",
-    logoText = "Rotere Snap",
+    logoText = "Rotogo Snap",
     hasSave = false,
     onContinue,
     onNew,
@@ -101,7 +101,7 @@ export default function RogueWheelHub(props: HubShellProps) {
       hasSave
         ? { key: "continue", label: "Continue", onClick: safeOnContinue, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.refresh}</span> }
         : null,
-      { key: "new", label: hasSave ? "New Run" : "Play", onClick: safeOnNew, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.swords}</span> },
+      { key: "new", label: hasSave ? "New Run" : "Singleplayer", onClick: safeOnNew, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.swords}</span> },
       { key: "mp", label: "Multiplayer", onClick: onMultiplayer, icon: <span className="h-4 w-4 flex items-center justify-center">🧑‍🤝‍🧑</span> },
       { key: "howto", label: "How to Play", onClick: () => { onHowTo?.(); setShowHowTo(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.book}</span> },
       //{ key: "settings", label: "Options", onClick: () => { onSettings?.(); setShowOptions(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.settings}</span> },
