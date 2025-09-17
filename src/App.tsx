@@ -1833,7 +1833,7 @@ useEffect(() => {
   </>
   )}
   
-      </div>  {/* end of main wrapper */}
+      </div>
     );
   }
 
