@@ -7,6 +7,9 @@ import {
   renameDeck,
   deleteDeck,
   swapDeckCards,
+  expRequiredForLevel,
+  type ProfileBundle,
+  type Deck,
 } from "./player/profileStore";
 import type { Card } from "./game/types";
 
@@ -19,19 +22,19 @@ function cardFromId(cardId: string): Card {
   return { id: `preview_${cardId}`, name: `${num}`, type: "normal", number: num, tags: [] };
 }
 
-type DeckCard = { cardId: string; qty: number };
-type Deck = { id: string; name: string; isActive: boolean; cards: DeckCard[] };
-
 export default function ProfilePage() {
   // Initialize immediately so we can render without waiting for an effect
-  const [bundle, setBundle] = useState<{
-    profile: { displayName: string };
-    inventory: { cardId: string; qty: number }[];
-    decks: Deck[];
-    active?: Deck;
-  } | null>(() => {
+  const [bundle, setBundle] = useState<ProfileBundle | null>(() => {
     try { return getProfileBundle(); } catch { return null; }
   });
+
+  const refresh = () => {
+    try {
+      setBundle(getProfileBundle());
+    } catch (e) {
+      console.error("getProfileBundle failed:", e);
+    }
+  };
 
   // Refresh once on mount (covers first-run seed or any changes)
   useEffect(() => {
@@ -58,6 +61,9 @@ export default function ProfilePage() {
   }
 
   const { profile, inventory, decks, active } = bundle;
+
+  const expToNext = expRequiredForLevel(profile.level);
+  const expPercent = expToNext > 0 ? Math.min(1, profile.exp / expToNext) : 0;
 
   // Expand active deck into 10 visible slots (duplicates expanded)
   const deckSlots: (string | null)[] = useMemo(() => {
@@ -89,12 +95,12 @@ export default function ProfilePage() {
   const addToDeck = async (cardId: string, qty = 1) => {
     if (!active) return;
     if (invAvailable(cardId) <= 0) return;
-    try { await swapDeckCards(active.id, [], [{ cardId, qty }]); setBundle(getProfileBundle()); }
+    try { await swapDeckCards(active.id, [], [{ cardId, qty }]); refresh(); }
     catch (err: any) { alert(err?.message ?? "Could not add to deck"); }
   };
   const removeFromDeck = async (cardId: string, qty = 1) => {
     if (!active) return;
-    try { await swapDeckCards(active.id, [{ cardId, qty }], []); setBundle(getProfileBundle()); }
+    try { await swapDeckCards(active.id, [{ cardId, qty }], []); refresh(); }
     catch (err: any) { alert(err?.message ?? "Could not remove from deck"); }
   };
 
@@ -105,6 +111,22 @@ export default function ProfilePage() {
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold">Profile</h2>
           <div className="text-sm opacity-80">{profile?.displayName ?? "Local Player"}</div>
+        </div>
+
+        <div className="mt-3 rounded-lg bg-white/5 p-3 ring-1 ring-white/10">
+          <div className="flex items-center justify-between text-sm font-medium">
+            <span>Level {profile.level}</span>
+            <span>
+              {profile.exp} / {expToNext} XP
+            </span>
+          </div>
+          <div className="mt-2 h-2 w-full rounded-full bg-white/10">
+            <div
+              className="h-2 rounded-full bg-amber-300 transition-[width] duration-500"
+              style={{ width: `${Math.min(100, expPercent * 100)}%` }}
+            />
+          </div>
+          <div className="mt-1 text-xs text-white/60">Current streak: {profile.winStreak}</div>
         </div>
 
         <div className="flex items-center justify-between mt-3">
