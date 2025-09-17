@@ -1753,9 +1753,10 @@ const HUDPanels = () => {
           {/* Minimize */}
           <button
             onClick={() => setVictoryCollapsed(true)}
-            className="group absolute -top-4 -right-4 flex h-14 w-14 items-start justify-end rounded-tr-2xl rounded-bl-lg border-2 border-emerald-400/70 bg-slate-900/95 p-2 text-emerald-100 shadow-lg transition hover:-translate-y-0.5 hover:bg-emerald-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+            
+            className="group absolute top-2 right-2 flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700/70 bg-slate-800/80 text-slate-200 transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
             aria-label="Minimize results"
-            title="Hide results"
+            title="Minimize"
           >
             <div className="flex flex-col items-end text-right leading-none">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-200/80 transition group-hover:text-emerald-100">
@@ -1771,6 +1772,7 @@ const HUDPanels = () => {
                 <path d="M4 10a1 1 0 0 1 1-1h6.586L9.293 6.707a1 1 0 1 1 1.414-1.414l4.5 4.5a1 1 0 0 1 0 1.414l-4.5 4.5a1 1 0 0 1-1.414-1.414L11.586 11H5a1 1 0 0 1-1-1Z" />
               </svg>
             </div>
+            <span className="text-lg font-semibold leading-none text-slate-200 transition group-hover:text-white">–</span>
           </button>
 
           <div className={`text-3xl font-bold ${localWon ? "text-emerald-300" : "text-rose-300"}`}>
