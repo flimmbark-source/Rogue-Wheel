@@ -39,7 +39,7 @@ export interface MenuItem {
 export default function RogueWheelHub(props: HubShellProps) {
   const {
     backgroundUrl = "/fantasy-hero.jpg",
-    logoText = "Rogue Wheel",
+    logoText = "Ro-Te-Re",
     hasSave = false,
     onContinue,
     onNew,
