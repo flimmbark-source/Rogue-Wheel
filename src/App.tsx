@@ -1642,9 +1642,9 @@ const HUDPanels = () => {
 
   const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
   const [victoryCollapsed, setVictoryCollapsed] = useState(false); // or true if you want banner-first
-useEffect(() => {
-  if (phase !== "ended") setVictoryCollapsed(false); // reset when leaving "ended"
-}, [phase]);
+  useEffect(() => {
+    if (phase !== "ended") setVictoryCollapsed(false); // reset when leaving "ended"
+  }, [phase]);
 
   return (
     <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
@@ -1738,7 +1738,7 @@ useEffect(() => {
         <span className="rounded-full bg-slate-950/40 px-2 py-0.5 text-xs uppercase tracking-wide">
           {localWon ? "Victory" : "Defeat"}
         </span>
-        <span className="text-xs opacity-80">Tap to view results</span>
+        <span className="text-xs opacity-80">Tap to reopen results</span>
         {localWon && matchSummary?.expGained ? (
           <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] text-emerald-100">
             +{matchSummary.expGained} XP
@@ -1753,9 +1753,11 @@ useEffect(() => {
           {/* Minimize */}
           <button
             onClick={() => setVictoryCollapsed(true)}
-            className="absolute top-3 right-3 rounded-full border border-slate-600 bg-slate-800/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:bg-slate-700"
+            className="group absolute top-2 right-2 flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700/70 bg-slate-800/80 text-slate-200 transition hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400/60"
+            aria-label="Minimize results"
+            title="Minimize"
           >
-            Minimize
+            <span className="text-lg font-semibold leading-none text-slate-200 transition group-hover:text-white">–</span>
           </button>
 
           <div className={`text-3xl font-bold ${localWon ? "text-emerald-300" : "text-rose-300"}`}>
