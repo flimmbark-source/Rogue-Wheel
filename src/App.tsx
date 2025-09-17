@@ -1726,11 +1726,11 @@ const HUDPanels = () => {
 
 {/* Docked hand overlay */}
 <HandDock onMeasure={setHandClearance} />
-      
-<{phase === "ended" && (
+
+{/* Ended overlay (banner + modal) */}
+{phase === "ended" && (
   <>
     {victoryCollapsed ? (
-      /* --- Collapsed victory banner (top-center) --- */
       <button
         onClick={() => setVictoryCollapsed(false)}
         className={`fixed top-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border px-4 py-2 text-sm font-semibold shadow-lg transition hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ${
@@ -1751,20 +1751,17 @@ const HUDPanels = () => {
       </button>
     ) : null}
 
-    {/* --- Full-screen modal --- */}
     {!victoryCollapsed && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-3">
         <div className="w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl space-y-4">
           <div className={`text-3xl font-bold ${localWon ? "text-emerald-300" : "text-rose-300"}`}>
             {localWon ? "Victory" : "Defeat"}
           </div>
-
           <div className="text-sm text-slate-200">
             {localWon
               ? `You reached ${TARGET_WINS} wins.`
               : `${winnerName ?? remoteName} reached ${TARGET_WINS} wins.`}
           </div>
-
           <div className="rounded-md border border-slate-700 bg-slate-800/80 px-4 py-3 text-sm text-slate-100">
             <div className="font-semibold tracking-wide uppercase text-xs text-slate-400">Final Score</div>
             <div className="mt-2 flex items-center justify-center gap-3 text-base font-semibold">
@@ -1810,13 +1807,11 @@ const HUDPanels = () => {
             >
               {rematchButtonLabel}
             </button>
-
             {isMultiplayer && rematchStatusText && (
               <span className="text-[11px] italic text-amber-200 leading-tight">
                 {rematchStatusText}
               </span>
             )}
-
             {onExit && (
               <button
                 onClick={handleExitClick}
@@ -1825,8 +1820,6 @@ const HUDPanels = () => {
                 Exit to Main Menu
               </button>
             )}
-
-            {/* Collapse back to banner */}
             <button
               onClick={() => setVictoryCollapsed(true)}
               className="mt-2 w-full rounded border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
@@ -1839,7 +1832,6 @@ const HUDPanels = () => {
     )}
   </>
 )}
-
                 </span>
               ) : null}
             </button>
