@@ -1831,11 +1831,11 @@ useEffect(() => {
       </div>
     )}
   </>
-)}
-
-    </div>  {/* end of main wrapper */}
-  );
-} // end of ThreeWheel_WinsOnly component
+  )}
+  
+      </div>  {/* end of main wrapper */}
+    );
+  }
 
 // ---------------- Dev Self-Tests (lightweight) ----------------
 if (typeof window !== 'undefined') {
