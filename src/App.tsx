@@ -1641,6 +1641,10 @@ const HUDPanels = () => {
       : null;
 
   const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
+  const [victoryCollapsed, setVictoryCollapsed] = useState(false); // or true if you want banner-first
+useEffect(() => {
+  if (phase !== "ended") setVictoryCollapsed(false); // reset when leaving "ended"
+}, [phase]);
 
   return (
     <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
@@ -1719,97 +1723,131 @@ const HUDPanels = () => {
 {/* Docked hand overlay */}
 <HandDock onMeasure={setHandClearance} />
 
-      {phase === "ended" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-3">
-          <div className="w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl space-y-4">
-            <div className={`text-3xl font-bold ${localWon ? "text-emerald-300" : "text-rose-300"}`}>
-              {localWon ? "Victory" : "Defeat"}
-            </div>
-            <div className="text-sm text-slate-200">
-              {localWon
-                ? `You reached ${TARGET_WINS} wins.`
-                : `${winnerName ?? remoteName} reached ${TARGET_WINS} wins.`}
-            </div>
-            <div className="rounded-md border border-slate-700 bg-slate-800/80 px-4 py-3 text-sm text-slate-100">
-              <div className="font-semibold tracking-wide uppercase text-xs text-slate-400">Final Score</div>
-              <div className="mt-2 flex items-center justify-center gap-3 text-base font-semibold">
-                <span className="text-emerald-300">{localName}</span>
-                <span className="px-2 py-0.5 rounded bg-slate-900/60 text-slate-200 tabular-nums">{localWinsCount}</span>
-                <span className="text-slate-500">—</span>
-                <span className="px-2 py-0.5 rounded bg-slate-900/60 text-slate-200 tabular-nums">{remoteWinsCount}</span>
-                <span className="text-rose-300">{remoteName}</span>
-              </div>
-            </div>
-            {localWon && matchSummary?.didWin && xpDisplay && (
-              <div className="rounded-md border border-emerald-500/40 bg-emerald-900/15 px-4 py-3 text-sm text-emerald-50">
-                <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-emerald-200/80">
-                  <span>Level {xpDisplay.level}</span>
-                  <span>
-                    {xpDisplay.exp} / {xpDisplay.expToNext} XP
-                  </span>
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-emerald-950/50">
-                  <div
-                    className="h-2 rounded-full bg-emerald-400 transition-[width] duration-500"
-                    style={{ width: `${xpProgressPercent}%` }}
-                  />
-                </div>
-                <div className="mt-2 flex items-center justify-between text-xs text-emerald-100/90">
-                  <span>+{matchSummary.expGained} XP</span>
-                  <span>Win streak: {matchSummary.streak}</span>
-                </div>
-                {levelUpFlash && (
-                  <div className="mt-2 text-base font-semibold uppercase tracking-wide text-amber-200">
-                    Level up!
-                  </div>
-                )}
-              </div>
-            )}
-            <div className="flex flex-col gap-2">
-              <button
-                disabled={isMultiplayer && localRematchReady}
-                onClick={handleRematchClick}
-                className="w-full rounded bg-emerald-500 px-4 py-2 font-semibold text-slate-900 disabled:opacity-50"
-              >
-                {rematchButtonLabel}
-              </button>
-              {isMultiplayer && rematchStatusText && (
-                <span className="text-[11px] italic text-amber-200 leading-tight">
-                  {rematchStatusText}
-                </span>
-              )}
-              {onExit && (
-                <button
-                  onClick={handleExitClick}
-                  className="w-full rounded border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
-                >
-                  Exit to Main Menu
-                </button>
-              )}
+{/* Ended overlay (banner + modal) */}
+{phase === "ended" && (
+  <>
+    {victoryCollapsed ? (
+      <button
+        onClick={() => setVictoryCollapsed(false)}
+        className={`fixed top-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border px-4 py-2 text-sm font-semibold shadow-lg transition hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ${
+          localWon
+            ? "border-emerald-500/40 bg-emerald-900/70 text-emerald-100"
+            : "border-slate-700 bg-slate-900/80 text-slate-100"
+        }`}
+      >
+        <span className="rounded-full bg-slate-950/40 px-2 py-0.5 text-xs uppercase tracking-wide">
+          {localWon ? "Victory" : "Defeat"}
+        </span>
+        <span className="text-xs opacity-80">Tap to view results</span>
+        {localWon && matchSummary?.expGained ? (
+          <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] text-emerald-100">
+            +{matchSummary.expGained} XP
+          </span>
+        ) : null}
+      </button>
+    ) : null}
+
+    {!victoryCollapsed && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-3">
+        <div className="relative w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl space-y-4">
+          {/* Minimize */}
+          <button
+            onClick={() => setVictoryCollapsed(true)}
+            className="absolute top-3 right-3 rounded-full border border-slate-600 bg-slate-800/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:bg-slate-700"
+          >
+            Minimize
+          </button>
+
+          <div className={`text-3xl font-bold ${localWon ? "text-emerald-300" : "text-rose-300"}`}>
+            {localWon ? "Victory" : "Defeat"}
+          </div>
+
+          <div className="text-sm text-slate-200">
+            {localWon
+              ? `You reached ${TARGET_WINS} wins.`
+              : `${winnerName ?? remoteName} reached ${TARGET_WINS} wins.`}
+          </div>
+
+          <div className="rounded-md border border-slate-700 bg-slate-800/80 px-4 py-3 text-sm text-slate-100">
+            <div className="font-semibold tracking-wide uppercase text-xs text-slate-400">Final Score</div>
+            <div className="mt-2 flex items-center justify-center gap-3 text-base font-semibold">
+              <span className="text-emerald-300">{localName}</span>
+              <span className="px-2 py-0.5 rounded bg-slate-900/60 text-slate-200 tabular-nums">{localWinsCount}</span>
+              <span className="text-slate-500">—</span>
+              <span className="px-2 py-0.5 rounded bg-slate-900/60 text-slate-200 tabular-nums">{remoteWinsCount}</span>
+              <span className="text-rose-300">{remoteName}</span>
             </div>
           </div>
-        </div>
-      )}
 
-    </div>
-  );
-}
+          {localWon && matchSummary?.didWin && xpDisplay && (
+            <div className="rounded-md border border-emerald-500/40 bg-emerald-900/15 px-4 py-3 text-sm text-emerald-50">
+              <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-emerald-200/80">
+                <span>Level {xpDisplay.level}</span>
+                <span>
+                  {xpDisplay.exp} / {xpDisplay.expToNext} XP
+                </span>
+              </div>
+              <div className="mt-2 h-2 rounded-full bg-emerald-950/50">
+                <div
+                  className="h-2 rounded-full bg-emerald-400 transition-[width] duration-500"
+                  style={{ width: `${xpProgressPercent}%` }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between text-xs text-emerald-100/90">
+                <span>+{matchSummary.expGained} XP</span>
+                <span>Win streak: {matchSummary.streak}</span>
+              </div>
+              {levelUpFlash && (
+                <div className="mt-2 text-base font-semibold uppercase tracking-wide text-amber-200">
+                  Level up!
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-2">
+            <button
+              disabled={isMultiplayer && localRematchReady}
+              onClick={handleRematchClick}
+              className="w-full rounded bg-emerald-500 px-4 py-2 font-semibold text-slate-900 disabled:opacity-50"
+            >
+              {rematchButtonLabel}
+            </button>
+            {isMultiplayer && rematchStatusText && (
+              <span className="text-[11px] italic text-amber-200 leading-tight">
+                {rematchStatusText}
+              </span>
+            )}
+            {onExit && (
+              <button
+                onClick={handleExitClick}
+                className="w-full rounded border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+              >
+                Exit to Main Menu
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
+  </>
+  )}
+  
+      </div>
+    );
+  }
 
 // ---------------- Dev Self-Tests (lightweight) ----------------
-// These run once in dev consoles to catch regressions.
 if (typeof window !== 'undefined') {
   try {
-    // inSection should exclude 0 and handle wrap
     const s: Section = { id: "Strongest", color: "#fff", start: 14, end: 2 } as any;
     console.assert(!inSection(0, s), 'slice 0 excluded');
     console.assert(inSection(14, s) && inSection(15, s) && inSection(1, s) && inSection(2, s), 'wrap includes 14,15,1,2');
   } catch {}
   try {
-    // sections cover 15 slices total (1..15)
     const secs = genWheelSections("bandit");
     const len = (sec: Section) => (sec.start <= sec.end ? (sec.end - sec.start + 1) : (SLICES - sec.start + (sec.end + 1)));
     const sum = secs.reduce((a, s) => a + len(s), 0);
     console.assert(sum === 15, 'sections cover 15 slices');
   } catch {}
 }
-
