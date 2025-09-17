@@ -11,8 +11,7 @@ const ICONS = {
 /**
  * Rogue Wheel — Cinematic Hub (Fantasy Skin)
  * - Vertical menu: Continue (if save), Play/New Run, How to Play, Options, Quit
- * - Removed Daily Challenge, Draft Practice, Credits
- * - Title with right-aligned Profile pill under it
+ * - Title with right-aligned Profile pill (clickable if onProfile provided)
  */
 
 export type HubShellProps = {
@@ -27,6 +26,7 @@ export type HubShellProps = {
   onQuit?: () => void;
   version?: string;
   profileName?: string;
+  onProfile?: () => void; 
 };
 
 export interface MenuItem {
@@ -43,11 +43,13 @@ export default function RogueWheelHub(props: HubShellProps) {
     hasSave = false,
     onContinue,
     onNew,
+    onMultiplayer,
     onHowTo,
     onSettings,
     onQuit,
     version = "v0.1.0",
     profileName = "Adventurer",
+    onProfile, // ← NEW
   } = props;
 
   // Fallbacks so buttons still do something if handlers aren’t wired
@@ -70,12 +72,12 @@ export default function RogueWheelHub(props: HubShellProps) {
         ? { key: "continue", label: "Continue", onClick: safeOnContinue, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.refresh}</span> }
         : null,
       { key: "new", label: hasSave ? "New Run" : "Play", onClick: safeOnNew, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.swords}</span> },
-      { key: "mp", label: "Multiplayer", onClick: props.onMultiplayer, icon: <span className="h-4 w-4 flex items-center justify-center">🧑‍🤝‍🧑</span> },
+      { key: "mp", label: "Multiplayer", onClick: onMultiplayer, icon: <span className="h-4 w-4 flex items-center justify-center">🧑‍🤝‍🧑</span> },
       { key: "howto", label: "How to Play", onClick: () => { onHowTo?.(); setShowHowTo(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.book}</span> },
       { key: "settings", label: "Options", onClick: () => { onSettings?.(); setShowOptions(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.settings}</span> },
       { key: "quit", label: "Quit", onClick: onQuit, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.power}</span> },
     ].filter(Boolean) as MenuItem[],
-    [hasSave, safeOnContinue, safeOnNew, onHowTo, onSettings, onQuit, props.onMultiplayer]
+    [hasSave, safeOnContinue, safeOnNew, onMultiplayer, onHowTo, onSettings, onQuit]
   );
 
   // Keyboard navigation
@@ -118,16 +120,27 @@ export default function RogueWheelHub(props: HubShellProps) {
         <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_180px_60px_rgba(10,8,25,0.9)]" />
       </div>
 
-      {/* Title + tagline + profile */}
+      {/* Title + tagline + profile (Profile pill is clickable if onProfile provided) */}
       <div className="px-6 pt-10 md:px-10 max-w-xl">
         <h1 className="text-4xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] md:text-6xl">
           {logoText}
         </h1>
         <div className="mt-2 flex items-center justify-between">
           <p className="text-purple-100/90 md:text-lg"><b>Spin</b>, <b>draft</b>, triumph.</p>
-          <div className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25">
-            Profile: {profileName}
-          </div>
+          {onProfile ? (
+            <button
+              type="button"
+              onClick={onProfile}
+              className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25 hover:bg-black/45 focus:outline-none focus:ring-2 focus:ring-amber-300"
+              aria-label="Open Profile"
+            >
+              Profile: {profileName}
+            </button>
+          ) : (
+            <div className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25">
+              Profile: {profileName}
+            </div>
+          )}
         </div>
       </div>
 

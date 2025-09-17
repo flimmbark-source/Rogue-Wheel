@@ -38,7 +38,7 @@ import {
 } from "./game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
-import { makeFighter, refillTo } from "./game/decks";
+import { starterDeck, makeFighter, drawOne, refillTo, freshFive } from "./player/profileStore";
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 
 // components
