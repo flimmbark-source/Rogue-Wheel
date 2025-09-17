@@ -1642,9 +1642,9 @@ const HUDPanels = () => {
 
   const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
   const [victoryCollapsed, setVictoryCollapsed] = useState(false); // or true if you want banner-first
-useEffect(() => {
-  if (phase !== "ended") setVictoryCollapsed(false); // reset when leaving "ended"
-}, [phase]);
+  useEffect(() => {
+    if (phase !== "ended") setVictoryCollapsed(false); // reset when leaving "ended"
+  }, [phase]);
 
   return (
     <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
@@ -1738,7 +1738,7 @@ useEffect(() => {
         <span className="rounded-full bg-slate-950/40 px-2 py-0.5 text-xs uppercase tracking-wide">
           {localWon ? "Victory" : "Defeat"}
         </span>
-        <span className="text-xs opacity-80">Tap to view results</span>
+        <span className="text-xs opacity-80">Tap to reopen results</span>
         {localWon && matchSummary?.expGained ? (
           <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] text-emerald-100">
             +{matchSummary.expGained} XP
@@ -1753,9 +1753,24 @@ useEffect(() => {
           {/* Minimize */}
           <button
             onClick={() => setVictoryCollapsed(true)}
-            className="absolute top-3 right-3 rounded-full border border-slate-600 bg-slate-800/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-200 transition hover:bg-slate-700"
+            className="group absolute -top-4 -right-4 flex h-14 w-14 items-start justify-end rounded-tr-2xl rounded-bl-lg border-2 border-emerald-400/70 bg-slate-900/95 p-2 text-emerald-100 shadow-lg transition hover:-translate-y-0.5 hover:bg-emerald-500/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+            aria-label="Minimize results"
+            title="Hide results"
           >
-            Minimize
+            <div className="flex flex-col items-end text-right leading-none">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-200/80 transition group-hover:text-emerald-100">
+                Hide
+              </span>
+              <svg
+                aria-hidden
+                focusable="false"
+                className="mt-1 h-5 w-5 text-emerald-200 transition group-hover:text-emerald-100"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+              >
+                <path d="M4 10a1 1 0 0 1 1-1h6.586L9.293 6.707a1 1 0 1 1 1.414-1.414l4.5 4.5a1 1 0 0 1 0 1.414l-4.5 4.5a1 1 0 0 1-1.414-1.414L11.586 11H5a1 1 0 0 1-1-1Z" />
+              </svg>
+            </div>
           </button>
 
           <div className={`text-3xl font-bold ${localWon ? "text-emerald-300" : "text-rose-300"}`}>
