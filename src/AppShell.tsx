@@ -71,7 +71,7 @@ export default function AppShell() {
   } else {
     seed = Math.floor(Math.random() * 2 ** 31);
     players = {
-      left:  { id: "local",  name: "You",     color: "#22c55e" },
+      left:  { id: "local",  name: "Player",     color: "#22c55e" },
       right: { id: "ai:nem", name: "Nemesis", color: "#f97316" },
     };
     localSide = "left";
