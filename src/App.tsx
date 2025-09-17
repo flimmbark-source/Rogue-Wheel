@@ -586,9 +586,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
   );
 
-  function onReveal() {
-    return revealRoundCore();
-  }
+  const onReveal = useCallback(() => revealRoundCore(), [revealRoundCore]);
 
   useEffect(() => {
     if (!isMultiplayer) return;
@@ -739,43 +737,61 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       const allow = opts?.force || phase === "roundEnd" || phase === "ended";
       if (!allow) return false;
 
-
       clearResolveVotes();
-
 
       const currentAssign = assignRef.current;
       const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
-      const enemyPlayed = currentAssign.enemy.filter((c): c is Card => !!c);
+      const enemyPlayed  = currentAssign.enemy.filter((c): c is Card => !!c);
 
-    wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
+      wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
 
-    setFreezeLayout(false);
-    setLockedWheelSize(null);
+      setFreezeLayout(false);
+      setLockedWheelSize(null);
 
-    setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
-    setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
+      setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
+      setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
 
-    setWheelSections(generateWheelSet());
-    setAssign({ player: [null, null, null], enemy: [null, null, null] });
+      setWheelSections(generateWheelSet());
+      setAssign({ player: [null, null, null], enemy: [null, null, null] });
 
-    setSelectedCardId(null);
-    setDragCardId(null);
-    setDragOverWheel(null);
-    setTokens([0, 0, 0]);
-    setReserveSums(null);
-    setWheelHUD([null, null, null]);
+      setSelectedCardId(null);
+      setDragCardId(null);
+      setDragOverWheel(null);
+      setTokens([0, 0, 0]);
+      setReserveSums(null);
+      setWheelHUD([null, null, null]);
 
-    setPhase("choose");
-    setRound((r) => r + 1);
+      setPhase("choose");
+      setRound((r) => r + 1);
 
-    return true;
-  },
+      return true;
+    },
+    [
+      clearResolveVotes,
+      generateWheelSet,
+      phase,
+      setAssign,
+      setDragCardId,
+      setDragOverWheel,
+      setEnemy,
+      setFreezeLayout,
+      setLockedWheelSize,
+      setPhase,
+      setPlayer,
+      setReserveSums,
+      setSelectedCardId,
+      setTokens,
+      setWheelHUD,
+      setWheelSections,
+      setRound,
+      wheelRefs
+    ]
+  );
 
-  [clearResolveVotes, generateWheelSet, phase, setAssign, setDragCardId, setDragOverWheel, setEnemy, setFreezeLayout, setLockedWheelSize, setPhase, setPlayer, setReserveSums, setSelectedCardId, setTokens, setWheelHUD, setWheelSections, setRound, wheelRefs]
+  // ✅ stable wrapper (pick ONE of these)
 
-function nextRound() {
-  return nextRoundCore();
-}
+  // Option A: alias (simplest; same identity as memoized core)
+  const nextRound = nextRoundCore;
 
   const handleMPIntent = useCallback(
     (msg: MPIntent) => {
