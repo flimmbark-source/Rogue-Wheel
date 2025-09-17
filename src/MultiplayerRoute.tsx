@@ -85,6 +85,7 @@ export default function MultiplayerRoute({
         const data = (msg.data ?? {}) as any;
         const rawTargetWins = data?.targetWins;
         const prev = memberMapRef.current.get(msg.clientId);
+
         const serverTs = typeof msg.timestamp === "number" ? msg.timestamp : undefined;
         const ts =
           serverTs !== undefined
@@ -97,6 +98,7 @@ export default function MultiplayerRoute({
           clientId: msg.clientId,
           name: data?.name ?? "Player",
           ts,
+
           targetWins:
             typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
               ? clampTargetWins(rawTargetWins)
@@ -114,6 +116,7 @@ export default function MultiplayerRoute({
     const map = new Map(memberMapRef.current);
     const data = (msg.data ?? {}) as any;
     const existing = map.get(msg.clientId);
+
     const serverTs = typeof msg.timestamp === "number" ? msg.timestamp : undefined;
     const isJoinAction = action === "enter" || action === "present";
     const ts = (() => {
@@ -127,6 +130,7 @@ export default function MultiplayerRoute({
       if (serverTs !== undefined) return serverTs;
       return Date.now();
     })();
+
     const name = data?.name ?? existing?.name ?? "Player";
     const rawTargetWins = data?.targetWins;
     const memberTargetWins =
