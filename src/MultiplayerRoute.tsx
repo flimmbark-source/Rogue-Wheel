@@ -43,6 +43,24 @@ export default function MultiplayerRoute({
     TARGET_WINS.toString()
   );
 
+  const clampTargetWins = (n: number) => Math.max(1, Math.min(15, n));
+  const [targetWins, setTargetWins] = useState<number>(TARGET_WINS);
+  const [targetWinsInput, setTargetWinsInput] = useState<string>(String(TARGET_WINS));
+
+  function handleTargetWinsChange(next: string) {
+  // allow empty while typing
+  if (next === "") { setTargetWinsInput(""); return; }
+  // only digits
+  if (/^\d+$/.test(next)) setTargetWinsInput(next);
+}
+
+  function handleTargetWinsBlur() {
+  const parsed = Number.parseInt(targetWinsInput || "", 10);
+  const clamped = Number.isFinite(parsed) ? clampTargetWins(parsed) : TARGET_WINS;
+  setTargetWins(clamped);
+  setTargetWinsInput(String(clamped));
+}
+
 
   // ---- Ably core refs ----
   const ablyRef = useRef<Realtime | null>(null);
