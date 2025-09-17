@@ -57,6 +57,7 @@ type MPIntent =
   | { type: "clear"; lane: number; side: LegacySide }
   | { type: "reveal"; side: LegacySide }
   | { type: "nextRound"; side: LegacySide }
+  | { type: "rematch"; side: LegacySide }
   | { type: "reserve"; side: LegacySide; reserve: number; round: number };
 
 // ---------------- Constants ----------------
@@ -80,6 +81,7 @@ export default function ThreeWheel_WinsOnly({
   seed,
   roomCode,
   hostId,
+  onExit,
 }: {
   localSide: TwoSide;
   localPlayerId: string;
@@ -87,6 +89,7 @@ export default function ThreeWheel_WinsOnly({
   seed: number;
   roomCode?: string;
   hostId?: string;
+  onExit?: () => void;
 }) {
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; timeoutsRef.current.forEach(clearTimeout); timeoutsRef.current.clear(); }; }, []);
@@ -148,6 +151,44 @@ export default function ThreeWheel_WinsOnly({
 
   const clearResolveVotes = useCallback(() => {
     setResolveVotes((prev) => {
+      if (!prev.player && !prev.enemy) return prev;
+      return { player: false, enemy: false };
+    });
+  }, []);
+
+  const [advanceVotes, setAdvanceVotes] = useState<{ player: boolean; enemy: boolean }>({
+    player: false,
+    enemy: false,
+  });
+
+  const markAdvanceVote = useCallback((side: LegacySide) => {
+    setAdvanceVotes((prev) => {
+      if (prev[side]) return prev;
+      return { ...prev, [side]: true };
+    });
+  }, []);
+
+  const clearAdvanceVotes = useCallback(() => {
+    setAdvanceVotes((prev) => {
+      if (!prev.player && !prev.enemy) return prev;
+      return { player: false, enemy: false };
+    });
+  }, []);
+
+  const [rematchVotes, setRematchVotes] = useState<{ player: boolean; enemy: boolean }>({
+    player: false,
+    enemy: false,
+  });
+
+  const markRematchVote = useCallback((side: LegacySide) => {
+    setRematchVotes((prev) => {
+      if (prev[side]) return prev;
+      return { ...prev, [side]: true };
+    });
+  }, []);
+
+  const clearRematchVotes = useCallback(() => {
+    setRematchVotes((prev) => {
       if (!prev.player && !prev.enemy) return prev;
       return { player: false, enemy: false };
     });
@@ -354,7 +395,8 @@ const storeReserveReport = useCallback(
   const [showRef, setShowRef] = useState(false);
 
   const appendLog = (s: string) => setLog((prev) => [s, ...prev].slice(0, 60));
-  const [log, setLog] = useState<string[]>(["A Shade Bandit eyes your purse..."]);
+  const START_LOG = "A Shade Bandit eyes your purse...";
+  const [log, setLog] = useState<string[]>([START_LOG]);
 
   const canReveal = useMemo(() => {
     const lane = localLegacySide === "player" ? assign.player : assign.enemy;
@@ -717,8 +759,10 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setWheelHUD(hudColors);
       setWins({ player: pWins, enemy: eWins });
       setReserveSums({ player: pReserve, enemy: eReserve });
+      clearAdvanceVotes();
       setPhase("roundEnd");
       if (pWins >= TARGET_WINS || eWins >= TARGET_WINS) {
+        clearRematchVotes();
         setPhase("ended");
         const localWins = localLegacySide === "player" ? pWins : eWins;
         appendLog(
@@ -734,10 +778,11 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
   const nextRoundCore = useCallback(
     (opts?: { force?: boolean }) => {
-      const allow = opts?.force || phase === "roundEnd" || phase === "ended";
+      const allow = opts?.force || phase === "roundEnd";
       if (!allow) return false;
 
       clearResolveVotes();
+      clearAdvanceVotes();
 
       const currentAssign = assignRef.current;
       const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
@@ -768,6 +813,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     },
     [
       clearResolveVotes,
+      clearAdvanceVotes,
       generateWheelSet,
       phase,
       setAssign,
@@ -814,7 +860,12 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
         }
         case "nextRound": {
           if (msg.side === localLegacySide) break;
-          if (phase === "roundEnd" || phase === "ended") nextRound();
+          markAdvanceVote(msg.side);
+          break;
+        }
+        case "rematch": {
+          if (msg.side === localLegacySide) break;
+          markRematchVote(msg.side);
           break;
         }
         case "reserve": {
@@ -828,7 +879,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
           break;
       }
     },
-    [assignToWheelFor, clearAssignFor, localLegacySide, markResolveVote, nextRound, phase, storeReserveReport, canReveal, onReveal]
+    [assignToWheelFor, clearAssignFor, localLegacySide, markAdvanceVote, markRematchVote, markResolveVote, storeReserveReport]
   );
 
   useEffect(() => {
@@ -897,11 +948,128 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
   }, [canReveal, isMultiplayer, localLegacySide, markResolveVote, onReveal, phase, resolveVotes, sendIntent]);
 
   const handleNextClick = useCallback(() => {
-    const advanced = nextRound();
-    if (advanced && isMultiplayer) {
-      sendIntent({ type: "nextRound", side: localLegacySide });
+    if (phase !== "roundEnd") return;
+
+    if (!isMultiplayer) {
+      nextRound();
+      return;
     }
-  }, [isMultiplayer, localLegacySide, nextRound, sendIntent]);
+
+    if (advanceVotes[localLegacySide]) return;
+
+    markAdvanceVote(localLegacySide);
+    sendIntent({ type: "nextRound", side: localLegacySide });
+  }, [advanceVotes, isMultiplayer, localLegacySide, markAdvanceVote, nextRound, phase, sendIntent]);
+
+  useEffect(() => {
+    if (!isMultiplayer) return;
+    if (phase !== "roundEnd") return;
+    if (!advanceVotes.player || !advanceVotes.enemy) return;
+    nextRound();
+  }, [advanceVotes, isMultiplayer, nextRound, phase]);
+
+  const resetMatch = useCallback(() => {
+    clearResolveVotes();
+    clearAdvanceVotes();
+    clearRematchVotes();
+
+    reserveReportsRef.current = { player: null, enemy: null };
+
+    wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
+
+    setFreezeLayout(false);
+    setLockedWheelSize(null);
+
+    setPlayer(() => makeFighter("Wanderer"));
+    setEnemy(() => makeFighter("Shade Bandit"));
+
+    setInitiative(hostId ? hostLegacySide : localLegacySide);
+
+    setWins({ player: 0, enemy: 0 });
+    setRound(1);
+    setPhase("choose");
+
+    const emptyAssign: { player: (Card | null)[]; enemy: (Card | null)[] } = {
+      player: [null, null, null],
+      enemy: [null, null, null],
+    };
+    assignRef.current = emptyAssign;
+    setAssign(emptyAssign);
+
+    setSelectedCardId(null);
+    setDragCardId(null);
+    dragOverRef.current = null;
+    _setDragOverWheel(null);
+
+    setTokens([0, 0, 0]);
+    setReserveSums(null);
+    setWheelHUD([null, null, null]);
+
+    setLog([START_LOG]);
+
+    wheelRngRef.current = createSeededRng(seed);
+    setWheelSections(generateWheelSet());
+  }, [
+    clearAdvanceVotes,
+    clearRematchVotes,
+    clearResolveVotes,
+    generateWheelSet,
+    hostId,
+    hostLegacySide,
+    localLegacySide,
+    seed,
+    setAssign,
+    setDragCardId,
+    setEnemy,
+    setFreezeLayout,
+    setInitiative,
+    setLockedWheelSize,
+    setLog,
+    setPhase,
+    setPlayer,
+    setReserveSums,
+    setRound,
+    setSelectedCardId,
+    setTokens,
+    setWheelHUD,
+    setWheelSections,
+    setWins,
+    _setDragOverWheel,
+    wheelRefs
+  ]);
+
+  useEffect(() => {
+    if (!isMultiplayer) return;
+    if (phase !== "ended") return;
+    if (!rematchVotes.player || !rematchVotes.enemy) return;
+    resetMatch();
+  }, [isMultiplayer, phase, rematchVotes, resetMatch]);
+
+  const handleRematchClick = useCallback(() => {
+    if (phase !== "ended") return;
+
+    if (!isMultiplayer) {
+      resetMatch();
+      return;
+    }
+
+    if (rematchVotes[localLegacySide]) return;
+
+    markRematchVote(localLegacySide);
+    sendIntent({ type: "rematch", side: localLegacySide });
+  }, [
+    isMultiplayer,
+    localLegacySide,
+    markRematchVote,
+    phase,
+    rematchVotes,
+    resetMatch,
+    sendIntent
+  ]);
+
+  const handleExitClick = useCallback(() => {
+    onExit?.();
+  }, [onExit]);
 
 
 
@@ -1376,6 +1544,40 @@ const HUDPanels = () => {
         : null
       : null;
 
+  const localAdvanceReady = advanceVotes[localLegacySide];
+  const remoteAdvanceReady = advanceVotes[remoteLegacySide];
+  const advanceButtonDisabled = isMultiplayer && localAdvanceReady;
+  const advanceButtonLabel = isMultiplayer && localAdvanceReady ? "Ready" : "Next";
+  const advanceStatusText =
+    isMultiplayer && phase === "roundEnd"
+      ? localAdvanceReady && !remoteAdvanceReady
+        ? `Waiting for ${namesByLegacy[remoteLegacySide]}...`
+        : !localAdvanceReady && remoteAdvanceReady
+        ? `${namesByLegacy[remoteLegacySide]} is ready.`
+        : null
+      : null;
+
+  const localRematchReady = rematchVotes[localLegacySide];
+  const remoteRematchReady = rematchVotes[remoteLegacySide];
+  const rematchButtonLabel = isMultiplayer && localRematchReady ? "Ready" : "Rematch";
+  const rematchStatusText =
+    isMultiplayer && phase === "ended"
+      ? localRematchReady && !remoteRematchReady
+        ? `Waiting for ${namesByLegacy[remoteLegacySide]}...`
+        : !localRematchReady && remoteRematchReady
+        ? `${namesByLegacy[remoteLegacySide]} is ready.`
+        : null
+      : null;
+
+  const matchWinner: LegacySide | null =
+    wins.player >= TARGET_WINS ? "player" : wins.enemy >= TARGET_WINS ? "enemy" : null;
+  const localWinsCount = localLegacySide === "player" ? wins.player : wins.enemy;
+  const remoteWinsCount = localLegacySide === "player" ? wins.enemy : wins.player;
+  const localWon = matchWinner ? matchWinner === localLegacySide : false;
+  const winnerName = matchWinner ? namesByLegacy[matchWinner] : null;
+  const localName = namesByLegacy[localLegacySide];
+  const remoteName = namesByLegacy[remoteLegacySide];
+
 
   return (
     <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
@@ -1420,7 +1622,22 @@ const HUDPanels = () => {
               )}
             </div>
           )}
-          {(phase === "roundEnd" || phase === "ended") && <button onClick={handleNextClick} className="px-2.5 py-0.5 rounded bg-emerald-500 text-slate-900 font-semibold">Next</button>}
+          {phase === "roundEnd" && (
+            <div className="flex flex-col items-end gap-1">
+              <button
+                disabled={advanceButtonDisabled}
+                onClick={handleNextClick}
+                className="px-2.5 py-0.5 rounded bg-emerald-500 text-slate-900 font-semibold disabled:opacity-50"
+              >
+                {advanceButtonLabel}
+              </button>
+              {isMultiplayer && advanceStatusText && (
+                <span className="text-[11px] italic text-emerald-200 text-right leading-tight">
+                  {advanceStatusText}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -1438,6 +1655,53 @@ const HUDPanels = () => {
 
 {/* Docked hand overlay */}
 <HandDock onMeasure={setHandClearance} />
+
+      {phase === "ended" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-3">
+          <div className="w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl space-y-4">
+            <div className={`text-3xl font-bold ${localWon ? "text-emerald-300" : "text-rose-300"}`}>
+              {localWon ? "Victory" : "Defeat"}
+            </div>
+            <div className="text-sm text-slate-200">
+              {localWon
+                ? `You reached ${TARGET_WINS} wins.`
+                : `${winnerName ?? remoteName} reached ${TARGET_WINS} wins.`}
+            </div>
+            <div className="rounded-md border border-slate-700 bg-slate-800/80 px-4 py-3 text-sm text-slate-100">
+              <div className="font-semibold tracking-wide uppercase text-xs text-slate-400">Final Score</div>
+              <div className="mt-2 flex items-center justify-center gap-3 text-base font-semibold">
+                <span className="text-emerald-300">{localName}</span>
+                <span className="px-2 py-0.5 rounded bg-slate-900/60 text-slate-200 tabular-nums">{localWinsCount}</span>
+                <span className="text-slate-500">—</span>
+                <span className="px-2 py-0.5 rounded bg-slate-900/60 text-slate-200 tabular-nums">{remoteWinsCount}</span>
+                <span className="text-rose-300">{remoteName}</span>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                disabled={isMultiplayer && localRematchReady}
+                onClick={handleRematchClick}
+                className="w-full rounded bg-emerald-500 px-4 py-2 font-semibold text-slate-900 disabled:opacity-50"
+              >
+                {rematchButtonLabel}
+              </button>
+              {isMultiplayer && rematchStatusText && (
+                <span className="text-[11px] italic text-amber-200 leading-tight">
+                  {rematchStatusText}
+                </span>
+              )}
+              {onExit && (
+                <button
+                  onClick={handleExitClick}
+                  className="w-full rounded border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+                >
+                  Exit to Main Menu
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
