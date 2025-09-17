@@ -106,7 +106,13 @@ export default function ThreeWheel_WinsOnly({
     enemy: players.right.name,
   };
 
-  void hostId;
+
+  const hostLegacySide: LegacySide = (() => {
+    if (!hostId) return "player";
+    if (players.left.id === hostId) return "player";
+    if (players.right.id === hostId) return "enemy";
+    return "player";
+  })();
 
   const isMultiplayer = !!roomCode;
   const ablyRef = useRef<AblyRealtime | null>(null);
@@ -115,7 +121,9 @@ export default function ThreeWheel_WinsOnly({
   // Fighters & initiative
   const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
   const [enemy, setEnemy] = useState<Fighter>(() => makeFighter("Shade Bandit"));
-  const [initiative, setInitiative] = useState<LegacySide>(() => (Math.random() < 0.5 ? "player" : "enemy"));
+  const [initiative, setInitiative] = useState<LegacySide>(() =>
+    hostId ? hostLegacySide : localLegacySide
+  );
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
   const [round, setRound] = useState(1);
 
@@ -144,6 +152,11 @@ export default function ThreeWheel_WinsOnly({
       return { player: false, enemy: false };
     });
   }, []);
+
+
+  useEffect(() => {
+    setInitiative(hostId ? hostLegacySide : localLegacySide);
+  }, [hostId, hostLegacySide, localLegacySide]);
 
   const [handClearance, setHandClearance] = useState<number>(0);
 
@@ -361,6 +374,7 @@ const storeReserveReport = useCallback(
       const prevAtLane = lane[laneIndex];
       const fromIdx = lane.findIndex((c) => c?.id === card.id);
 
+
       if (prevAtLane && prevAtLane.id === card.id && fromIdx === laneIndex) {
         if (side === localLegacySide) {
           setSelectedCardId(null);
@@ -402,7 +416,6 @@ const storeReserveReport = useCallback(
           setSelectedCardId(null);
         }
       });
-
 
       clearResolveVotes();
 
@@ -573,9 +586,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
   );
 
-  function onReveal() {
-    return revealRoundCore();
-  }
+  const onReveal = useCallback(() => revealRoundCore(), [revealRoundCore]);
 
   useEffect(() => {
     if (!isMultiplayer) return;
@@ -730,40 +741,57 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
       const currentAssign = assignRef.current;
       const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
-      const enemyPlayed = currentAssign.enemy.filter((c): c is Card => !!c);
+      const enemyPlayed  = currentAssign.enemy.filter((c): c is Card => !!c);
 
-    wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
+      wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
 
-    setFreezeLayout(false);
-    setLockedWheelSize(null);
+      setFreezeLayout(false);
+      setLockedWheelSize(null);
 
-    setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
-    setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
+      setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
+      setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
 
-    setWheelSections(generateWheelSet());
-    setAssign({ player: [null, null, null], enemy: [null, null, null] });
+      setWheelSections(generateWheelSet());
+      setAssign({ player: [null, null, null], enemy: [null, null, null] });
 
-    setSelectedCardId(null);
-    setDragCardId(null);
-    setDragOverWheel(null);
-    setTokens([0, 0, 0]);
-    setReserveSums(null);
-    setWheelHUD([null, null, null]);
+      setSelectedCardId(null);
+      setDragCardId(null);
+      setDragOverWheel(null);
+      setTokens([0, 0, 0]);
+      setReserveSums(null);
+      setWheelHUD([null, null, null]);
 
-    setPhase("choose");
-    setRound((r) => r + 1);
+      setPhase("choose");
+      setRound((r) => r + 1);
 
-    return true;
-  },
+      return true;
+    },
+    [
+      clearResolveVotes,
+      generateWheelSet,
+      phase,
+      setAssign,
+      setDragCardId,
+      setDragOverWheel,
+      setEnemy,
+      setFreezeLayout,
+      setLockedWheelSize,
+      setPhase,
+      setPlayer,
+      setReserveSums,
+      setSelectedCardId,
+      setTokens,
+      setWheelHUD,
+      setWheelSections,
+      setRound,
+      wheelRefs
+    ]
+  );
 
-  [clearResolveVotes, generateWheelSet, phase, setAssign, setDragCardId, setDragOverWheel, setEnemy, setFreezeLayout, setLockedWheelSize, setPhase, setPlayer, setReserveSums, setSelectedCardId, setTokens, setWheelHUD, setWheelSections, setRound, wheelRefs]
+  // ✅ stable wrapper (pick ONE of these)
 
-);
-
-function nextRound() {
-  return nextRoundCore();
-}
-
+  // Option A: alias (simplest; same identity as memoized core)
+  const nextRound = nextRoundCore;
 
   const handleMPIntent = useCallback(
     (msg: MPIntent) => {
@@ -800,10 +828,7 @@ function nextRound() {
           break;
       }
     },
-
-
-    [assignToWheelFor, canReveal, clearAssignFor, localLegacySide, nextRound, onReveal, phase, storeReserveReport]
-
+    [assignToWheelFor, clearAssignFor, localLegacySide, markResolveVote, nextRound, phase, storeReserveReport, canReveal, onReveal]
   );
 
   useEffect(() => {
@@ -812,12 +837,8 @@ function nextRound() {
 
   useEffect(() => {
     if (!roomCode) {
-      try {
-        chanRef.current?.unsubscribe();
-      } catch {}
-      try {
-        chanRef.current?.detach();
-      } catch {}
+      try { chanRef.current?.unsubscribe(); } catch {}
+      try { chanRef.current?.detach(); } catch {}
       chanRef.current = null;
       if (ablyRef.current) {
         try { ablyRef.current.close(); } catch {}
@@ -826,10 +847,8 @@ function nextRound() {
       return;
     }
 
-
     const key = import.meta.env.VITE_ABLY_API_KEY;
     if (!key) return;
-
 
     const ably = new Realtime({ key, clientId: localPlayerId });
     ablyRef.current = ably;
@@ -864,7 +883,6 @@ function nextRound() {
   }, [roomCode, localPlayerId]);
 
   const handleRevealClick = useCallback(() => {
-
     if (phase !== "choose" || !canReveal) return;
 
     if (!isMultiplayer) {
@@ -900,6 +918,11 @@ function nextRound() {
 
   const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
   const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
+
+  const shouldShowLeftCard =
+    !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
+  const shouldShowRightCard =
+    !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
 
   // --- layout numbers that must match the classes below ---
   const slotW    = 80;   // w-[80px] on both slots
@@ -1074,7 +1097,7 @@ function nextRound() {
           }}
           aria-label={`Wheel ${i+1} left slot`}
         >
-          {leftSlot.card
+          {shouldShowLeftCard
             ? renderSlotCard(leftSlot, isLeftSelected)
             : <div className="text-[11px] opacity-80 text-center">
                 {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
@@ -1127,7 +1150,7 @@ function nextRound() {
             }
           }}
         >
-          {rightSlot.card && (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended")
+          {shouldShowRightCard
             ? renderSlotCard(rightSlot, isRightSelected)
             : <div className="text-[11px] opacity-60 text-center">
                 {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
