@@ -179,7 +179,7 @@ export default function RogueWheelHub(props: HubShellProps) {
           <img
             src={logoUrl}
             alt={logoText}
-            className="max-w-[82%] md:max-w-[72%] drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]"
+            className="block max-w-[82%] md:max-w-[72%] drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]"
             draggable={false}
           />
         ) : (
@@ -189,7 +189,7 @@ export default function RogueWheelHub(props: HubShellProps) {
         )}
 
         {/* tagline */}
-        <p className="mt-3 text-center text-purple-100/90 md:text-lg">
+        <p className="mt+6 text-center text-purple-100/90 md:text-lg">
           <b>Spin</b>, <b>draft</b>, triumph.
         </p>
 
@@ -198,7 +198,7 @@ export default function RogueWheelHub(props: HubShellProps) {
       </header>
 
       {/* Menu: centered column with responsive gold interaction */}
-      <nav aria-label="Main menu" className="mt-6 px-6 md:mt-8 md:px-10">
+      <nav aria-label="Main menu" className="mt0 px-6 md:mt-8 md:px-10">
         <ul className="mx-auto w-full max-w-md">
           {items.map((it, i) => {
             const isActive = i === selected;
