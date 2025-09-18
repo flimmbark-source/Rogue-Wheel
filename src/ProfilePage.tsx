@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import StSCard from "./components/StSCard";
 import {
   getProfileBundle,
@@ -9,7 +9,6 @@ import {
   swapDeckCards,
   expRequiredForLevel,
   type ProfileBundle,
-  type Deck,
 } from "./player/profileStore";
 import type { Card } from "./game/types";
 
@@ -20,6 +19,39 @@ function cardFromId(cardId: string): Card {
   const mNum = /^num_(-?\d+)$/.exec(cardId);
   const num = mBasic ? +mBasic[1] : mNeg ? +mNeg[1] : mNum ? +mNum[1] : 0;
   return { id: `preview_${cardId}`, name: `${num}`, type: "normal", number: num, tags: [] };
+}
+
+/** Scales its child to fit the available width while preserving aspect. */
+function FitCard({
+  baseWidth = 160,          // assumed natural width of StSCard "md"
+  children,
+}: { baseWidth?: number; children: React.ReactNode }) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth;
+      // Avoid zero and clamp
+      const s = Math.max(0.4, Math.min(2, w / baseWidth));
+      setScale(s);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [baseWidth]);
+
+  return (
+    <div ref={wrapRef} className="relative w-full h-full grid place-items-center overflow-visible">
+      <div
+        className="origin-center"
+        style={{ transform: `scale(${scale})` }}
+      >
+        {children}
+      </div>
+    </div>
+  );
 }
 
 export default function ProfilePage() {
@@ -164,7 +196,7 @@ export default function ProfilePage() {
 
         {/* Deck grid = drop target (add from inv / remove by dropping back) */}
         <div
-          className="mt-2 grid grid-cols-5 gap-2 p-2 rounded-xl ring-1 ring-white/15 bg-black/30"
+          className="mt-2 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 p-2 rounded-xl ring-1 ring-white/15 bg-black/30"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
@@ -175,15 +207,20 @@ export default function ProfilePage() {
           }}
         >
           {deckSlots.map((cardId, i) => (
-            <div key={i} className="grid place-items-center aspect-[3/4] rounded-xl ring-1 ring-white/10 bg-white/5">
+            <div
+              key={i}
+              className="relative aspect-[3/4] rounded-xl ring-1 ring-white/10 bg-white/5 p-1 grid place-items-center"
+            >
               {cardId ? (
-                <StSCard
-                  card={cardFromId(cardId)}
-                  size="md"
-                  draggable
-                  onDragStart={(e) => setDrag(e, { from: "deck", cardId })}
-                  onPick={() => removeFromDeck(cardId, 1)}
-                />
+                <FitCard>
+                  <StSCard
+                    card={cardFromId(cardId)}
+                    size="md"
+                    draggable
+                    onDragStart={(e) => setDrag(e, { from: "deck", cardId })}
+                    onPick={() => removeFromDeck(cardId, 1)}
+                  />
+                </FitCard>
               ) : (
                 <span className="text-white/30 text-xs">empty</span>
               )}
@@ -213,14 +250,18 @@ export default function ProfilePage() {
             const avail = invAvailable(i.cardId);
             return (
               <div key={i.cardId} className="relative grid place-items-center">
-                <StSCard
-                  card={cardFromId(i.cardId)}
-                  size="md"
-                  disabled={avail <= 0}
-                  draggable
-                  onDragStart={(e) => setDrag(e, { from: "inv", cardId: i.cardId })}
-                  onPick={() => avail > 0 && addToDeck(i.cardId, 1)}
-                />
+                <div className="aspect-[3/4] w-full max-w-[180px] p-1 rounded-lg ring-1 ring-white/10 bg-white/5 grid place-items-center">
+                  <FitCard>
+                    <StSCard
+                      card={cardFromId(i.cardId)}
+                      size="md"
+                      disabled={avail <= 0}
+                      draggable
+                      onDragStart={(e) => setDrag(e, { from: "inv", cardId: i.cardId })}
+                      onPick={() => avail > 0 && addToDeck(i.cardId, 1)}
+                    />
+                  </FitCard>
+                </div>
                 <span className="absolute top-1 left-1 text-[11px] px-1.5 py-0.5 rounded bg-black/60 ring-1 ring-white/20">
                   x{avail}
                 </span>
