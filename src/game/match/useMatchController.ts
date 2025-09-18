@@ -109,17 +109,6 @@ type ActivationIntent =
   | { type: "activationPass"; side: LegacySide }
   | { type: "activation"; side: LegacySide; action: "activate" | "pass"; cardId?: string };
 
-// Use these in your MPIntent union:
-type MPIntent =
-  | ShopRollIntent
-  | ShopReadyIntent
-  | ShopPurchaseIntent
-  | GoldIntent
-  | ActivationIntent
-  // ... plus whatever other intents you already include
-  ;
-
-
 export interface UseMatchControllerOptions {
   localSide: TwoSide;
   players: Players;
@@ -151,14 +140,6 @@ export function useMatchController({
   useEffect(() => {
     sendIntentRef.current = sendIntent;
   }, [sendIntent]);
-
-  const emitIntent = useCallback(
-    (intent: MPIntent) => {
-      if (!isMultiplayer) return;
-      sendIntentRef.current?.(intent);
-    },
-    [isMultiplayer],
-  );
 
   const localLegacySide: LegacySide = LEGACY_FROM_SIDE[localSide];
   const remoteLegacySide: LegacySide = localLegacySide === "player" ? "enemy" : "player";
@@ -1430,42 +1411,30 @@ export function useMatchController({
     [isGauntletMode],
   );
 
-  const handleRemoteIntent = useCallback(
-    (msg: MPIntent) => {
-      switch (msg.type) {
-        case "assign": {
-          if (msg.side === localLegacySide) break;
-          assignToWheelFor(msg.side, msg.lane, msg.card);
-          break;
-        }
-        case "clear": {
-          if (msg.side === localLegacySide) break;
-          clearAssignFor(msg.side, msg.lane);
-          break;
-        }
-        case "reveal": {
-          if (msg.side === localLegacySide) break;
-          markResolveVote(msg.side);
-          break;
-        }
-        case "nextRound": {
-          if (msg.side === localLegacySide) break;
-          markAdvanceVote(msg.side);
-          break;
-        }
-        case "rematch": {
-          if (msg.side === localLegacySide) break;
-          markRematchVote(msg.side);
-          break;
-        }
-        case "reserve": {
-          if (msg.side === localLegacySide) break;
-          if (typeof msg.reserve === "number" && typeof msg.round === "number") {
-            storeReserveReport(msg.side, msg.reserve, msg.round);
-          }
-          break;
-        }
-switch (msg.type) {
+export type MPIntent =
+  | { type: "assign"; lane: number; side: LegacySide; card: Card }
+  | { type: "clear"; lane: number; side: LegacySide }
+  | { type: "reveal"; side: LegacySide }
+  | { type: "nextRound"; side: LegacySide }
+  | { type: "rematch"; side: LegacySide }
+  | { type: "reserve"; side: LegacySide; reserve: number; round: number }
+  // Gauntlet / shop roll
+  | ({ type: "shopRoll"; side: LegacySide } & GauntletShopRollPayload)
+  // Shop “ready”
+  | { type: "shopReady"; side: LegacySide }
+  // Purchase (support both shapes)
+  | ({ type: "shopPurchase"; side: LegacySide } & (
+      { cardId: string; round: number } | { card: Card; cost: number }
+    ))
+  // Gold update
+  | ({ type: "gold"; side: LegacySide } & GauntletGoldPayload)
+  // Activation (old + new)
+  | { type: "activationSelect"; side: LegacySide; activationId: string }
+  | { type: "activationPass"; side: LegacySide }
+  | { type: "activation"; side: LegacySide; action: "activate" | "pass"; cardId?: string };
+
+
+  
   // --- Gauntlet/shop roll & purchase (remote -> apply locally) ---
   case "shopRoll": {
     if (msg.side === localLegacySide) break;
