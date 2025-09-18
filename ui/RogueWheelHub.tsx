@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, ReactNode } from "react";
-import rotogoLogo from "/ui/rotogo_snap_logo_2.png";
+import rotogoLogo from "./rotogo_snap_logo_2.png";
 
 const ICONS = {
   refresh: "↻",
@@ -45,7 +45,6 @@ export default function RogueWheelHub(props: HubShellProps) {
   const {
     backgroundUrl = "/fantasy-hero.jpg",
     logoText = "Rotogo Snap",
-    logoUrl = "/ui/Rotogo_Snap_Logo_2.png", // 👈 default to your attached PNG
     hasSave = false,
     onContinue,
     onNew,
@@ -62,6 +61,26 @@ export default function RogueWheelHub(props: HubShellProps) {
   } = props;
 
   const profileProgress = profileExpToNext > 0 ? Math.min(1, profileExp / profileExpToNext) : 0;
+  const effectiveLogo = logoUrl ?? rotogoLogo;
+
+  return (
+    <header className="mx-auto flex max-w-md flex-col items-center px-6 pt-10 md:max-w-lg md:px-10">
+  <img
+    src={effectiveLogo}
+    alt={logoText}
+    className="block max-w-[82%] md:max-w-[72%] drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]"
+    draggable={false}
+    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+  />
+
+  <p className="mt-6 text-center text-purple-100/90 md:text-lg">
+    <b>Spin</b>, <b>draft</b>, triumph.
+  </p>
+
+  <div className="mt-5 w-full">{ProfilePanel}</div>
+</header>
+  );
+}
 
   // -------- profile pill now styled like a button & moved under logo --------
   const ProfilePanel = (
