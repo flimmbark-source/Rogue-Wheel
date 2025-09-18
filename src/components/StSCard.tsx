@@ -19,6 +19,7 @@ export default memo(function StSCard({
   onDragStart,
   onDragEnd,
   onPointerDown,
+  showReserve = true,
 }: {
   card: Card;
   disabled?: boolean;
@@ -29,6 +30,7 @@ export default memo(function StSCard({
   onDragStart?: React.DragEventHandler<HTMLButtonElement>;
   onDragEnd?: React.DragEventHandler<HTMLButtonElement>;
   onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
+  showReserve?: boolean;
 }) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
   return (
@@ -68,9 +70,11 @@ export default memo(function StSCard({
           )}
         </div>
         <div className="space-y-1 text-[11px] leading-tight text-slate-200/90">
-          <div className="font-semibold">
-            Reserve {fmtNum(getCardReserveValue(card))}
-          </div>
+          {showReserve && (
+            <div className="font-semibold">
+              Reserve {fmtNum(getCardReserveValue(card))}
+            </div>
+          )}
           {card.reserve?.summary && (
             <div className="text-slate-200/80">{card.reserve.summary}</div>
           )}
