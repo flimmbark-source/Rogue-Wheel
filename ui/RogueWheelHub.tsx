@@ -17,8 +17,8 @@ const THEME = {
 
 export type HubShellProps = {
   backgroundUrl?: string;
-  logoText?: string;               // fallback if no logoUrl
-  logoUrl?: string;                // 👈 NEW: PNG logo path
+  logoText?: string;               // fallback alt text
+  logoUrl?: string;                // optional override PNG path/URL
   hasSave?: boolean;
   onContinue?: () => void;
   onNew?: () => void;
@@ -111,7 +111,6 @@ export default function RogueWheelHub(props: HubShellProps) {
   });
 
   const [selected, setSelected] = useState(0);
-
   const [showHowTo, setShowHowTo] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
 
@@ -177,21 +176,16 @@ export default function RogueWheelHub(props: HubShellProps) {
 
       {/* Header: centered logo image; panel moved below with breathing room */}
       <header className="mx-auto flex max-w-md flex-col items-center px-6 pt-10 md:max-w-lg md:px-10">
-        {logoUrl ? (
-          <img
-            src={logoUrl}
-            alt={logoText}
-            className="block max-w-[82%] md:max-w-[72%] drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]"
-            draggable={false}
-          />
-        ) : (
-          <h1 className="text-center text-4xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] md:text-6xl">
-            {logoText}
-          </h1>
-        )}
+        <img
+          src={effectiveLogo}
+          alt={logoText}
+          className="block max-w-[82%] md:max-w-[72%] drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]"
+          draggable={false}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+        />
 
         {/* tagline */}
-        <p className="mt+6 text-center text-purple-100/90 md:text-lg">
+        <p className="mt-6 text-center text-purple-100/90 md:text-lg">
           <b>Spin</b>, <b>draft</b>, triumph.
         </p>
 
@@ -200,7 +194,7 @@ export default function RogueWheelHub(props: HubShellProps) {
       </header>
 
       {/* Menu: centered column with responsive gold interaction */}
-      <nav aria-label="Main menu" className="mt0 px-6 md:mt-8 md:px-10">
+      <nav aria-label="Main menu" className="mt-0 px-6 md:mt-8 md:px-10">
         <ul className="mx-auto w-full max-w-md">
           {items.map((it, i) => {
             const isActive = i === selected;
@@ -340,14 +334,18 @@ function OptionsContent() {
       }}
     >
       <Field label="Music Volume">
-        <input type="range" min={0} max={1} step={0.01} value={music}
+        <input
+          type="range" min={0} max={1} step={0.01} value={music}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMusic(parseFloat(e.target.value))}
-          className="w-full" />
+          className="w-full"
+        />
       </Field>
       <Field label="SFX Volume">
-        <input type="range" min={0} max={1} step={0.01} value={sfx}
+        <input
+          type="range" min={0} max={1} step={0.01} value={sfx}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSfx(parseFloat(e.target.value))}
-          className="w-full" />
+          className="w-full"
+        />
       </Field>
       <Toggle label="Screen Shake" value={screenShake} onChange={setScreenShake} />
       <Toggle label="Reduce Motion" value={reducedMotion} onChange={setReducedMotion} />
