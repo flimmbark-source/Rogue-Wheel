@@ -14,7 +14,6 @@ import {
   type Card,
   type Section,
   type Fighter,
-  type SplitChoiceMap,
   type Players,
   LEGACY_FROM_SIDE,
 } from "../types";
@@ -29,7 +28,7 @@ import {
   type MatchResultSummary,
   type LevelProgress,
 } from "../../player/profileStore";
-import { isSplit, isNormal, effectiveValue } from "../values";
+import { getCardPlayValue, getCardReserveValue } from "../values";
 import { MAX_WHEEL, calcWheelSize } from "./wheelSizing";
 
 export type LegacySide = "player" | "enemy";
@@ -1027,10 +1026,16 @@ function createInitialGauntletState(): GauntletState {
         const available = hand.filter((card) => !taken.has(card.id));
         if (available.length === 0) return;
 
-        const best = available.reduce((bestCard, card) => {
-          if (!bestCard) return card;
-          return card.number > bestCard.number ? card : bestCard;
-        }, available[0]);
+        let best = available[0];
+        let bestValue = getCardPlayValue(best);
+        for (let i = 1; i < available.length; i++) {
+          const candidate = available[i];
+          const value = getCardPlayValue(candidate);
+          if (value > bestValue) {
+            best = candidate;
+            bestValue = value;
+          }
+        }
 
         if (best) assignEnemyCard(idx, best);
       };
@@ -1138,8 +1143,10 @@ function createInitialGauntletState(): GauntletState {
 
     for (let w = 0; w < 3; w++) {
       const secList = wheelSections[w];
-      const baseP = played[w].p?.number ?? 0;
-      const baseE = played[w].e?.number ?? 0;
+      const cardP = played[w].p ?? null;
+      const cardE = played[w].e ?? null;
+      const baseP = getCardPlayValue(cardP);
+      const baseE = getCardPlayValue(cardE);
       const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
       const targetSlice = (tokens[w] + steps) % SLICES;
       const section =
@@ -1707,6 +1714,7 @@ function createInitialGauntletState(): GauntletState {
   };
 }
 
+
 function cloneCardForGauntlet(card: Card): Card {
   return {
     ...card,
@@ -1847,20 +1855,9 @@ const handleRemoteIntent = useCallback((msg: MPIntent) => {
 
 
 function computeReserveSum(side: LegacySide, played: (Card | null)[]) {
+
   const reserve = played.filter(Boolean) as Card[];
-  let sum = 0;
-  for (const card of reserve) {
-    if (isSplit(card)) {
-      const best = Object.values(card.split ?? ({} as SplitChoiceMap)).reduce(
-        (acc, val) => Math.max(acc, val),
-        0,
-      );
-      sum += best;
-    } else if (isNormal(card)) {
-      sum += effectiveValue(card);
-    }
-  }
-  return sum;
+  return reserve.reduce((total, card) => total + getCardReserveValue(card), 0);
 }
 
 function settleFighterAfterRound(fighter: Fighter, played: Card[]) {

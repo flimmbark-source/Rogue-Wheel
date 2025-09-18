@@ -1,6 +1,16 @@
 // src/ui/Hand.tsx
 import React from "react";
-import type { Card, Side } from "../game/types";
+import type { Card, Side } from "../src/game/types";
+import { fmtNum, getCardPlayValue, getSplitFaces, isSplit } from "../src/game/values";
+
+const describeCardFaces = (card: Card) => {
+  if (!isSplit(card)) return fmtNum(getCardPlayValue(card));
+  const faces = getSplitFaces(card);
+  if (!faces.length) return fmtNum(0);
+  return faces
+    .map((face) => `${face.label ?? (face.id === "left" ? "L" : "R")}:${fmtNum(face.value)}`)
+    .join(" | ");
+};
 
 export default function Hand({
   side,
@@ -42,13 +52,13 @@ export default function Hand({
               role="gridcell"
               onClick={() => onSelect?.(c)}
               className="rounded-lg border border-slate-600 bg-slate-700/60 px-2 py-1 text-sm hover:bg-slate-700 active:translate-y-[1px]"
-              title={`${c.name} [${c.type === "split" ? `${c.leftValue ?? ""}|${c.rightValue ?? ""}` : c.number ?? ""}]`}
+              title={`${c.name} [${describeCardFaces(c)}]`}
               style={{ outline: `2px solid transparent`, outlineOffset: 0 }}
             >
               {c.name}{" "}
-              {c.type === "split"
-                ? `[${c.leftValue ?? "?"}|${c.rightValue ?? "?"}]`
-                : `[${c.number ?? "?"}]`}
+              {isSplit(c)
+                ? `[${describeCardFaces(c)}]`
+                : `[${fmtNum(getCardPlayValue(c))}]`}
             </button>
           ))}
         </div>

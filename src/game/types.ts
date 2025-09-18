@@ -29,13 +29,50 @@ export type TagId = "oddshift" | "parityflip" | "echoreserve";
 
 export type CardType = "normal" | "split";
 
+export type SplitFaceId = "left" | "right";
+
+export type ActivationTiming = "passive" | "onPlay" | "reserve";
+
+export type ActivationEffect =
+  | { type: "selfValue"; amount: number }
+  | { type: "opponentValue"; amount: number }
+  | { type: "reserveBonus"; amount: number }
+  | { type: "reserveMultiplier"; multiplier: number };
+
+export type ActivationAbility = {
+  id: string;
+  name: string;
+  timing: ActivationTiming;
+  summary: string;
+  effects: ActivationEffect[];
+};
+
+export type CardSplitFace = {
+  id: SplitFaceId;
+  label?: string;
+  value: number;
+  activation?: ActivationAbility[];
+};
+
+export type CardSplit = {
+  faces: Record<SplitFaceId, CardSplitFace>;
+  defaultFace?: SplitFaceId;
+};
+
+export type ReserveBehavior =
+  | { type: "default"; summary?: string; preferredFace?: SplitFaceId }
+  | { type: "fixed"; value: number; summary?: string; preferredFace?: SplitFaceId }
+  | { type: "bonus"; amount: number; summary?: string; preferredFace?: SplitFaceId }
+  | { type: "multiplier"; multiplier: number; summary?: string; preferredFace?: SplitFaceId };
+
 export type Card = {
   id: string;
   name: string;
   type?: CardType;      // default "normal"
   number?: number;      // when type === "normal"
-  leftValue?: number;   // when type === "split"
-  rightValue?: number;  // when type === "split"
+  split?: CardSplit;    // when type === "split"
+  activation?: ActivationAbility[];
+  reserve?: ReserveBehavior;
   tags: TagId[];
 };
 
@@ -67,4 +104,4 @@ export type ChosenCardMap = Partial<Record<Side, Card>>;
 export type NumberBySide = Record<Side, number>;
 
 // Activation support
-export type SplitChoiceMap = Record<string, "left" | "right">;
+export type SplitChoiceMap = Record<string, SplitFaceId>;
