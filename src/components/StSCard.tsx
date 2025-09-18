@@ -1,7 +1,13 @@
 // src/components/StSCard.tsx
 import React, { memo } from "react";
 import { Card } from "../game/types";
-import { fmtNum, isSplit } from "../game/values";
+import {
+  fmtNum,
+  getCardPlayValue,
+  getCardReserveValue,
+  getSplitFaces,
+  isSplit,
+} from "../game/values";
 
 export default memo(function StSCard({
   card,
@@ -39,14 +45,47 @@ export default memo(function StSCard({
     >
       <div className="absolute inset-0 rounded-xl border bg-gradient-to-br from-slate-600 to-slate-800 border-slate-400"></div>
       <div className="absolute inset-px rounded-[10px] bg-slate-900/85 backdrop-blur-[1px] border border-slate-700/70" />
-      <div className="absolute inset-0 flex items-center justify-center">
-        {isSplit(card) ? (
-          <div className="text-xl font-extrabold text-white/90 leading-none text-center">
-            <div>{fmtNum(card.leftValue!)}<span className="opacity-60">|</span>{fmtNum(card.rightValue!)}</div>
+      <div className="absolute inset-0 flex flex-col justify-between p-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-200">
+          {card.name}
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          {isSplit(card) ? (
+            <div className="grid grid-cols-2 gap-x-2 text-center text-white/90">
+              {getSplitFaces(card).map((face) => (
+                <div key={face.id} className="leading-tight">
+                  <div className="text-[10px] uppercase text-slate-300">
+                    {face.label ?? (face.id === "left" ? "Left" : "Right")}
+                  </div>
+                  <div className="text-xl font-extrabold">{fmtNum(face.value)}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-3xl font-extrabold text-white/90">
+              {fmtNum(getCardPlayValue(card))}
+            </div>
+          )}
+        </div>
+        <div className="space-y-1 text-[11px] leading-tight text-slate-200/90">
+          <div className="font-semibold">
+            Reserve {fmtNum(getCardReserveValue(card))}
           </div>
-        ) : (
-          <div className="text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
-        )}
+          {card.reserve?.summary && (
+            <div className="text-slate-200/80">{card.reserve.summary}</div>
+          )}
+          {(() => {
+            const summaries = [
+              ...(card.activation ?? []).map((ability) => ability.summary),
+              ...getSplitFaces(card).flatMap((face) =>
+                (face.activation ?? []).map((ability) => `${face.label ?? (face.id === "left" ? "Left" : "Right")}: ${ability.summary}`),
+              ),
+            ].filter(Boolean);
+            if (!summaries.length) return null;
+            const unique = Array.from(new Set(summaries));
+            return <div className="text-slate-200/80">{unique.join(" • ")}</div>;
+          })()}
+        </div>
       </div>
     </button>
   );

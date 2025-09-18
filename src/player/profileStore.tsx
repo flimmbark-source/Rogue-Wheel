@@ -2,7 +2,15 @@
 // to match your existing game types/functions.
 
 import { shuffle } from "../game/math";
-import type { Card, Fighter } from "../game/types";
+import type {
+  ActivationAbility,
+  Card,
+  CardSplit,
+  CardSplitFace,
+  Fighter,
+  ReserveBehavior,
+  TagId,
+} from "../game/types";
 
 // ===== Local persistence types (module-scoped) =====
 type CardId = string;
@@ -50,7 +58,323 @@ function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`;
 }
 
-// ===== Seed data (keep numbers only to match Card { type:'normal', number:n }) =====
+// ===== Card catalog & factory =====
+export type CardRarity = "common" | "uncommon" | "rare" | "legendary";
+
+export type CardBlueprint = {
+  id: string;
+  name: string;
+  type?: Card["type"];
+  number?: number;
+  split?: CardSplit;
+  activation?: ActivationAbility[];
+  reserve?: ReserveBehavior;
+  tags?: TagId[];
+  cost: number;
+  rarity: CardRarity;
+  effectSummary?: string;
+};
+
+const cloneActivation = (ability: ActivationAbility): ActivationAbility => ({
+  ...ability,
+  effects: ability.effects.map((effect) => ({ ...effect })),
+});
+
+const cloneSplitFace = (face: CardSplitFace): CardSplitFace => ({
+  ...face,
+  activation: face.activation ? face.activation.map(cloneActivation) : undefined,
+});
+
+const cloneSplit = (split: CardSplit): CardSplit => ({
+  defaultFace: split.defaultFace,
+  faces: {
+    left: cloneSplitFace(split.faces.left),
+    right: cloneSplitFace(split.faces.right),
+  },
+});
+
+const instantiateCard = (blueprint: CardBlueprint): Card => ({
+  id: nextCardId(),
+  name: blueprint.name,
+  type: blueprint.type ?? "normal",
+  number: blueprint.number,
+  split: blueprint.split ? cloneSplit(blueprint.split) : undefined,
+  activation: blueprint.activation ? blueprint.activation.map(cloneActivation) : undefined,
+  reserve: blueprint.reserve ? { ...blueprint.reserve } : undefined,
+  tags: blueprint.tags ? [...blueprint.tags] : [],
+});
+
+const ABILITIES = {
+  feintBoost: {
+    id: "feint_boost",
+    name: "Feint Setup",
+    timing: "onPlay" as const,
+    summary: "+2 when you reveal the Feint face.",
+    effects: [{ type: "selfValue", amount: 2 }],
+  },
+  chargeUp: {
+    id: "charge_up",
+    name: "Charge Up",
+    timing: "onPlay" as const,
+    summary: "+3 when this card is played.",
+    effects: [{ type: "selfValue", amount: 3 }],
+  },
+  echoReserve: {
+    id: "echo_reserve",
+    name: "Echo Chamber",
+    timing: "reserve" as const,
+    summary: "Reserve gains +3 then doubles.",
+    effects: [
+      { type: "reserveBonus", amount: 3 },
+      { type: "reserveMultiplier", multiplier: 2 },
+    ],
+  },
+  stashReserve: {
+    id: "stash_reserve",
+    name: "Hidden Stash",
+    timing: "reserve" as const,
+    summary: "+2 reserve while held.",
+    effects: [{ type: "reserveBonus", amount: 2 }],
+  },
+  omenBoost: {
+    id: "omen_boost",
+    name: "Omensight",
+    timing: "onPlay" as const,
+    summary: "+1 when you reveal the Predict face.",
+    effects: [{ type: "selfValue", amount: 1 }],
+  },
+  omenReserve: {
+    id: "omen_reserve",
+    name: "Foretold Future",
+    timing: "reserve" as const,
+    summary: "Reserve doubles the stored omen.",
+    effects: [{ type: "reserveMultiplier", multiplier: 2 }],
+  },
+  chronoReserve: {
+    id: "chrono_reserve",
+    name: "Chrono Vault",
+    timing: "reserve" as const,
+    summary: "Reserve gains +4 then doubles.",
+    effects: [
+      { type: "reserveBonus", amount: 4 },
+      { type: "reserveMultiplier", multiplier: 2 },
+    ],
+  },
+  dragField: {
+    id: "drag_field",
+    name: "Temporal Drag",
+    timing: "onPlay" as const,
+    summary: "+4 when you slow the foe.",
+    effects: [{ type: "selfValue", amount: 4 }],
+  },
+  vaultReserve: {
+    id: "vault_reserve",
+    name: "Vaulted Spoils",
+    timing: "reserve" as const,
+    summary: "Reserve adds +2 then doubles.",
+    effects: [
+      { type: "reserveBonus", amount: 2 },
+      { type: "reserveMultiplier", multiplier: 2 },
+    ],
+  },
+} satisfies Record<string, ActivationAbility>;
+
+const BASIC_BLUEPRINTS: CardBlueprint[] = Array.from({ length: 10 }, (_, n) => ({
+  id: `basic_${n}`,
+  name: `${n}`,
+  type: "normal",
+  number: n,
+  tags: [],
+  cost: 0,
+  rarity: "common",
+  effectSummary: `A simple value ${n} card.`,
+}));
+
+const ADVANCED_BLUEPRINTS: CardBlueprint[] = [
+  {
+    id: "charged_lancer",
+    name: "Charged Lancer",
+    type: "normal",
+    number: 4,
+    activation: [ABILITIES.chargeUp],
+    reserve: { type: "bonus", amount: 1, summary: "+1 reserve from stored energy." },
+    tags: ["oddshift"],
+    cost: 160,
+    rarity: "uncommon",
+    effectSummary: "4 base, +3 when played. Reserve stores +1 charge.",
+  },
+  {
+    id: "echo_savant",
+    name: "Echo Savant",
+    type: "normal",
+    number: 3,
+    activation: [ABILITIES.echoReserve],
+    reserve: { type: "default", summary: "Echo stash builds momentum." },
+    tags: ["echoreserve"],
+    cost: 210,
+    rarity: "rare",
+    effectSummary: "3 power. Reserve gains +3 then doubles while held.",
+  },
+  {
+    id: "vault_keeper",
+    name: "Vault Keeper",
+    type: "normal",
+    number: 5,
+    activation: [ABILITIES.vaultReserve],
+    reserve: { type: "default", summary: "Reserve fortifies into a vault." },
+    tags: ["parityflip"],
+    cost: 190,
+    rarity: "uncommon",
+    effectSummary: "5 power. Reserve adds +2 then doubles in the vault.",
+  },
+  {
+    id: "duelist_edge",
+    name: "Duelist's Edge",
+    type: "split",
+    split: {
+      defaultFace: "right",
+      faces: {
+        left: { id: "left", label: "Feint", value: 2, activation: [ABILITIES.feintBoost] },
+        right: { id: "right", label: "Strike", value: 7 },
+      },
+    },
+    reserve: {
+      type: "bonus",
+      amount: 2,
+      summary: "+2 reserve when the Feint is kept ready.",
+      preferredFace: "left",
+    },
+    tags: ["oddshift"],
+    cost: 220,
+    rarity: "uncommon",
+    effectSummary: "Feint (2+2) or Strike 7. Reserve favors the hidden Feint.",
+  },
+  {
+    id: "oracle_sigil",
+    name: "Oracle Sigil",
+    type: "split",
+    split: {
+      defaultFace: "left",
+      faces: {
+        left: { id: "left", label: "Predict", value: 1, activation: [ABILITIES.omenBoost] },
+        right: { id: "right", label: "Claim", value: 6 },
+      },
+    },
+    activation: [ABILITIES.omenReserve],
+    reserve: {
+      type: "bonus",
+      amount: 2,
+      summary: "+2 reserve charged with foresight.",
+      preferredFace: "left",
+    },
+    tags: ["echoreserve"],
+    cost: 240,
+    rarity: "rare",
+    effectSummary: "Predict (1+1) or Claim 6. Reserve gains +2 then doubles from omens.",
+  },
+  {
+    id: "time_fragment",
+    name: "Time Fragment",
+    type: "split",
+    split: {
+      defaultFace: "right",
+      faces: {
+        left: { id: "left", label: "Drag", value: -1, activation: [ABILITIES.dragField] },
+        right: { id: "right", label: "Surge", value: 9 },
+      },
+    },
+    activation: [ABILITIES.chronoReserve],
+    reserve: {
+      type: "default",
+      summary: "Chrono charge resonates while held.",
+      preferredFace: "left",
+    },
+    tags: ["parityflip", "echoreserve"],
+    cost: 320,
+    rarity: "legendary",
+    effectSummary: "Drag (-1+4) or Surge 9. Reserve adds +4 then doubles in stasis.",
+  },
+];
+
+const CARD_BLUEPRINTS: CardBlueprint[] = [...BASIC_BLUEPRINTS, ...ADVANCED_BLUEPRINTS];
+
+const CARD_BLUEPRINT_MAP = new Map<string, CardBlueprint>(
+  CARD_BLUEPRINTS.map((entry) => [entry.id, entry]),
+);
+
+export const CARD_CATALOG: readonly CardBlueprint[] = CARD_BLUEPRINTS;
+
+const RARITY_WEIGHTS: Record<CardRarity, number> = {
+  common: 8,
+  uncommon: 4,
+  rare: 2,
+  legendary: 1,
+};
+
+const pickWeightedIndex = (entries: CardBlueprint[], rng: () => number) => {
+  const total = entries.reduce(
+    (sum, entry) => sum + (RARITY_WEIGHTS[entry.rarity] ?? 1),
+    0,
+  );
+  if (total <= 0) return Math.floor(rng() * entries.length);
+  let roll = rng() * total;
+  for (let i = 0; i < entries.length; i++) {
+    roll -= RARITY_WEIGHTS[entries[i].rarity] ?? 1;
+    if (roll <= 0) return i;
+  }
+  return entries.length - 1;
+};
+
+export type StoreOffering = {
+  id: string;
+  rarity: CardRarity;
+  cost: number;
+  summary: string;
+  card: Card;
+};
+
+export function rollStoreOfferings(
+  count = 4,
+  rng: () => number = Math.random,
+): StoreOffering[] {
+  const pool = [...CARD_BLUEPRINTS];
+  const offers: StoreOffering[] = [];
+  while (offers.length < count && pool.length) {
+    const index = pickWeightedIndex(pool, rng);
+    const blueprint = pool.splice(index, 1)[0];
+    if (!blueprint) break;
+    const summary = blueprint.effectSummary ?? blueprint.name;
+    offers.push({
+      id: blueprint.id,
+      rarity: blueprint.rarity,
+      cost: blueprint.cost,
+      summary,
+      card: instantiateCard(blueprint),
+    });
+  }
+  return offers;
+}
+
+const numberBlueprintFromId = (cardId: string): CardBlueprint | null => {
+  const mBasic = /^basic_(\d+)$/.exec(cardId);
+  const mNeg = /^neg_(-?\d+)$/.exec(cardId);
+  const mNum = /^num_(-?\d+)$/.exec(cardId);
+  const match = mBasic ?? mNeg ?? mNum;
+  if (!match) return null;
+  const value = parseInt(match[1], 10);
+  return {
+    id: cardId,
+    name: `${value}`,
+    type: "normal",
+    number: value,
+    tags: [],
+    cost: value < 0 ? 120 : 40,
+    rarity: value < 0 ? "uncommon" : "common",
+    effectSummary: `Straight value ${value}.`,
+  };
+};
+
+// ===== Seed data =====
 const SEED_INVENTORY: InventoryItem[] = [];
 
 const SEED_DECK: Deck = {
@@ -301,29 +625,24 @@ export function addToInventory(items: SwapItem[]) {
 const nextCardId = (() => { let i = 1; return () => `C${i++}`; })();
 
 /**
- * Supported cardId formats:
- *  - "basic_N" where N is 0..9  → normal card with number N
- *  - "neg_X" where X is a number (e.g., -2) → normal card with number X
- *  - "num_X" explicit number alias
- * Anything else falls back to number 0.
+ * Convert a profile cardId into a runtime Card instance using the catalog.
+ * Falls back to generating a simple numeric card when unknown.
  */
 function cardFromId(cardId: string): Card {
-  let num = 0;
-  const mBasic = /^basic_(\d+)$/.exec(cardId);
-  const mNeg   = /^neg_(-?\d+)$/.exec(cardId);
-  const mNum   = /^num_(-?\d+)$/.exec(cardId);
+  const blueprint =
+    CARD_BLUEPRINT_MAP.get(cardId) ?? numberBlueprintFromId(cardId) ?? CARD_BLUEPRINT_MAP.get("basic_0");
 
-  if (mBasic) num = parseInt(mBasic[1], 10);
-  else if (mNeg) num = parseInt(mNeg[1], 10);
-  else if (mNum) num = parseInt(mNum[1], 10);
+  if (!blueprint) {
+    return {
+      id: nextCardId(),
+      name: "0",
+      type: "normal",
+      number: 0,
+      tags: [],
+    };
+  }
 
-  return {
-    id: nextCardId(),
-    name: `${num}`,
-    type: "normal",
-    number: num,
-    tags: [],
-  };
+  return instantiateCard(blueprint);
 }
 
 // ====== Build a runtime deck (Card[]) from the ACTIVE profile deck ======
@@ -340,13 +659,8 @@ export function buildActiveDeckAsCards(): Card[] {
 
 // ====== Runtime helpers (folded from your src/game/decks.ts) ======
 export function starterDeck(): Card[] {
-  const base: Card[] = Array.from({ length: 10 }, (_, n) => ({
-    id: nextCardId(),
-    name: `${n}`,
-    type: "normal",
-    number: n,
-    tags: [],
-  }));
+  const ids = Array.from({ length: 10 }, (_, n) => `basic_${n}`);
+  const base = ids.map((id) => cardFromId(id));
   return shuffle(base);
 }
 
