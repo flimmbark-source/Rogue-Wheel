@@ -57,6 +57,7 @@ import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 import type { WheelHandle } from "./components/CanvasWheel";
 import MatchBoard from "./components/match/MatchBoard";
 import HandDock from "./components/match/HandDock";
+import StSCard from "./components/StSCard";
 
 type AblyRealtime = InstanceType<typeof Realtime>;
 type AblyChannel = ReturnType<AblyRealtime["channels"]["get"]>;
