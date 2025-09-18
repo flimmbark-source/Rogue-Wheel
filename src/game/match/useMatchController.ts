@@ -45,6 +45,40 @@ export type Phase =
 
 export type MatchMode = "classic" | "gauntlet";
 
+export type GauntletShopPurchase = { cardId: string; round: number };
+
+export type GauntletShopState = {
+  inventory: Card[];
+  roll: number;
+  round: number;
+  purchases: GauntletShopPurchase[];
+};
+
+export type GauntletActivationState = {
+  selection: string | null;
+  passed: boolean;
+};
+
+export type GauntletSideState = {
+  shop: GauntletShopState;
+  gold: number;
+  goldDelta: number | null;
+  activation: GauntletActivationState;
+};
+
+export type GauntletState = Record<LegacySide, GauntletSideState>;
+
+export type GauntletShopRollPayload = {
+  inventory: Card[];
+  round: number;
+  roll: number;
+};
+
+export type GauntletGoldPayload = {
+  gold: number;
+  delta?: number;
+};
+
 export type MPIntent =
   | { type: "assign"; lane: number; side: LegacySide; card: Card }
   | { type: "clear"; lane: number; side: LegacySide }
@@ -52,8 +86,38 @@ export type MPIntent =
   | { type: "nextRound"; side: LegacySide }
   | { type: "rematch"; side: LegacySide }
   | { type: "reserve"; side: LegacySide; reserve: number; round: number }
+  | ({ type: "shopRoll"; side: LegacySide } & GauntletShopRollPayload)
   | { type: "shopReady"; side: LegacySide }
-  | { type: "shopPurchase"; side: LegacySide; card: Card; cost: number }
+  | ({ type: "shopPurchase"; side: LegacySide } & (
+      { cardId: string; round: number } | { card: Card; cost: number }
+    ))
+  | ({ type: "gold"; side: LegacySide } & GauntletGoldPayload)
+  | { type: "activationSelect"; side: LegacySide; activationId: string }
+  | { type: "activationPass"; side: LegacySide }
+  | { type: "activation"; side: LegacySide; action: "activate" | "pass"; cardId?: string };
+
+
+// --- Shop / Activation intents (merged) ---
+type ShopRollIntent =
+  ({ type: "shopRoll"; side: LegacySide } & GauntletShopRollPayload);
+
+type ShopReadyIntent =
+  { type: "shopReady"; side: LegacySide };
+
+// Back-compat: support both legacy (cardId+round) and new (card+cost)
+type ShopPurchaseIntent =
+  ({ type: "shopPurchase"; side: LegacySide } & (
+    | { cardId: string; round: number }   // legacy shape
+    | { card: Card; cost: number }        // new shape
+  ));
+
+type GoldIntent =
+  ({ type: "gold"; side: LegacySide } & GauntletGoldPayload);
+
+// Back-compat: support older split select/pass and newer consolidated activation
+type ActivationIntent =
+  | { type: "activationSelect"; side: LegacySide; activationId: string }
+  | { type: "activationPass"; side: LegacySide }
   | { type: "activation"; side: LegacySide; action: "activate" | "pass"; cardId?: string };
 
 export interface UseMatchControllerOptions {
@@ -83,6 +147,7 @@ export function useMatchController({
 }: UseMatchControllerOptions) {
   const matchMode = mode;
   const isGauntletMode = matchMode === "gauntlet";
+
   const sendIntentRef = useRef(sendIntent);
   useEffect(() => {
     sendIntentRef.current = sendIntent;
@@ -95,6 +160,14 @@ export function useMatchController({
     },
     [isMultiplayer],
   );
+
+
+// Keep the ref fresh if sendIntent changes
+useEffect(() => {
+  sendIntentRef.current = sendIntent;
+}, [sendIntent]);
+
+
 
   const localLegacySide: LegacySide = LEGACY_FROM_SIDE[localSide];
   const remoteLegacySide: LegacySide = localLegacySide === "player" ? "enemy" : "player";
@@ -244,6 +317,233 @@ export function useMatchController({
       enemy: false,
     },
   );
+
+  const gauntletStateRef = useRef<GauntletState>(createInitialGauntletState());
+  const [gauntletState, setGauntletState] = useState<GauntletState>(() => gauntletStateRef.current);
+
+  const updateGauntletState = useCallback((updater: (prev: GauntletState) => GauntletState) => {
+    setGauntletState((prev) => {
+      const next = updater(prev);
+      gauntletStateRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const resetGauntletState = useCallback(() => {
+    const reset = createInitialGauntletState();
+    gauntletStateRef.current = reset;
+    setGauntletState(reset);
+  }, []);
+
+  const applyGauntletShopRollFor = useCallback(
+    (side: LegacySide, payload: GauntletShopRollPayload) => {
+      updateGauntletState((prev) => {
+        const base = prev[side];
+        const nextInventory = payload.inventory.map(cloneCardForGauntlet);
+        const sameInventory = inventoriesEqual(base.shop.inventory, nextInventory);
+        const sameRoll = base.shop.roll === payload.roll;
+        const sameRound = base.shop.round === payload.round;
+        if (sameInventory && sameRoll && sameRound && base.shop.purchases.length === 0) {
+          return prev;
+        }
+        const nextSide: GauntletSideState = {
+          ...base,
+          shop: {
+            inventory: nextInventory,
+            roll: payload.roll,
+            round: payload.round,
+            purchases: [],
+          },
+        };
+        return { ...prev, [side]: nextSide };
+      });
+    },
+    [updateGauntletState],
+  );
+
+function createInitialGauntletState(): GauntletState {
+  return {
+    player: createInitialGauntletSideState(),
+    enemy: createInitialGauntletSideState(),
+  };
+}
+
+
+  const applyGauntletPurchaseFor = useCallback(
+    (side: LegacySide, purchase: GauntletShopPurchase) => {
+      updateGauntletState((prev) => {
+        const base = prev[side];
+        const alreadyRecorded = base.shop.purchases.some(
+          (p) => p.cardId === purchase.cardId && p.round === purchase.round,
+        );
+        const nextPurchases = alreadyRecorded
+          ? base.shop.purchases
+          : [...base.shop.purchases, { ...purchase }];
+        const nextInventory = [...base.shop.inventory];
+        let inventoryChanged = false;
+        const removeIdx = nextInventory.findIndex((card) => card.id === purchase.cardId);
+        if (removeIdx !== -1) {
+          nextInventory.splice(removeIdx, 1);
+          inventoryChanged = true;
+        }
+        if (!inventoryChanged && alreadyRecorded) {
+          return prev;
+        }
+        const nextSide: GauntletSideState = {
+          ...base,
+          shop: {
+            inventory: inventoryChanged ? nextInventory : base.shop.inventory,
+            roll: base.shop.roll,
+            round: base.shop.round,
+            purchases: nextPurchases,
+          },
+        };
+        return { ...prev, [side]: nextSide };
+      });
+    },
+    [updateGauntletState],
+  );
+
+  const applyGauntletGoldFor = useCallback(
+    (side: LegacySide, payload: GauntletGoldPayload) => {
+      updateGauntletState((prev) => {
+        const base = prev[side];
+        const nextDelta =
+          typeof payload.delta === "number" && Number.isFinite(payload.delta)
+            ? payload.delta
+            : payload.gold - base.gold;
+        if (base.gold === payload.gold && base.goldDelta === nextDelta) {
+          return prev;
+        }
+        const nextSide: GauntletSideState = {
+          ...base,
+          gold: payload.gold,
+          goldDelta: nextDelta,
+        };
+        return { ...prev, [side]: nextSide };
+      });
+    },
+    [updateGauntletState],
+  );
+
+  const applyGauntletActivationSelectFor = useCallback(
+    (side: LegacySide, activationId: string) => {
+      updateGauntletState((prev) => {
+        const base = prev[side];
+        if (base.activation.selection === activationId && !base.activation.passed) {
+          return prev;
+        }
+        const nextSide: GauntletSideState = {
+          ...base,
+          activation: { selection: activationId, passed: false },
+        };
+        return { ...prev, [side]: nextSide };
+      });
+    },
+    [updateGauntletState],
+  );
+
+  const applyGauntletActivationPassFor = useCallback(
+    (side: LegacySide) => {
+      updateGauntletState((prev) => {
+        const base = prev[side];
+        if (base.activation.passed && base.activation.selection === null) {
+          return prev;
+        }
+        const nextSide: GauntletSideState = {
+          ...base,
+          activation: { selection: null, passed: true },
+        };
+        return { ...prev, [side]: nextSide };
+      });
+    },
+    [updateGauntletState],
+  );
+
+  const gauntletRollShop = useCallback(
+    (inventory: Card[], round: number, roll?: number) => {
+      const sanitizedInventory = inventory.map(cloneCardForGauntlet);
+      const current = gauntletStateRef.current[localLegacySide];
+      const resolvedRoll =
+        typeof roll === "number" && Number.isFinite(roll) ? roll : current.shop.roll + 1;
+      if (
+        inventoriesEqual(current.shop.inventory, sanitizedInventory) &&
+        current.shop.round === round &&
+        current.shop.roll === resolvedRoll &&
+        current.shop.purchases.length === 0
+      ) {
+        return;
+      }
+      applyGauntletShopRollFor(localLegacySide, {
+        inventory: sanitizedInventory,
+        round,
+        roll: resolvedRoll,
+      });
+      emitIntent({
+        type: "shopRoll",
+        side: localLegacySide,
+        inventory: sanitizedInventory,
+        round,
+        roll: resolvedRoll,
+      });
+    },
+    [applyGauntletShopRollFor, emitIntent, localLegacySide],
+  );
+
+  const gauntletConfirmPurchase = useCallback(
+    (cardId: string, round: number) => {
+      const current = gauntletStateRef.current[localLegacySide];
+      const alreadyRecorded = current.shop.purchases.some(
+        (p) => p.cardId === cardId && p.round === round,
+      );
+      const hasCard = current.shop.inventory.some((card) => card.id === cardId);
+      if (!hasCard && alreadyRecorded) {
+        return;
+      }
+      applyGauntletPurchaseFor(localLegacySide, { cardId, round });
+      emitIntent({ type: "shopPurchase", side: localLegacySide, cardId, round });
+    },
+    [applyGauntletPurchaseFor, emitIntent, localLegacySide],
+  );
+
+  const gauntletUpdateGold = useCallback(
+    (gold: number, delta?: number) => {
+      const current = gauntletStateRef.current[localLegacySide];
+      const resolvedDelta =
+        typeof delta === "number" && Number.isFinite(delta) ? delta : gold - current.gold;
+      if (current.gold === gold && current.goldDelta === resolvedDelta) {
+        return;
+      }
+      applyGauntletGoldFor(localLegacySide, { gold, delta: resolvedDelta });
+      emitIntent({ type: "gold", side: localLegacySide, gold, delta: resolvedDelta });
+    },
+    [applyGauntletGoldFor, emitIntent, localLegacySide],
+  );
+
+  const gauntletSelectActivation = useCallback(
+    (activationId: string) => {
+      const current = gauntletStateRef.current[localLegacySide];
+      if (current.activation.selection === activationId && !current.activation.passed) {
+        return;
+      }
+      applyGauntletActivationSelectFor(localLegacySide, activationId);
+      emitIntent({ type: "activationSelect", side: localLegacySide, activationId });
+    },
+    [applyGauntletActivationSelectFor, emitIntent, localLegacySide],
+  );
+
+  const gauntletPassActivation = useCallback(() => {
+    const current = gauntletStateRef.current[localLegacySide];
+    if (current.activation.passed && current.activation.selection === null) {
+      return;
+    }
+    applyGauntletActivationPassFor(localLegacySide);
+    emitIntent({ type: "activationPass", side: localLegacySide });
+  }, [
+    applyGauntletActivationPassFor,
+    emitIntent,
+    localLegacySide,
+  ]);
 
   const markRematchVote = useCallback((side: LegacySide) => {
     setRematchVotes((prev) => {
@@ -1147,73 +1447,6 @@ export function useMatchController({
     [isGauntletMode],
   );
 
-  const handleRemoteIntent = useCallback(
-    (msg: MPIntent) => {
-      switch (msg.type) {
-        case "assign": {
-          if (msg.side === localLegacySide) break;
-          assignToWheelFor(msg.side, msg.lane, msg.card);
-          break;
-        }
-        case "clear": {
-          if (msg.side === localLegacySide) break;
-          clearAssignFor(msg.side, msg.lane);
-          break;
-        }
-        case "reveal": {
-          if (msg.side === localLegacySide) break;
-          markResolveVote(msg.side);
-          break;
-        }
-        case "nextRound": {
-          if (msg.side === localLegacySide) break;
-          markAdvanceVote(msg.side);
-          break;
-        }
-        case "rematch": {
-          if (msg.side === localLegacySide) break;
-          markRematchVote(msg.side);
-          break;
-        }
-        case "reserve": {
-          if (msg.side === localLegacySide) break;
-          if (typeof msg.reserve === "number" && typeof msg.round === "number") {
-            storeReserveReport(msg.side, msg.reserve, msg.round);
-          }
-          break;
-        }
-        case "shopPurchase": {
-          if (msg.side === localLegacySide) break;
-          applyShopPurchase(msg.side, msg.card, msg.cost, { force: true });
-          break;
-        }
-        case "shopReady": {
-          if (msg.side === localLegacySide) break;
-          completeShopForSide(msg.side, { emit: false });
-          break;
-        }
-        case "activation": {
-          if (msg.side === localLegacySide) break;
-          applyActivationAction(msg, { emit: false });
-          break;
-        }
-        default:
-          break;
-      }
-    },
-    [
-      applyActivationAction,
-      applyShopPurchase,
-      assignToWheelFor,
-      completeShopForSide,
-      clearAssignFor,
-      localLegacySide,
-      markAdvanceVote,
-      markRematchVote,
-      markResolveVote,
-      storeReserveReport,
-    ],
-  );
 
   const handleRevealClick = useCallback(() => {
     if (phase !== "choose" || !canReveal) return;
@@ -1286,6 +1519,8 @@ export function useMatchController({
 
     reserveReportsRef.current = { player: null, enemy: null };
 
+    resetGauntletState();
+
     wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
 
     setFreezeLayout(false);
@@ -1350,6 +1585,7 @@ export function useMatchController({
     setWheelHUD,
     setWheelSections,
     setWins,
+    resetGauntletState,
   ]);
 
   useEffect(() => {
@@ -1461,9 +1697,154 @@ export function useMatchController({
     nextRound,
     onReveal,
     resetMatch,
+    gauntletState,
+    gauntletRollShop,
+    gauntletConfirmPurchase,
+    gauntletUpdateGold,
+    gauntletSelectActivation,
+    gauntletPassActivation,
     handleRemoteIntent,
   };
 }
+
+function cloneCardForGauntlet(card: Card): Card {
+  return {
+    ...card,
+    tags: Array.isArray(card.tags) ? [...card.tags] : [],
+  };
+}
+
+function cardsEqual(a: Card, b: Card): boolean {
+  if (a.id !== b.id) return false;
+  if (a.name !== b.name) return false;
+  if ((a.type ?? "normal") !== (b.type ?? "normal")) return false;
+  if ((a.number ?? null) !== (b.number ?? null)) return false;
+  if ((a.leftValue ?? null) !== (b.leftValue ?? null)) return false;
+  if ((a.rightValue ?? null) !== (b.rightValue ?? null)) return false;
+  if (a.tags.length !== b.tags.length) return false;
+  for (let i = 0; i < a.tags.length; i += 1) {
+    if (a.tags[i] !== b.tags[i]) return false;
+  }
+  return true;
+}
+
+function inventoriesEqual(a: Card[], b: Card[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (!cardsEqual(a[i], b[i])) return false;
+  }
+  return true;
+}
+
+function createInitialGauntletSideState(): GauntletSideState {
+  return {
+    shop: { inventory: [], roll: 0, round: 0, purchases: [] },
+    gold: 0,
+    goldDelta: null,
+    activation: { selection: null, passed: false },
+  };
+}
+
+const handleRemoteIntent = useCallback((msg: MPIntent) => {
+  switch (msg.type) {
+    case "assign": {
+      if (msg.side === localLegacySide) break;
+      assignToWheelFor(msg.side, msg.lane, msg.card);
+      break;
+    }
+    case "clear": {
+      if (msg.side === localLegacySide) break;
+      clearAssignFor(msg.side, msg.lane);
+      break;
+    }
+    case "reveal": {
+      if (msg.side === localLegacySide) break;
+      markResolveVote(msg.side);
+      break;
+    }
+    case "nextRound": {
+      if (msg.side === localLegacySide) break;
+      markAdvanceVote(msg.side);
+      break;
+    }
+    case "rematch": {
+      if (msg.side === localLegacySide) break;
+      markRematchVote(msg.side);
+      break;
+    }
+    case "reserve": {
+      if (msg.side === localLegacySide) break;
+      if (typeof msg.reserve === "number" && typeof msg.round === "number") {
+        storeReserveReport(msg.side, msg.reserve, msg.round);
+      }
+      break;
+    }
+
+    // ---- Shop (legacy + new) ----
+    case "shopPurchase": {
+      if (msg.side === localLegacySide) break;
+      if ("cardId" in msg && typeof msg.cardId === "string" && typeof msg.round === "number") {
+        // legacy shape
+        applyGauntletPurchaseFor(msg.side, { cardId: msg.cardId, round: msg.round });
+      } else if ("card" in msg && msg.card && typeof (msg as any).cost === "number") {
+        // new shape
+        applyShopPurchase(msg.side, (msg as any).card, (msg as any).cost, { force: true });
+      }
+      break;
+    }
+    case "shopReady": {
+      if (msg.side === localLegacySide) break;
+      completeShopForSide(msg.side, { emit: false });
+      break;
+    }
+
+    case "gold": {
+      if (msg.side === localLegacySide) break;
+      const payload: GauntletGoldPayload = { gold: msg.gold };
+      if (typeof msg.delta === "number" && Number.isFinite(msg.delta)) {
+        payload.delta = msg.delta;
+      }
+      applyGauntletGoldFor(msg.side, payload);
+      break;
+    }
+
+    // ---- Activation (old + new) ----
+    case "activationSelect": {
+      if (msg.side === localLegacySide) break;
+      applyGauntletActivationSelectFor(msg.side, msg.activationId);
+      break;
+    }
+    case "activationPass": {
+      if (msg.side === localLegacySide) break;
+      applyGauntletActivationPassFor(msg.side);
+      break;
+    }
+    case "activation": {
+      if (msg.side === localLegacySide) break;
+      applyActivationAction(msg, { emit: false });
+      break;
+    }
+
+    default:
+      break;
+  }
+}, [
+  assignToWheelFor,
+  clearAssignFor,
+  markResolveVote,
+  markAdvanceVote,
+  markRematchVote,
+  storeReserveReport,
+  localLegacySide,
+  applyGauntletPurchaseFor,
+  applyShopPurchase,
+  completeShopForSide,
+  applyGauntletGoldFor,
+  applyGauntletActivationSelectFor,
+  applyGauntletActivationPassFor,
+  applyActivationAction,
+]);
+
 
 function computeReserveSum(side: LegacySide, played: (Card | null)[]) {
   const reserve = played.filter(Boolean) as Card[];
