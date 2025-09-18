@@ -2,19 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import StSCard from "../StSCard";
 import type { Card } from "../../game/types";
-
-export const MIN_WHEEL = 160;
-export const MAX_WHEEL = 200;
-
-export function calcWheelSize(viewH: number, viewW: number, dockAllowance = 0) {
-  const isMobile = viewW <= 480;
-  const chromeAllowance = viewW >= 1024 ? 200 : 140;
-  const raw = Math.floor((viewH - chromeAllowance - dockAllowance) / 3);
-  const MOBILE_MAX = 188;
-  const DESKTOP_MAX = 220;
-  const maxAllowed = isMobile ? MOBILE_MAX : DESKTOP_MAX;
-  return Math.max(MIN_WHEEL, Math.min(maxAllowed, raw));
-}
+import { MAX_WHEEL, MIN_WHEEL, calcWheelSize } from "../../game/match/wheelSizing";
 
 type DropTarget = { kind: "wheel" | "slot"; idx: number };
 
