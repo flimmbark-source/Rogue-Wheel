@@ -8,15 +8,16 @@ const ICONS = {
   book: "📖",
 };
 
-/**
- * Rogue Wheel — Cinematic Hub (Fantasy Skin)
- * - Vertical menu: Continue (if save), Play/New Run, How to Play, Options, Quit
- * - Title with right-aligned Profile pill (clickable if onProfile provided)
- */
+// --- small theme tokens used by buttons & profile panel ---
+const THEME = {
+  btnGoldFrom: "#F5C063",
+  btnGoldTo: "#E8A936",
+};
 
 export type HubShellProps = {
   backgroundUrl?: string;
-  logoText?: string;
+  logoText?: string;               // fallback if no logoUrl
+  logoUrl?: string;                // 👈 NEW: PNG logo path
   hasSave?: boolean;
   onContinue?: () => void;
   onNew?: () => void;
@@ -43,6 +44,7 @@ export default function RogueWheelHub(props: HubShellProps) {
   const {
     backgroundUrl = "/fantasy-hero.jpg",
     logoText = "Rotogo Snap",
+    logoUrl = "../assets/Rotogo_Snap_Logo_(2).png", // 👈 default to your attached PNG
     hasSave = false,
     onContinue,
     onNew,
@@ -52,7 +54,7 @@ export default function RogueWheelHub(props: HubShellProps) {
     onQuit,
     version = "v0.1.0",
     profileName = "Adventurer",
-    onProfile, // ← NEW
+    onProfile,
     profileLevel = 1,
     profileExp = 0,
     profileExpToNext = 200,
@@ -60,26 +62,40 @@ export default function RogueWheelHub(props: HubShellProps) {
 
   const profileProgress = profileExpToNext > 0 ? Math.min(1, profileExp / profileExpToNext) : 0;
 
-  const profileBadge = (
-    <div className="flex items-center gap-4">
-      <div className="text-left">
-        <div className="text-[11px] uppercase tracking-wide text-amber-200/70">Profile</div>
-        <div className="text-sm font-semibold text-amber-50">{profileName}</div>
-        <div className="mt-1 h-1.5 w-32 rounded-full bg-black/45">
-          <div
-            className="h-1.5 rounded-full bg-amber-300 transition-[width] duration-500"
-            style={{ width: `${Math.min(100, profileProgress * 100)}%` }}
-          />
+  // -------- profile pill now styled like a button & moved under logo --------
+  const ProfilePanel = (
+    <button
+      type="button"
+      onClick={onProfile}
+      disabled={!onProfile}
+      className={[
+        "w-full max-w-md rounded-2xl px-4 py-3 text-left",
+        "ring-1 ring-amber-300/25 bg-gradient-to-b from-black/35 to-black/20",
+        "hover:from-black/30 hover:to-black/10",
+        onProfile ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-amber-300" : "cursor-default opacity-90",
+      ].join(" ")}
+      aria-label="Open Profile"
+    >
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0 grow">
+          <div className="text-[11px] uppercase tracking-wide text-amber-200/70">Profile</div>
+          <div className="truncate text-sm font-semibold text-amber-50">{profileName}</div>
+          <div className="mt-1 h-1.5 w-full rounded-full bg-black/45">
+            <div
+              className="h-1.5 rounded-full bg-amber-300 transition-[width] duration-500"
+              style={{ width: `${Math.min(100, profileProgress * 100)}%` }}
+            />
+          </div>
+          <div className="mt-0.5 text-[11px] text-amber-100/80">
+            {profileExp}/{profileExpToNext} XP
+          </div>
         </div>
-        <div className="mt-0.5 text-[11px] text-amber-100/80">
-          {profileExp}/{profileExpToNext} XP
+        <div className="shrink-0 text-right">
+          <div className="text-[11px] uppercase tracking-wide text-amber-200/70">Level</div>
+          <div className="text-2xl font-bold text-amber-200 leading-none">{profileLevel}</div>
         </div>
       </div>
-      <div className="text-right">
-        <div className="text-[11px] uppercase tracking-wide text-amber-200/70">Level</div>
-        <div className="text-2xl font-bold text-amber-200 leading-none">{profileLevel}</div>
-      </div>
-    </div>
+    </button>
   );
 
   // Fallbacks so buttons still do something if handlers aren’t wired
@@ -93,6 +109,7 @@ export default function RogueWheelHub(props: HubShellProps) {
   });
 
   const [selected, setSelected] = useState(0);
+
   const [showHowTo, setShowHowTo] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
 
@@ -104,13 +121,12 @@ export default function RogueWheelHub(props: HubShellProps) {
       { key: "new", label: hasSave ? "New Run" : "Singleplayer", onClick: safeOnNew, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.swords}</span> },
       { key: "mp", label: "Multiplayer", onClick: onMultiplayer, icon: <span className="h-4 w-4 flex items-center justify-center">🧑‍🤝‍🧑</span> },
       { key: "howto", label: "How to Play", onClick: () => { onHowTo?.(); setShowHowTo(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.book}</span> },
-      //{ key: "settings", label: "Options", onClick: () => { onSettings?.(); setShowOptions(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.settings}</span> },
       { key: "quit", label: "Quit", onClick: onQuit, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.power}</span> },
     ].filter(Boolean) as MenuItem[],
     [hasSave, safeOnContinue, safeOnNew, onMultiplayer, onHowTo, onSettings, onQuit]
   );
 
-  // Keyboard navigation
+  // Keyboard navigation (unchanged, but also updates on hover & press for responsiveness)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown") { e.preventDefault(); setSelected((i) => wrapIndex(i + 1, items.length)); }
@@ -126,14 +142,21 @@ export default function RogueWheelHub(props: HubShellProps) {
   const parallaxRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = parallaxRef.current; if (!el) return;
+    const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const isFine = window.matchMedia?.("(pointer: fine)")?.matches;
+    if (prefersReduced || !isFine) return;
+    let raf = 0;
     const onMove = (e: MouseEvent) => {
-      const { innerWidth: w, innerHeight: h } = window;
-      const x = (e.clientX / w - 0.5) * 2;
-      const y = (e.clientY / h - 0.5) * 2;
-      el.style.transform = `translate3d(${x * 6}px, ${y * 6}px, 0)`;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const { innerWidth: w, innerHeight: h } = window;
+        const x = (e.clientX / w - 0.5) * 2;
+        const y = (e.clientY / h - 0.5) * 2;
+        el.style.transform = `translate3d(${x * 6}px, ${y * 6}px, 0)`;
+      });
     };
     window.addEventListener("mousemove", onMove);
-    return () => window.removeEventListener("mousemove", onMove);
+    return () => { window.removeEventListener("mousemove", onMove); cancelAnimationFrame(raf); };
   }, []);
 
   return (
@@ -150,58 +173,66 @@ export default function RogueWheelHub(props: HubShellProps) {
         <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_180px_60px_rgba(10,8,25,0.9)]" />
       </div>
 
-      {/* Title + tagline + profile (Profile pill is clickable if onProfile provided) */}
-      <div className="px-6 pt-10 md:px-10 max-w-xl">
-        <h1 className="text-4xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] md:text-6xl">
-          {logoText}
-        </h1>
-        <div className="mt-2 flex items-center justify-between">
-          <p className="text-purple-100/90 md:text-lg"><b>Spin</b>, <b>draft</b>, triumph.</p>
-          {onProfile ? (
-            <button
-              type="button"
-              onClick={onProfile}
-              className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25 hover:bg-black/45 focus:outline-none focus:ring-2 focus:ring-amber-300"
-              aria-label="Open Profile"
-            >
-              {profileBadge}
-            </button>
-          ) : (
-            <div className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25">
-              {profileBadge}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Header: centered logo image; panel moved below with breathing room */}
+      <header className="mx-auto flex max-w-md flex-col items-center px-6 pt-10 md:max-w-lg md:px-10">
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt={logoText}
+            className="block max-w-[82%] md:max-w-[72%] drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]"
+            draggable={false}
+          />
+        ) : (
+          <h1 className="text-center text-4xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] md:text-6xl">
+            {logoText}
+          </h1>
+        )}
 
-      {/* Vertical Menu */}
-      <nav aria-label="Main menu" className="mt-6 px-6 md:mt-10 md:px-10">
-        <ul className="max-w-md">
-          {items.map((it, i) => (
-            <li key={it.key} className="mb-3">
-              <button
-                role="button"
-                aria-disabled={!it.onClick}
-                disabled={!it.onClick}
-                onMouseEnter={() => setSelected(i)}
-                onClick={() => it.onClick && it.onClick()}
-                className={[
-                  "relative flex w-full items-center justify-between rounded-xl px-5 py-3",
-                  "text-left font-semibold tracking-wide outline-none",
-                  !it.onClick
-                    ? "cursor-not-allowed opacity-60 bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/20"
-                    : i === selected
-                      ? "cursor-pointer bg-gradient-to-r from-amber-300 to-amber-500 text-indigo-950 shadow-[0_6px_18px_rgba(255,191,71,0.35)] ring-2 ring-amber-300"
-                      : "cursor-pointer bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/25 hover:from-black/30 hover:to-black/10",
-                ].join(" ")}
-              >
-                <span className="flex items-center gap-3 opacity-95">
-                  <span className="-ml-1 mr-1 text-amber-300">{i === selected ? "❯" : "•"}</span>
-                  {it.icon}{it.label}
-                </span>
-              </button>
-            </li>
-          ))}
+        {/* tagline */}
+        <p className="mt+6 text-center text-purple-100/90 md:text-lg">
+          <b>Spin</b>, <b>draft</b>, triumph.
+        </p>
+
+        {/* Player panel styled like a button, full width, extra spacing */}
+        <div className="mt-5 w-full">{ProfilePanel}</div>
+      </header>
+
+      {/* Menu: centered column with responsive gold interaction */}
+      <nav aria-label="Main menu" className="mt0 px-6 md:mt-8 md:px-10">
+        <ul className="mx-auto w-full max-w-md">
+          {items.map((it, i) => {
+            const isActive = i === selected;
+            return (
+              <li key={it.key} className="mb-3">
+                <button
+                  role="button"
+                  aria-disabled={!it.onClick}
+                  disabled={!it.onClick}
+                  onMouseEnter={() => setSelected(i)}             // hover -> gold
+                  onFocus={() => setSelected(i)}                  // keyboard focus -> gold
+                  onPointerDown={() => setSelected(i)}            // press -> gold
+                  onClick={() => it.onClick && it.onClick()}
+                  className={[
+                    "relative flex w-full items-center justify-between rounded-xl px-5 py-3",
+                    "text-left font-semibold tracking-wide outline-none transition",
+                    !it.onClick
+                      ? "cursor-not-allowed opacity-60 bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/20"
+                      : isActive
+                        ? "cursor-pointer bg-gradient-to-r from-amber-300 to-amber-500 text-indigo-950 shadow-[0_6px_18px_rgba(255,191,71,0.35)] ring-2 ring-amber-300"
+                        : "cursor-pointer bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/25 hover:from-black/30 hover:to-black/10",
+                    "focus-visible:ring-2 focus-visible:ring-amber-300 active:translate-y-[1px]",
+                  ].join(" ")}
+                  style={isActive ? { backgroundImage: `linear-gradient(90deg, ${THEME.btnGoldFrom}, ${THEME.btnGoldTo})` } : undefined}
+                >
+                  <span className="flex items-center gap-3 opacity-95">
+                    <span className="-ml-1 mr-1 text-amber-300">{isActive ? "❯" : "•"}</span>
+                    {it.icon}{it.label}
+                  </span>
+                  <span aria-hidden className="opacity-80">›</span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </nav>
 
@@ -225,7 +256,7 @@ export default function RogueWheelHub(props: HubShellProps) {
   );
 }
 
-// ----- Overlay & Panel Content -----
+// ----- Overlay & Panel Content (unchanged) -----
 function Overlay({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
     <div role="dialog" aria-modal className="fixed inset-0 z-40 grid place-items-center">
@@ -307,26 +338,14 @@ function OptionsContent() {
       }}
     >
       <Field label="Music Volume">
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={music}
+        <input type="range" min={0} max={1} step={0.01} value={music}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMusic(parseFloat(e.target.value))}
-          className="w-full"
-        />
+          className="w-full" />
       </Field>
       <Field label="SFX Volume">
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={sfx}
+        <input type="range" min={0} max={1} step={0.01} value={sfx}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSfx(parseFloat(e.target.value))}
-          className="w-full"
-        />
+          className="w-full" />
       </Field>
       <Toggle label="Screen Shake" value={screenShake} onChange={setScreenShake} />
       <Toggle label="Reduce Motion" value={reducedMotion} onChange={setReducedMotion} />
