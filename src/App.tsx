@@ -13,4 +13,5 @@ export default function App(props: AppProps) {
   }
 
   return <ClassicMatch {...matchProps} />;
+
 }
