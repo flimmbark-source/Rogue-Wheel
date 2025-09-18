@@ -125,6 +125,7 @@ export default function HandDock({
                   aria-label={`Select ${card.name}`}
                 >
                   <StSCard card={card} showReserve={false} showName={false} />
+
                 </button>
               </motion.div>
             </div>
