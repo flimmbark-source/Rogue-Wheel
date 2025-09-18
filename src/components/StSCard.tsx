@@ -20,6 +20,7 @@ export default memo(function StSCard({
   onDragEnd,
   onPointerDown,
   showReserve = true,
+  variant = "default",
 }: {
   card: Card;
   disabled?: boolean;
@@ -31,8 +32,11 @@ export default memo(function StSCard({
   onDragEnd?: React.DragEventHandler<HTMLButtonElement>;
   onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
   showReserve?: boolean;
+  variant?: "default" | "minimal";
 }) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
+  const showHeader = variant === "default";
+  const showFooter = variant === "default";
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onPick?.(); }}
@@ -47,11 +51,17 @@ export default memo(function StSCard({
     >
       <div className="absolute inset-0 rounded-xl border bg-gradient-to-br from-slate-600 to-slate-800 border-slate-400"></div>
       <div className="absolute inset-px rounded-[10px] bg-slate-900/85 backdrop-blur-[1px] border border-slate-700/70" />
-      <div className="absolute inset-0 flex flex-col justify-between p-2">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-200">
-          {card.name}
-        </div>
-        <div className="flex-1 flex items-center justify-center">
+      <div
+        className={`absolute inset-0 flex flex-col p-2 ${
+          variant === "minimal" ? "items-center justify-center gap-1.5" : "justify-between"
+        }`}
+      >
+        {showHeader && (
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-200">
+            {card.name}
+          </div>
+        )}
+        <div className="flex-1 flex items-center justify-center text-center">
           {isSplit(card) ? (
             <div className="grid grid-cols-2 gap-x-2 text-center text-white/90">
               {getSplitFaces(card).map((face) => (
@@ -69,27 +79,29 @@ export default memo(function StSCard({
             </div>
           )}
         </div>
-        <div className="space-y-1 text-[11px] leading-tight text-slate-200/90">
-          {showReserve && (
-            <div className="font-semibold">
-              Reserve {fmtNum(getCardReserveValue(card))}
-            </div>
-          )}
-          {card.reserve?.summary && (
-            <div className="text-slate-200/80">{card.reserve.summary}</div>
-          )}
-          {(() => {
-            const summaries = [
-              ...(card.activation ?? []).map((ability) => ability.summary),
-              ...getSplitFaces(card).flatMap((face) =>
-                (face.activation ?? []).map((ability) => `${face.label ?? (face.id === "left" ? "Left" : "Right")}: ${ability.summary}`),
-              ),
-            ].filter(Boolean);
-            if (!summaries.length) return null;
-            const unique = Array.from(new Set(summaries));
-            return <div className="text-slate-200/80">{unique.join(" • ")}</div>;
-          })()}
-        </div>
+        {showFooter && (
+          <div className="space-y-1 text-[11px] leading-tight text-slate-200/90">
+            {showReserve && (
+              <div className="font-semibold">
+                Reserve {fmtNum(getCardReserveValue(card))}
+              </div>
+            )}
+            {card.reserve?.summary && (
+              <div className="text-slate-200/80">{card.reserve.summary}</div>
+            )}
+            {(() => {
+              const summaries = [
+                ...(card.activation ?? []).map((ability) => ability.summary),
+                ...getSplitFaces(card).flatMap((face) =>
+                  (face.activation ?? []).map((ability) => `${face.label ?? (face.id === "left" ? "Left" : "Right")}: ${ability.summary}`),
+                ),
+              ].filter(Boolean);
+              if (!summaries.length) return null;
+              const unique = Array.from(new Set(summaries));
+              return <div className="text-slate-200/80">{unique.join(" • ")}</div>;
+            })()}
+          </div>
+        )}
       </div>
     </button>
   );

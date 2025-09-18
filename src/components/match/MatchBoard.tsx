@@ -151,6 +151,8 @@ export default function MatchBoard({
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
               onPointerDown={handlePointerDown}
+              showReserve={false}
+              variant="minimal"
             />
           );
         };

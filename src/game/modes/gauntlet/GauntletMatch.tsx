@@ -5,6 +5,7 @@ import HandDock from "../../../components/match/HandDock";
 import TouchDragLayer, {
   useTouchDragLayer,
 } from "../../../components/match/TouchDragLayer";
+import GauntletPhasePanel from "./GauntletPhasePanel";
 import type { Players, Side as TwoSide } from "../../types";
 import useMultiplayerChannel from "../../match/useMultiplayerChannel";
 import {
@@ -117,6 +118,20 @@ export default function GauntletMatch({
     matchWinner,
     xpDisplay,
     levelUpFlash,
+    gold,
+    shopInventory,
+    shopPurchases,
+    shopReady,
+    markShopComplete,
+    purchaseFromShop,
+    gauntletRollShop,
+    gauntletSelectActivation,
+    activationTurn,
+    activationPasses,
+    activationLog,
+    activateCurrent,
+    passActivation,
+    gauntletState,
   } = controller;
 
   const {
@@ -188,6 +203,32 @@ export default function GauntletMatch({
     }
     return null;
   }, [controllerIsMultiplayer, namesByLegacy, phase, rematchVotes, localLegacySide, remoteLegacySide]);
+
+  const localFighter = localLegacySide === "player" ? player : enemy;
+  const gauntletPhaseUI = (
+    <GauntletPhasePanel
+      phase={phase}
+      round={round}
+      gold={gold}
+      shopInventory={shopInventory}
+      shopPurchases={shopPurchases}
+      shopReady={shopReady}
+      localLegacySide={localLegacySide}
+      remoteLegacySide={remoteLegacySide}
+      namesByLegacy={namesByLegacy}
+      gauntletState={gauntletState}
+      gauntletRollShop={gauntletRollShop}
+      purchaseFromShop={purchaseFromShop}
+      markShopComplete={markShopComplete}
+      activationTurn={activationTurn}
+      activationPasses={activationPasses}
+      activationLog={activationLog}
+      activateCurrent={activateCurrent}
+      passActivation={passActivation}
+      gauntletSelectActivation={gauntletSelectActivation}
+      localFighter={localFighter}
+    />
+  );
 
   const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
 
@@ -381,6 +422,8 @@ export default function GauntletMatch({
       <div className="relative z-10">
         <HUDPanels />
       </div>
+
+      {gauntletPhaseUI}
 
       <div className="relative z-0" style={{ paddingBottom: handClearance }}>
         <MatchBoard

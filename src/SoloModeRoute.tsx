@@ -55,6 +55,7 @@ export default function SoloModeRoute({
         event.preventDefault();
         setSelected((index) => wrapIndex(index - 1, options.length));
       } else if (event.key === "Enter" || event.key === " ") {
+        if (event.repeat) return;
         event.preventDefault();
         options[selected]?.onSelect();
       } else if (event.key === "Escape" || event.key === "Backspace") {
