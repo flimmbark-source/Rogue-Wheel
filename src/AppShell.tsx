@@ -1,5 +1,5 @@
 // src/AppShell.tsx
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import App from "./App";
 import HubRoute from "./HubRoute";
 import MultiplayerRoute from "./MultiplayerRoute";
@@ -23,12 +23,28 @@ export default function AppShell() {
   const [view, setView] = useState<View>({ key: "hub" });
   const [mpPayload, setMpPayload] = useState<MPStartPayload | null>(null);
 
+  const goToHub = useCallback(() => setView({ key: "hub" }), [setView]);
+  const goToSoloMenu = useCallback(() => setView({ key: "soloMenu" }), [setView]);
+  const goToMultiplayer = useCallback(() => setView({ key: "mp" }), [setView]);
+  const goToProfile = useCallback(() => setView({ key: "profile" }), [setView]);
+  const startClassic = useCallback(() => setView({ key: "game", mode: "classic" }), [setView]);
+  const startGauntlet = useCallback(() => setView({ key: "game", mode: "gauntlet" }), [setView]);
+
+  useEffect(() => {
+    const handleNewRun = () => goToSoloMenu();
+
+    window.addEventListener("rw:new-run", handleNewRun);
+    return () => {
+      window.removeEventListener("rw:new-run", handleNewRun);
+    };
+  }, [goToSoloMenu]);
+
   if (view.key === "hub") {
     return (
       <HubRoute
-        onStart={() => setView({ key: "soloMenu" })}
-        onMultiplayer={() => setView({ key: "mp" })}
-        onProfile={() => setView({ key: "profile" })}
+        onStart={goToSoloMenu}
+        onMultiplayer={goToMultiplayer}
+        onProfile={goToProfile}
       />
     );
   }
@@ -36,9 +52,9 @@ export default function AppShell() {
   if (view.key === "soloMenu") {
     return (
       <SoloModeRoute
-        onBack={() => setView({ key: "hub" })}
-        onSelectClassic={() => setView({ key: "game", mode: "classic" })}
-        onSelectGauntlet={() => setView({ key: "game", mode: "gauntlet" })}
+        onBack={goToHub}
+        onSelectClassic={startClassic}
+        onSelectGauntlet={startGauntlet}
       />
     );
   }
@@ -46,7 +62,7 @@ export default function AppShell() {
   if (view.key === "mp") {
     return (
       <MultiplayerRoute
-        onBack={() => setView({ key: "hub" })}
+        onBack={goToHub}
         onStart={(payload) => {
           setMpPayload(payload);
           setView({ key: "game", mode: "mp", mpPayload: payload });
@@ -59,7 +75,7 @@ export default function AppShell() {
     return (
       <div className="min-h-dvh flex flex-col">
         <div className="p-2">
-          <button className="underline text-sm" onClick={() => setView({ key: "hub" })}>
+          <button className="underline text-sm" onClick={goToHub}>
             ← Back to Main Menu
           </button>
         </div>
@@ -93,7 +109,7 @@ export default function AppShell() {
   }
 
   const exitToMenu = () => {
-    setView({ key: "hub" });
+    goToHub();
     setMpPayload(null);
   };
 
