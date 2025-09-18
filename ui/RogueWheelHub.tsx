@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState, ReactNode } from "react";
-import rotogoLogo from "/rotogo_snap_logo_2.png";
+import rotogoLogo from "/ui/rotogo_snap_logo_2.png";
 
 const ICONS = {
   refresh: "↻",
@@ -45,7 +45,7 @@ export default function RogueWheelHub(props: HubShellProps) {
   const {
     backgroundUrl = "/fantasy-hero.jpg",
     logoText = "Rotogo Snap",
-    logoUrl = "/Rotogo_Snap_Logo_2.png", // 👈 default to your attached PNG
+    logoUrl = "/ui/Rotogo_Snap_Logo_2.png", // 👈 default to your attached PNG
     hasSave = false,
     onContinue,
     onNew,
