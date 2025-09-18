@@ -9,7 +9,6 @@ import React, {
   startTransition,
   useCallback,
 } from "react";
-import { Realtime } from "ably";
 import { motion } from "framer-motion";
 
 
@@ -38,6 +37,7 @@ import {
 } from "./game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
+import useMultiplayerChannel from "./game/match/useMultiplayerChannel";
 import {
   makeFighter,
   drawOne,
@@ -52,9 +52,6 @@ import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 // components
 import CanvasWheel, { WheelHandle } from "./components/CanvasWheel";
 import StSCard from "./components/StSCard";
-
-type AblyRealtime = InstanceType<typeof Realtime>;
-type AblyChannel = ReturnType<AblyRealtime["channels"]["get"]>;
 
 // keep your local alias
 type LegacySide = "player" | "enemy";
@@ -133,8 +130,6 @@ export default function ThreeWheel_WinsOnly({
   })();
 
   const isMultiplayer = !!roomCode;
-  const ablyRef = useRef<AblyRealtime | null>(null);
-  const chanRef = useRef<AblyChannel | null>(null);
 
   // Fighters & initiative
   const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
@@ -409,36 +404,34 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
     assignRef.current = assign;
   }, [assign]);
 
-const reserveReportsRef = useRef<
-  Record<LegacySide, { reserve: number; round: number } | null>
->({
-  player: null,
-  enemy: null,
-});
+  const reserveReportsRef = useRef<
+    Record<LegacySide, { reserve: number; round: number } | null>
+  >({
+    player: null,
+    enemy: null,
+  });
 
-const storeReserveReport = useCallback(
-  (side: LegacySide, reserve: number, roundValue: number) => {
-    const prev = reserveReportsRef.current[side];
-    if (!prev || prev.reserve !== reserve || prev.round !== roundValue) {
-      reserveReportsRef.current[side] = { reserve, round: roundValue };
-      return true;
-    }
-    return false;
-  },
-  []
-);
+  const storeReserveReport = useCallback(
+    (side: LegacySide, reserve: number, roundValue: number) => {
+      const prev = reserveReportsRef.current[side];
+      if (!prev || prev.reserve !== reserve || prev.round !== roundValue) {
+        reserveReportsRef.current[side] = { reserve, round: roundValue };
+        return true;
+      }
+      return false;
+    },
+    []
+  );
 
   const handleMPIntentRef = useRef<(intent: MPIntent) => void>(() => {});
 
-  const sendIntent = useCallback(
-    (intent: MPIntent) => {
-      if (!roomCode) return;
-      try {
-        void chanRef.current?.publish("intent", intent);
-      } catch {}
-    },
-    [roomCode]
-  );
+  const { sendIntent } = useMultiplayerChannel<MPIntent>({
+    roomCode,
+    clientId: localPlayerId,
+    onIntent: useCallback((intent: MPIntent) => {
+      handleMPIntentRef.current(intent);
+    }, []),
+  });
 
 
   const broadcastLocalReserve = useCallback(() => {
@@ -963,53 +956,6 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
   useEffect(() => {
     handleMPIntentRef.current = handleMPIntent;
   }, [handleMPIntent]);
-
-  useEffect(() => {
-    if (!roomCode) {
-      try { chanRef.current?.unsubscribe(); } catch {}
-      try { chanRef.current?.detach(); } catch {}
-      chanRef.current = null;
-      if (ablyRef.current) {
-        try { ablyRef.current.close(); } catch {}
-        ablyRef.current = null;
-      }
-      return;
-    }
-
-    const key = import.meta.env.VITE_ABLY_API_KEY;
-    if (!key) return;
-
-    const ably = new Realtime({ key, clientId: localPlayerId });
-    ablyRef.current = ably;
-    const channel = ably.channels.get(`rw:v1:rooms:${roomCode}`);
-    chanRef.current = channel;
-
-    let activeSub = true;
-
-    (async () => {
-      try {
-        await channel.attach();
-        channel.subscribe("intent", (msg) => {
-          if (!activeSub) return;
-          const intent = msg?.data as MPIntent;
-          handleMPIntentRef.current(intent);
-        });
-      } catch {}
-    })();
-
-    return () => {
-      activeSub = false;
-      try { channel.unsubscribe(); } catch {}
-      try { channel.detach(); } catch {}
-      try { ably.close(); } catch {}
-      if (chanRef.current === channel) {
-        chanRef.current = null;
-      }
-      if (ablyRef.current === ably) {
-        ablyRef.current = null;
-      }
-    };
-  }, [roomCode, localPlayerId]);
 
   const handleRevealClick = useCallback(() => {
     if (phase !== "choose" || !canReveal) return;
