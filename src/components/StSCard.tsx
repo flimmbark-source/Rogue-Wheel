@@ -20,6 +20,8 @@ export default memo(function StSCard({
   onDragEnd,
   onPointerDown,
   showReserve = true,
+  showName = true,
+
 }: {
   card: Card;
   disabled?: boolean;
@@ -31,6 +33,8 @@ export default memo(function StSCard({
   onDragEnd?: React.DragEventHandler<HTMLButtonElement>;
   onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
   showReserve?: boolean;
+  showName?: boolean;
+
 }) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
   return (
@@ -48,7 +52,12 @@ export default memo(function StSCard({
       <div className="absolute inset-0 rounded-xl border bg-gradient-to-br from-slate-600 to-slate-800 border-slate-400"></div>
       <div className="absolute inset-px rounded-[10px] bg-slate-900/85 backdrop-blur-[1px] border border-slate-700/70" />
       <div className="absolute inset-0 flex flex-col justify-between p-2">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-200">
+        <div
+          className={`text-[11px] font-semibold uppercase tracking-wide text-slate-200 ${
+            showName ? "" : "invisible"
+          }`}
+          aria-hidden={!showName}
+        >
           {card.name}
         </div>
         <div className="flex-1 flex items-center justify-center">
