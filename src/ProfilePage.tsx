@@ -23,7 +23,7 @@ function cardFromId(cardId: string): Card {
 
 /** Scales its child to fit the available width while preserving aspect. */
 function FitCard({
-  baseWidth = 130,          // assumed natural width of StSCard "md"
+  baseWidth = 160,          // assumed natural width of StSCard "md"
   children,
 }: { baseWidth?: number; children: React.ReactNode }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
