@@ -52,6 +52,11 @@ import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 // components
 import CanvasWheel, { WheelHandle } from "./components/CanvasWheel";
 import StSCard from "./components/StSCard";
+import TouchDragLayer, {
+  calcWheelSize,
+  useTouchDragLayer,
+  MAX_WHEEL,
+} from "./components/match/TouchDragLayer";
 
 // keep your local alias
 type LegacySide = "player" | "enemy";
@@ -66,9 +71,6 @@ type MPIntent =
   | { type: "reserve"; side: LegacySide; reserve: number; round: number };
 
 // ---------------- Constants ----------------
-const MIN_WHEEL = 160;
-const MAX_WHEEL = 200;
-
 const THEME = {
   panelBg:   '#2c1c0e',
   panelBorder:'#5c4326',
@@ -266,97 +268,6 @@ export default function ThreeWheel_WinsOnly({
 
   const [handClearance, setHandClearance] = useState<number>(0);
 
-function calcWheelSize(viewH: number, viewW: number, dockAllowance = 0) {
-  const isMobile = viewW <= 480;
-  const chromeAllowance = viewW >= 1024 ? 200 : 140;
-  const raw = Math.floor((viewH - chromeAllowance - dockAllowance) / 3);
-  const MOBILE_MAX = 188;
-  const DESKTOP_MAX = 220;
-  const maxAllowed = isMobile ? MOBILE_MAX : DESKTOP_MAX;
-  return Math.max(MIN_WHEEL, Math.min(maxAllowed, raw));
-}
-  
-  
-  // --- Mobile pointer-drag support ---
-const [isPtrDragging, setIsPtrDragging] = useState(false);
-const [ptrDragCard, setPtrDragCard] = useState<Card | null>(null);
-const ptrPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-
-function addTouchDragCss(on: boolean) {
-  const root = document.documentElement;
-  if (on) {
-    // store previous to restore later
-    (root as any).__prevTouchAction = root.style.touchAction;
-    (root as any).__prevOverscroll = root.style.overscrollBehavior;
-    root.style.touchAction = 'none';
-    root.style.overscrollBehavior = 'contain';
-  } else {
-    root.style.touchAction = (root as any).__prevTouchAction ?? '';
-    root.style.overscrollBehavior = (root as any).__prevOverscroll ?? '';
-    delete (root as any).__prevTouchAction;
-    delete (root as any).__prevOverscroll;
-  }
-}
-
-function getDropTargetAt(x: number, y: number): { kind: 'wheel' | 'slot'; idx: number } | null {
-  let el = document.elementFromPoint(x, y) as HTMLElement | null;
-  while (el) {
-    const d = (el as HTMLElement).dataset;
-    if (d.drop && d.idx) {
-      if (d.drop === 'wheel') return { kind: 'wheel', idx: Number(d.idx) };
-      if (d.drop === 'slot')  return { kind: 'slot',  idx: Number(d.idx) };
-    }
-    el = el.parentElement;
-  }
-  return null;
-}
-
-function startPointerDrag(card: Card, e: React.PointerEvent) {
-  // only trigger for touch/pen; mouse still uses native DnD you already have
-  if (e.pointerType === 'mouse') return;
-  e.currentTarget.setPointerCapture?.(e.pointerId);
-  setSelectedCardId(card.id);
-  setDragCardId(card.id);
-  setPtrDragCard(card);
-  setIsPtrDragging(true);
-  addTouchDragCss(true);
-  ptrPos.current = { x: e.clientX, y: e.clientY };
-
-  const onMove = (ev: PointerEvent) => {
-    ptrPos.current = { x: ev.clientX, y: ev.clientY };
-    const t = getDropTargetAt(ev.clientX, ev.clientY);
-    setDragOverWheel(t && (t.kind === 'wheel' || t.kind === 'slot') ? t.idx : null);
-    // avoid scroll while dragging
-    ev.preventDefault?.();
-  };
-
-  const onUp = (ev: PointerEvent) => {
-    const t = getDropTargetAt(ev.clientX, ev.clientY);
-    if (t && active[t.idx]) {
-      // assign card to that wheel index (slot clicks already map to a wheel index)
-      assignToWheelLocal(t.idx, card);
-    }
-    cleanup();
-  };
-
-  const onCancel = () => cleanup();
-
-  function cleanup() {
-    window.removeEventListener('pointermove', onMove, { capture: true } as any);
-    window.removeEventListener('pointerup', onUp, { capture: true } as any);
-    window.removeEventListener('pointercancel', onCancel, { capture: true } as any);
-    setIsPtrDragging(false);
-    setPtrDragCard(null);
-    setDragOverWheel(null);
-    setDragCardId(null);
-    addTouchDragCss(false);
-  }
-
-  window.addEventListener('pointermove', onMove, { passive: false, capture: true });
-  window.addEventListener('pointerup', onUp, { passive: false, capture: true });
-  window.addEventListener('pointercancel', onCancel, { passive: false, capture: true });
-}
-  
   // Responsive wheel size
   const [wheelSize, setWheelSize] = useState<number>(() => (typeof window !== 'undefined' ? calcWheelSize(window.innerHeight, window.innerWidth, 0) : MAX_WHEEL));
   useEffect(() => {
@@ -586,6 +497,20 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
       sendIntent({ type: "clear", lane: i, side: localLegacySide });
     }
   }
+
+
+  const {
+    isDragging: isPtrDragging,
+    dragCard: ptrDragCard,
+    pointerPosition: ptrPos,
+    startPointerDrag,
+  } = useTouchDragLayer({
+    active,
+    assignToWheel: assignToWheelLocal,
+    setDragOverWheel,
+    setDragCardId,
+    setSelectedCardId,
+  });
 
 
 function autoPickEnemy(): (Card | null)[] {
@@ -1425,23 +1350,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
           })}
         </div>
 {/* Touch drag ghost (mobile) */}
-{isPtrDragging && ptrDragCard && (
-  <div
-    style={{
-      position: 'fixed',
-      left: 0,
-      top: 0,
-      transform: `translate(${ptrPos.current.x - 48}px, ${ptrPos.current.y - 64}px)`,
-      pointerEvents: 'none',
-      zIndex: 9999,
-    }}
-    aria-hidden
-  >
-    <div style={{ transform: 'scale(0.9)', filter: 'drop-shadow(0 6px 8px rgba(0,0,0,.35))' }}>
-      <StSCard card={ptrDragCard} />
-    </div>
-  </div>
-)}
+<TouchDragLayer dragCard={ptrDragCard} isDragging={isPtrDragging} pointerPosition={ptrPos} />
 
       </div>
     );
