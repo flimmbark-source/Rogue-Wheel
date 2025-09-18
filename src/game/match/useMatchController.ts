@@ -1466,57 +1466,39 @@ export function useMatchController({
           break;
         }
 switch (msg.type) {
-  // -------- SHOP: roll --------
+  // --- Gauntlet/shop roll & purchase (remote -> apply locally) ---
   case "shopRoll": {
     if (msg.side === localLegacySide) break;
-    if (!Array.isArray((msg as any).inventory)) break;
-    if (typeof (msg as any).round !== "number") break;
-
-    const inv = ((msg as any).inventory as Card[]).map(cloneCardForGauntlet);
-    const round = (msg as any).round as number;
-    const roll =
-      typeof (msg as any).roll === "number" && Number.isFinite((msg as any).roll)
-        ? (msg as any).roll
-        : gauntletStateRef.current[msg.side].shop.roll + 1;
-
-    applyGauntletShopRollFor(msg.side, { inventory: inv, round, roll });
+    if (!Array.isArray(msg.inventory)) break;
+    if (typeof msg.round !== "number") break;
+    applyGauntletShopRollFor(msg.side, {
+      inventory: (msg.inventory as Card[]).map(cloneCardForGauntlet),
+      round: msg.round,
+      roll:
+        typeof msg.roll === "number" && Number.isFinite(msg.roll)
+          ? msg.roll
+          : gauntletStateRef.current[msg.side].shop.roll + 1,
+    });
     break;
   }
 
-  // -------- SHOP: purchase (support both legacy and new payloads) --------
   case "shopPurchase": {
     if (msg.side === localLegacySide) break;
 
-    // New shape: { card, cost }
-    if ("card" in msg && "cost" in msg) {
-      const { card, cost } = msg as { card: Card; cost: number };
-      if (!card || typeof cost !== "number") break;
-      // New branch handler
-      applyShopPurchase(msg.side, card, cost, { force: true });
-      break;
+    // Support both payload shapes
+    if (typeof (msg as any).cardId === "string" && typeof (msg as any).round === "number") {
+      // gauntlet variant
+      applyGauntletPurchaseFor(msg.side, {
+        cardId: (msg as any).cardId,
+        round: (msg as any).round,
+      });
+    } else if ((msg as any).card && typeof (msg as any).cost === "number") {
+      // new-branch variant
+      applyShopPurchase(msg.side, (msg as any).card as Card, (msg as any).cost, { force: true });
     }
-
-    // Legacy shape: { cardId, round }
-    if ("cardId" in msg && "round" in msg) {
-      const { cardId, round } = msg as { cardId: string; round: number };
-      if (typeof cardId !== "string" || typeof round !== "number") break;
-      applyGauntletPurchaseFor(msg.side, { cardId, round });
-      break;
-    }
-
-    // Unknown shape — ignore
     break;
   }
 
-  // -------- SHOP: ready/complete (new branch) --------
-  case "shopReady": {
-    if (msg.side === localLegacySide) break;
-    // Avoid emitting back out
-    completeShopForSide(msg.side, { emit: false });
-    break;
-  }
-
-  // -------- GOLD (shared) --------
   case "gold": {
     if (msg.side === localLegacySide) break;
     if (typeof (msg as any).gold !== "number") break;
@@ -1528,30 +1510,36 @@ switch (msg.type) {
     break;
   }
 
-  // -------- ACTIVATION (support both APIs) --------
-  // Older split API
   case "activationSelect": {
     if (msg.side === localLegacySide) break;
     if (typeof (msg as any).activationId !== "string") break;
     applyGauntletActivationSelectFor(msg.side, (msg as any).activationId);
     break;
   }
+
   case "activationPass": {
     if (msg.side === localLegacySide) break;
     applyGauntletActivationPassFor(msg.side);
     break;
   }
 
-  // New consolidated API
+  case "shopReady": {
+    if (msg.side === localLegacySide) break;
+    completeShopForSide(msg.side, { emit: false });
+    break;
+  }
+
   case "activation": {
     if (msg.side === localLegacySide) break;
-    // Route to new handler without re-emitting
-    applyActivationAction(msg as {
-      type: "activation";
-      side: LegacySide;
-      action: "activate" | "pass";
-      cardId?: string;
-    }, { emit: false });
+    applyActivationAction(msg as any, { emit: false });
+    break;
+  }
+
+
+
+  case "activationPass": {
+    if (msg.side === localLegacySide) break;
+    applyGauntletActivationPassFor(msg.side);
     break;
   }
 
