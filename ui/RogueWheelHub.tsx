@@ -8,6 +8,17 @@ const ICONS = {
   book: "📖",
 };
 
+// === Tavern/Fantasy skin tokens ===
+const THEME = {
+  btnStart: "#F5C063",     // parchment/brass highlight
+  btnEnd:   "#E8A936",     // deeper amber
+  btnEdge:  "#5A3C16",     // wood edge / bevel
+  faceTint: "rgba(255,255,255,0.12)",
+  textDark: "#1a1020",
+  dockBg:   "rgba(17, 12, 24, 0.55)",
+  dockRing: "rgba(255, 200, 120, 0.25)",
+};
+
 /**
  * Rogue Wheel — Cinematic Hub (Fantasy Skin)
  * - Vertical menu: Continue (if save), Play/New Run, How to Play, Options, Quit
@@ -122,18 +133,26 @@ export default function RogueWheelHub(props: HubShellProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [items, selected]);
 
-  // Parallax background
+  // Parallax background — respects reduced motion & pointer type
   const parallaxRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = parallaxRef.current; if (!el) return;
+    const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const isFine = window.matchMedia?.("(pointer: fine)")?.matches;
+    if (prefersReduced || !isFine) return;
+
+    let raf = 0;
     const onMove = (e: MouseEvent) => {
-      const { innerWidth: w, innerHeight: h } = window;
-      const x = (e.clientX / w - 0.5) * 2;
-      const y = (e.clientY / h - 0.5) * 2;
-      el.style.transform = `translate3d(${x * 6}px, ${y * 6}px, 0)`;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const { innerWidth: w, innerHeight: h } = window;
+        const x = (e.clientX / w - 0.5) * 2;
+        const y = (e.clientY / h - 0.5) * 2;
+        el.style.transform = `translate3d(${x * 6}px, ${y * 6}px, 0)`;
+      });
     };
     window.addEventListener("mousemove", onMove);
-    return () => window.removeEventListener("mousemove", onMove);
+    return () => { window.removeEventListener("mousemove", onMove); cancelAnimationFrame(raf); };
   }, []);
 
   return (
@@ -172,43 +191,45 @@ export default function RogueWheelHub(props: HubShellProps) {
             </div>
           )}
         </div>
+
+        {/* Context-relevant "mascot" row: your tokens as characters */}
+        <MascotRow />
       </div>
 
-      {/* Vertical Menu */}
-      <nav aria-label="Main menu" className="mt-6 px-6 md:mt-10 md:px-10">
-        <ul className="max-w-md">
-          {items.map((it, i) => (
-            <li key={it.key} className="mb-3">
-              <button
-                role="button"
-                aria-disabled={!it.onClick}
-                disabled={!it.onClick}
-                onMouseEnter={() => setSelected(i)}
-                onClick={() => it.onClick && it.onClick()}
-                className={[
-                  "relative flex w-full items-center justify-between rounded-xl px-5 py-3",
-                  "text-left font-semibold tracking-wide outline-none",
-                  !it.onClick
-                    ? "cursor-not-allowed opacity-60 bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/20"
-                    : i === selected
-                      ? "cursor-pointer bg-gradient-to-r from-amber-300 to-amber-500 text-indigo-950 shadow-[0_6px_18px_rgba(255,191,71,0.35)] ring-2 ring-amber-300"
-                      : "cursor-pointer bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/25 hover:from-black/30 hover:to-black/10",
-                ].join(" ")}
-              >
-                <span className="flex items-center gap-3 opacity-95">
-                  <span className="-ml-1 mr-1 text-amber-300">{i === selected ? "❯" : "•"}</span>
-                  {it.icon}{it.label}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      {/* MAIN COLUMN: push menu to bottom on mobile for thumb reach */}
+      <div className="flex min-h-[55vh] flex-col">
+        <div className="grow" />
 
-      {/* Footer */}
-      <footer className="pointer-events-none absolute bottom-0 left-0 right-0 flex flex-wrap items-end justify-end gap-2 px-6 pb-4 text-sm opacity-85 md:px-10">
-        <div className="pointer-events-auto rounded bg-black/35 px-3 py-1.5 ring-1 ring-amber-300/25">{version}</div>
-      </footer>
+        {/* Vertical Menu (chunky/gamey) */}
+        <nav aria-label="Main menu" className="px-6 md:px-10">
+          <ul className="mx-auto w-full max-w-md">
+            {items.map((it, i) => (
+              <li key={it.key} className="mb-3">
+                <ChunkyBtn
+                  active={i === selected}
+                  disabled={!it.onClick}
+                  onClick={() => it.onClick?.()}
+                  left={it.icon}
+                >
+                  {it.label}
+                </ChunkyBtn>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        {/* Bottom Dock (Codex / Profile / Forge) */}
+        <BottomDock
+          onHowTo={() => { onHowTo?.(); setShowHowTo(true); }}
+          onProfile={onProfile}
+          onSettings={() => { onSettings?.(); setShowOptions(true); }}
+        />
+
+        {/* Version */}
+        <footer className="pointer-events-none mt-2 flex items-end justify-end px-6 pb-[max(12px,env(safe-area-inset-bottom))] text-sm opacity-85 md:px-10">
+          <div className="pointer-events-auto rounded bg-black/35 px-3 py-1.5 ring-1 ring-amber-300/25">{version}</div>
+        </footer>
+      </div>
 
       {/* Panels */}
       {showHowTo && (
@@ -225,14 +246,143 @@ export default function RogueWheelHub(props: HubShellProps) {
   );
 }
 
-// ----- Overlay & Panel Content -----
-function Overlay({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+/* ===================== UI PARTS ===================== */
+
+function ChunkyBtn({
+  active,
+  disabled,
+  left,
+  children,
+  onClick,
+}: {
+  active?: boolean;
+  disabled?: boolean;
+  left?: ReactNode;
+  children: ReactNode;
+  onClick?: () => void;
+}) {
+  const base =
+    "relative w-full select-none rounded-[18px] px-5 py-3.5 text-left font-semibold tracking-wide outline-none transition";
+  const state = disabled
+    ? "opacity-60 cursor-not-allowed"
+    : "cursor-pointer active:translate-y-[1px] focus-visible:ring-2 focus-visible:ring-amber-300";
+  const on = active
+    ? `text-[${THEME.textDark}] shadow-[0_6px_16px_rgba(245,192,99,0.32)]`
+    : "text-white ring-1 ring-amber-300/25 hover:brightness-110";
+
   return (
-    <div role="dialog" aria-modal className="fixed inset-0 z-40 grid place-items-center">
+    <button
+      role="button"
+      aria-disabled={disabled}
+      disabled={disabled}
+      onClick={disabled ? undefined : onClick}
+      className={`${base} ${state} ${on}`}
+      style={{
+        background: active
+          ? `linear-gradient(180deg, ${THEME.btnStart}, ${THEME.btnEnd})`
+          : "linear-gradient(180deg, rgba(0,0,0,0.38), rgba(0,0,0,0.22))",
+        boxShadow: `inset 0 2px 0 ${THEME.faceTint}, 0 0 0 1px ${THEME.btnEdge}20`,
+        border: `1px solid ${active ? THEME.btnEdge + "66" : "transparent"}`,
+      }}
+    >
+      <span className="flex items-center justify-between">
+        <span className="flex items-center gap-3">
+          <span className="-ml-1 mr-1 text-amber-300">{active ? "❯" : "•"}</span>
+          {left}
+          {children}
+        </span>
+        <span aria-hidden className="opacity-80">›</span>
+      </span>
+    </button>
+  );
+}
+
+// Tiny character row using your palette (initiative, player, enemy)
+function MascotRow() {
+  const bubbles = [
+    { c: "#F0C94A" }, // initiative/gold
+    { c: "#84cc16" }, // player lime
+    { c: "#d946ef" }, // enemy fuchsia
+  ];
+  return (
+    <div className="mt-3 flex items-end gap-2">
+      {bubbles.map((b, i) => (
+        <div
+          key={i}
+          className="h-12 w-12 rounded-full shadow-lg"
+          style={{
+            background: `radial-gradient(circle at 30% 30%, #ffffff99, transparent 55%), ${b.c}`,
+            boxShadow: `0 8px 18px ${b.c}30, inset 0 2px 0 #ffffff40`,
+          }}
+        >
+          {/* subtle "eyes" slit to imply character */}
+          <div className="relative h-full w-full">
+            <div className="absolute left-1/2 top-[42%] h-[2px] w-5 -translate-x-1/2 rounded bg-black/35" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BottomDock({
+  onHowTo,
+  onProfile,
+  onSettings,
+  shopBadge = 0,
+}: {
+  onHowTo?: () => void;
+  onProfile?: () => void;
+  onSettings?: () => void;
+  shopBadge?: number;
+}) {
+  const Item = ({
+    label,
+    icon,
+    onClick,
+    badge,
+  }: { label: string; icon: ReactNode; onClick?: () => void; badge?: number; }) => (
+    <button
+      onClick={onClick}
+      className="relative grid w-20 place-items-center gap-1 rounded-2xl px-2 py-2 text-xs font-semibold text-white/90 ring-1"
+      style={{ background: THEME.dockBg, borderColor: THEME.dockRing }}
+    >
+      <div className="relative grid h-12 w-12 place-items-center rounded-2xl bg-white/5 ring-1 ring-white/10">
+        {icon}
+        {!!badge && (
+          <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-indigo-950 ring-1 ring-amber-300">
+            {badge}
+          </span>
+        )}
+      </div>
+      <span>{label}</span>
+    </button>
+  );
+
+  return (
+    <div className="sticky bottom-0 z-20 mt-4 flex w-full justify-center pb-[max(12px,env(safe-area-inset-bottom))]">
+      <div
+        className="flex items-center gap-3 rounded-3xl px-3 py-2 ring-1"
+        style={{ background: THEME.dockBg, borderColor: THEME.dockRing }}
+      >
+        <Item label="Codex"   onClick={onHowTo}   icon={<span className="text-xl">{ICONS.book}</span>} />
+        <Item label="Profile" onClick={onProfile} icon={<span className="text-xl">🛡️</span>} />
+        <Item label="Forge"   onClick={onSettings} icon={<span className="text-xl">{ICONS.settings}</span>} badge={shopBadge} />
+      </div>
+    </div>
+  );
+}
+
+/* ===================== OVERLAYS ===================== */
+
+function Overlay({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const titleId = "dlg-" + title.replace(/\s+/g, "-").toLowerCase();
+  return (
+    <div role="dialog" aria-modal aria-labelledby={titleId} className="fixed inset-0 z-40 grid place-items-center">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="relative z-10 w-[92vw] max-w-2xl rounded-2xl bg-indigo-950/90 p-4 ring-1 ring-amber-300/25 backdrop-blur md:p-6">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-xl font-bold tracking-wide">{title}</h2>
+          <h2 id={titleId} className="text-xl font-bold tracking-wide">{title}</h2>
           <button
             onClick={onClose}
             className="rounded bg-white/10 px-3 py-1 text-sm hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-amber-300"
