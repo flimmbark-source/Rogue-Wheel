@@ -10,7 +10,6 @@ import React, {
   useCallback,
 } from "react";
 import { Realtime } from "ably";
-import { motion } from "framer-motion";
 
 
 /**
@@ -50,8 +49,9 @@ import {
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 
 // components
-import CanvasWheel, { WheelHandle } from "./components/CanvasWheel";
-import StSCard from "./components/StSCard";
+import type { WheelHandle } from "./components/CanvasWheel";
+import MatchBoard from "./components/match/MatchBoard";
+import HandDock from "./components/match/HandDock";
 
 type AblyRealtime = InstanceType<typeof Realtime>;
 type AblyChannel = ReturnType<AblyRealtime["channels"]["get"]>;
@@ -1153,354 +1153,6 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
   // ---------------- UI ----------------
 
-  const renderWheelPanel = (i: number) => {
-  const pc = assign.player[i];
-  const ec = assign.enemy[i];
-
-  const leftSlot = { side: "player" as const, card: pc, name: namesByLegacy.player };
-  const rightSlot = { side: "enemy" as const, card: ec, name: namesByLegacy.enemy };
-
-  const ws = Math.round(lockedWheelSize ?? wheelSize);
-
-  const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
-  const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
-
-  const shouldShowLeftCard =
-    !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
-  const shouldShowRightCard =
-    !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
-
-  // --- layout numbers that must match the classes below ---
-  const slotW    = 80;   // w-[80px] on both slots
-  const gapX     = 16;   // gap-2 => 8px, two gaps between three items => 16
-  const paddingX = 16;   // p-2 => 8px left + 8px right
-  const borderX  = 4;    // border-2 => 2px left + 2px right
-  const EXTRA_H  = 16;   // extra breathing room inside the panel (change to tweak height)
-
-  // panel width (border-box) so wheel is visually centered
-  const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
-
-  const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
-    if (!slot.card) return null;
-    const card = slot.card;
-    const interactable = slot.side === localLegacySide && phase === "choose";
-
-    const handlePick = () => {
-      if (!interactable) return;
-      if (selectedCardId) {
-        tapAssignIfSelected();
-      } else {
-        setSelectedCardId(card.id);
-      }
-    };
-
-    const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
-      if (!interactable) return;
-      setSelectedCardId(card.id);
-      setDragCardId(card.id);
-      try { e.dataTransfer.setData("text/plain", card.id); } catch {}
-      e.dataTransfer.effectAllowed = "move";
-    };
-
-    const handleDragEnd = () => {
-      setDragCardId(null);
-      setDragOverWheel(null);
-    };
-
-    const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (!interactable) return;
-      e.stopPropagation();
-      startPointerDrag(card, e);
-    };
-
-    return (
-      <StSCard
-        card={card}
-        size="sm"
-        disabled={!interactable}
-        selected={isSlotSelected}
-        onPick={handlePick}
-        draggable={interactable}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onPointerDown={handlePointerDown}
-      />
-    );
-  };
-
-  const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
-  const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
-  const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
-    if (!id || !active[i]) return;
-    const intendedSide = targetSide ?? localLegacySide;
-    if (intendedSide !== localLegacySide) {
-      setDragOverWheel(null);
-      setDragCardId(null);
-      return;
-    }
-
-    const isLocalPlayer = localLegacySide === "player";
-    const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
-    const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as Card | undefined;
-    const card = fromHand || fromSlots || null;
-    if (card) assignToWheelLocal(i, card as Card);
-    setDragOverWheel(null);
-    setDragCardId(null);
-  };
-  const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
-    e.preventDefault();
-    handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
-  };
-
-  const tapAssignIfSelected = () => {
-    if (!selectedCardId) return;
-    const isLocalPlayer = localLegacySide === "player";
-    const card =
-      (isLocalPlayer ? player.hand : enemy.hand).find(c => c.id === selectedCardId) ||
-      (isLocalPlayer ? assign.player : assign.enemy).find(c => c?.id === selectedCardId) ||
-      null;
-    if (card) assignToWheelLocal(i, card as Card);
-  };
-
-  const panelShadow = '0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)';
-
-  return (
-    <div
-      className="relative rounded-xl border p-2 shadow flex-none"
-      style={{
-        width: panelW,
-        height: ws + EXTRA_H,
-        background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
-        borderColor: THEME.panelBorder,
-        borderWidth: 2,
-        boxShadow: panelShadow,
-        contain: 'paint',
-        backfaceVisibility: 'hidden',
-        transform: 'translateZ(0)',
-        isolation: 'isolate'
-      }}
-    >
-  {/* ADD: winner dots (don’t affect layout) */}
-  { (phase === "roundEnd" || phase === "ended") && (
-    <>
-      {/* Player dot (top-left) */}
-      <span
-        aria-label={`Wheel ${i+1} player result`}
-        className="absolute top-1 left-1 rounded-full border"
-        style={{
-          width: 10,
-          height: 10,
-          background: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : 'transparent',
-          borderColor: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : THEME.panelBorder,
-          boxShadow: '0 0 0 1px rgba(0,0,0,0.4)'
-        }}
-      />
-
-      {/* Enemy dot (top-right) */}
-      <span
-        aria-label={`Wheel ${i+1} enemy result`}
-        className="absolute top-1 right-1 rounded-full border"
-        style={{
-          width: 10,
-          height: 10,
-          background: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : 'transparent',
-          borderColor: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : THEME.panelBorder,
-          boxShadow: '0 0 0 1px rgba(0,0,0,0.4)'
-        }}
-      />
-    </>
-  )}
-
-  {/* the row: slots + centered wheel */}
-  <div
-    className="flex items-center justify-center gap-2"
-    style={{ height: (ws + EXTRA_H) /* removed the - 3 */ }}
-  >
-        {/* Player slot */}
-        <div
-          data-drop="slot"
-          data-idx={i}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, "player")}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (leftSlot.side !== localLegacySide) return;
-            if (selectedCardId) {
-              // If a hand card is already selected, assign it here (this also swaps)
-              tapAssignIfSelected();
-            } else if (leftSlot.card) {
-              // 🔸 Arm this placed card for swapping (select it)
-              setSelectedCardId(leftSlot.card.id);
-            }
-          }}
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{
-            backgroundColor: dragOverWheel === i || isLeftSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-            borderColor:     dragOverWheel === i || isLeftSelected ? THEME.brass          : THEME.slotBorder,
-            boxShadow: isLeftSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
-          }}
-          aria-label={`Wheel ${i+1} left slot`}
-        >
-          {shouldShowLeftCard
-            ? renderSlotCard(leftSlot, isLeftSelected)
-            : <div className="text-[11px] opacity-80 text-center">
-                {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
-              </div>}
-        </div>
-
-  {/* Wheel face (fixed width equals wheel size; centers wheel exactly) */}
-  <div
-  data-drop="wheel"
-  data-idx={i}
-  className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
-  style={{ width: ws, height: ws }}
-  onDragOver={onZoneDragOver}
-  onDragEnter={onZoneDragOver}
-  onDragLeave={onZoneLeave}
-  onDrop={onZoneDrop}
-  onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
-  aria-label={`Wheel ${i+1}`}
->
-    <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
-    <div
-      aria-hidden
-      className="pointer-events-none absolute inset-0 rounded-full"
-      style={{ boxShadow: dragOverWheel === i ? '0 0 0 2px rgba(251,191,36,0.7) inset' : 'none' }}
-    />
-  </div>
-    
-        {/* Enemy slot */}
-        <div
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{
-            backgroundColor: dragOverWheel === i || isRightSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-            borderColor:     dragOverWheel === i || isRightSelected ? THEME.brass          : THEME.slotBorder,
-            boxShadow: isRightSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
-          }}
-          aria-label={`Wheel ${i+1} right slot`}
-          data-drop="slot"
-          data-idx={i}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, "enemy")}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (rightSlot.side !== localLegacySide) return;
-            if (selectedCardId) {
-              tapAssignIfSelected();
-            } else if (rightSlot.card) {
-              setSelectedCardId(rightSlot.card.id);
-            }
-          }}
-        >
-          {shouldShowRightCard
-            ? renderSlotCard(rightSlot, isRightSelected)
-            : <div className="text-[11px] opacity-60 text-center">
-                {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
-              </div>}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-  const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
-    const dockRef = useRef<HTMLDivElement | null>(null);
-    const [liftPx, setLiftPx] = useState<number>(18);
-    useEffect(() => {
-      const compute = () => {
-        const root = dockRef.current; if (!root) return;
-        const sample = root.querySelector('[data-hand-card]') as HTMLElement | null; if (!sample) return;
-        const h = sample.getBoundingClientRect().height || 96;
-        const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
-        setLiftPx(nextLift);
-        const clearance = Math.round(h + nextLift + 12);
-        onMeasure?.(clearance);
-      };
-      compute(); window.addEventListener('resize', compute); window.addEventListener('orientationchange', compute);
-      return () => { window.removeEventListener('resize', compute); window.removeEventListener('orientationchange', compute); };
-    }, [onMeasure]);
-
-    const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
-
-    return (
-      <div ref={dockRef} className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + -30px)' }}>
-        <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
-          {localFighter.hand.map((card, idx) => {
-            const isSelected = selectedCardId === card.id;
-            return (
-              <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
-                <motion.div data-hand-card initial={false} animate={{ y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx, opacity: 1, scale: isSelected ? 1.06 : 1 }} whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }} transition={{ type: 'spring', stiffness: 320, damping: 22 }} className={`drop-shadow-xl ${isSelected ? 'ring-2 ring-amber-300' : ''}`}>
-                  <button
-  data-hand-card
-  className="pointer-events-auto"
-  onClick={(e) => {
-    e.stopPropagation();
-    if (!selectedCardId) {
-      setSelectedCardId(card.id);
-      return;
-    }
-
-    if (selectedCardId === card.id) {
-      setSelectedCardId(null);
-      return;
-    }
-
-    const lane = localLegacySide === "player" ? assign.player : assign.enemy;
-    const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
-    if (slotIdx !== -1) {
-      assignToWheelLocal(slotIdx, card);
-      return;
-    }
-
-    setSelectedCardId(card.id);
-  }}
-  draggable
-  onDragStart={(e) => {
-    // Desktop HTML5 drag
-    setDragCardId(card.id);
-    try { e.dataTransfer.setData("text/plain", card.id); } catch {}
-    e.dataTransfer.effectAllowed = "move";
-  }}
-  onDragEnd={() => setDragCardId(null)}
-  onPointerDown={(e) => startPointerDrag(card, e)}   // ← NEW: touch/pen drag
-  aria-pressed={isSelected}
-  aria-label={`Select ${card.name}`}
->
-  <StSCard card={card} />
-</button>
-
-                </motion.div>
-              </div>
-            );
-          })}
-        </div>
-{/* Touch drag ghost (mobile) */}
-{isPtrDragging && ptrDragCard && (
-  <div
-    style={{
-      position: 'fixed',
-      left: 0,
-      top: 0,
-      transform: `translate(${ptrPos.current.x - 48}px, ${ptrPos.current.y - 64}px)`,
-      pointerEvents: 'none',
-      zIndex: 9999,
-    }}
-    aria-hidden
-  >
-    <div style={{ transform: 'scale(0.9)', filter: 'drop-shadow(0 6px 8px rgba(0,0,0,.35))' }}>
-      <StSCard card={ptrDragCard} />
-    </div>
-  </div>
-)}
-
-      </div>
-    );
-  };
-
 const HUDPanels = () => {
   const rsP = reserveSums ? reserveSums.player : null;
   const rsE = reserveSums ? reserveSums.enemy : null;
@@ -1720,20 +1372,51 @@ const HUDPanels = () => {
 
       {/* Wheels center */}
       <div className="relative z-0" style={{ paddingBottom: handClearance }}>
-        <div className="flex flex-col items-center justify-start gap-1">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="flex-shrink-0">{renderWheelPanel(i)}</div>
-          ))}
-        </div>
+        <MatchBoard
+          theme={THEME}
+          active={active}
+          assign={assign}
+          namesByLegacy={namesByLegacy}
+          wheelSize={wheelSize}
+          lockedWheelSize={lockedWheelSize}
+          selectedCardId={selectedCardId}
+          onSelectCard={setSelectedCardId}
+          localLegacySide={localLegacySide}
+          phase={phase}
+          startPointerDrag={startPointerDrag}
+          fighters={{ player, enemy }}
+          dragCardId={dragCardId}
+          onDragCardChange={setDragCardId}
+          dragOverWheel={dragOverWheel}
+          onDragOverWheelChange={setDragOverWheel}
+          assignToWheel={assignToWheelLocal}
+          wheelHUD={wheelHUD}
+          hudColors={HUD_COLORS}
+          wheelSections={wheelSections}
+          wheelRefs={wheelRefs}
+        />
       </div>
 
-{/* Docked hand overlay */}
-<HandDock onMeasure={setHandClearance} />
+      {/* Docked hand overlay */}
+      <HandDock
+        localFighter={localLegacySide === "player" ? player : enemy}
+        selectedCardId={selectedCardId}
+        onSelectCard={setSelectedCardId}
+        localLegacySide={localLegacySide}
+        assign={assign}
+        onAssignToWheel={assignToWheelLocal}
+        onDragCardChange={setDragCardId}
+        startPointerDrag={startPointerDrag}
+        isPointerDragging={isPtrDragging}
+        pointerDragCard={ptrDragCard}
+        pointerPosition={ptrPos}
+        onMeasure={setHandClearance}
+      />
 
-{/* Ended overlay (banner + modal) */}
-{phase === "ended" && (
-  <>
-    {victoryCollapsed ? (
+      {/* Ended overlay (banner + modal) */}
+      {phase === "ended" && (
+        <>
+          {victoryCollapsed ? (
       <button
         onClick={() => setVictoryCollapsed(false)}
         className={`fixed top-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border px-4 py-2 text-sm font-semibold shadow-lg transition hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ${
