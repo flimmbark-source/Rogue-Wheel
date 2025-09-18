@@ -8,26 +8,16 @@ const ICONS = {
   book: "📖",
 };
 
-// === Tavern/Fantasy skin tokens ===
+// --- small theme tokens used by buttons & profile panel ---
 const THEME = {
-  btnStart: "#F5C063",     // parchment/brass highlight
-  btnEnd:   "#E8A936",     // deeper amber
-  btnEdge:  "#5A3C16",     // wood edge / bevel
-  faceTint: "rgba(255,255,255,0.12)",
-  textDark: "#1a1020",
-  dockBg:   "rgba(17, 12, 24, 0.55)",
-  dockRing: "rgba(255, 200, 120, 0.25)",
+  btnGoldFrom: "#F5C063",
+  btnGoldTo: "#E8A936",
 };
-
-/**
- * Rogue Wheel — Cinematic Hub (Fantasy Skin)
- * - Vertical menu: Continue (if save), Play/New Run, How to Play, Options, Quit
- * - Title with right-aligned Profile pill (clickable if onProfile provided)
- */
 
 export type HubShellProps = {
   backgroundUrl?: string;
-  logoText?: string;
+  logoText?: string;               // fallback if no logoUrl
+  logoUrl?: string;                // 👈 NEW: PNG logo path
   hasSave?: boolean;
   onContinue?: () => void;
   onNew?: () => void;
@@ -54,6 +44,7 @@ export default function RogueWheelHub(props: HubShellProps) {
   const {
     backgroundUrl = "/fantasy-hero.jpg",
     logoText = "Rotogo Snap",
+    logoUrl = "../assets/Rotogo_Snap_Logo.png", // 👈 default to your attached PNG
     hasSave = false,
     onContinue,
     onNew,
@@ -63,7 +54,7 @@ export default function RogueWheelHub(props: HubShellProps) {
     onQuit,
     version = "v0.1.0",
     profileName = "Adventurer",
-    onProfile, // ← NEW
+    onProfile,
     profileLevel = 1,
     profileExp = 0,
     profileExpToNext = 200,
@@ -71,26 +62,40 @@ export default function RogueWheelHub(props: HubShellProps) {
 
   const profileProgress = profileExpToNext > 0 ? Math.min(1, profileExp / profileExpToNext) : 0;
 
-  const profileBadge = (
-    <div className="flex items-center gap-4">
-      <div className="text-left">
-        <div className="text-[11px] uppercase tracking-wide text-amber-200/70">Profile</div>
-        <div className="text-sm font-semibold text-amber-50">{profileName}</div>
-        <div className="mt-1 h-1.5 w-32 rounded-full bg-black/45">
-          <div
-            className="h-1.5 rounded-full bg-amber-300 transition-[width] duration-500"
-            style={{ width: `${Math.min(100, profileProgress * 100)}%` }}
-          />
+  // -------- profile pill now styled like a button & moved under logo --------
+  const ProfilePanel = (
+    <button
+      type="button"
+      onClick={onProfile}
+      disabled={!onProfile}
+      className={[
+        "w-full max-w-md rounded-2xl px-4 py-3 text-left",
+        "ring-1 ring-amber-300/25 bg-gradient-to-b from-black/35 to-black/20",
+        "hover:from-black/30 hover:to-black/10",
+        onProfile ? "cursor-pointer focus-visible:ring-2 focus-visible:ring-amber-300" : "cursor-default opacity-90",
+      ].join(" ")}
+      aria-label="Open Profile"
+    >
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0 grow">
+          <div className="text-[11px] uppercase tracking-wide text-amber-200/70">Profile</div>
+          <div className="truncate text-sm font-semibold text-amber-50">{profileName}</div>
+          <div className="mt-1 h-1.5 w-full rounded-full bg-black/45">
+            <div
+              className="h-1.5 rounded-full bg-amber-300 transition-[width] duration-500"
+              style={{ width: `${Math.min(100, profileProgress * 100)}%` }}
+            />
+          </div>
+          <div className="mt-0.5 text-[11px] text-amber-100/80">
+            {profileExp}/{profileExpToNext} XP
+          </div>
         </div>
-        <div className="mt-0.5 text-[11px] text-amber-100/80">
-          {profileExp}/{profileExpToNext} XP
+        <div className="shrink-0 text-right">
+          <div className="text-[11px] uppercase tracking-wide text-amber-200/70">Level</div>
+          <div className="text-2xl font-bold text-amber-200 leading-none">{profileLevel}</div>
         </div>
       </div>
-      <div className="text-right">
-        <div className="text-[11px] uppercase tracking-wide text-amber-200/70">Level</div>
-        <div className="text-2xl font-bold text-amber-200 leading-none">{profileLevel}</div>
-      </div>
-    </div>
+    </button>
   );
 
   // Fallbacks so buttons still do something if handlers aren’t wired
@@ -104,6 +109,7 @@ export default function RogueWheelHub(props: HubShellProps) {
   });
 
   const [selected, setSelected] = useState(0);
+
   const [showHowTo, setShowHowTo] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
 
@@ -115,13 +121,12 @@ export default function RogueWheelHub(props: HubShellProps) {
       { key: "new", label: hasSave ? "New Run" : "Singleplayer", onClick: safeOnNew, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.swords}</span> },
       { key: "mp", label: "Multiplayer", onClick: onMultiplayer, icon: <span className="h-4 w-4 flex items-center justify-center">🧑‍🤝‍🧑</span> },
       { key: "howto", label: "How to Play", onClick: () => { onHowTo?.(); setShowHowTo(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.book}</span> },
-      //{ key: "settings", label: "Options", onClick: () => { onSettings?.(); setShowOptions(true); }, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.settings}</span> },
       { key: "quit", label: "Quit", onClick: onQuit, icon: <span className="h-4 w-4 flex items-center justify-center">{ICONS.power}</span> },
     ].filter(Boolean) as MenuItem[],
     [hasSave, safeOnContinue, safeOnNew, onMultiplayer, onHowTo, onSettings, onQuit]
   );
 
-  // Keyboard navigation
+  // Keyboard navigation (unchanged, but also updates on hover & press for responsiveness)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown") { e.preventDefault(); setSelected((i) => wrapIndex(i + 1, items.length)); }
@@ -133,14 +138,13 @@ export default function RogueWheelHub(props: HubShellProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [items, selected]);
 
-  // Parallax background — respects reduced motion & pointer type
+  // Parallax background
   const parallaxRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = parallaxRef.current; if (!el) return;
     const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
     const isFine = window.matchMedia?.("(pointer: fine)")?.matches;
     if (prefersReduced || !isFine) return;
-
     let raf = 0;
     const onMove = (e: MouseEvent) => {
       cancelAnimationFrame(raf);
@@ -169,67 +173,73 @@ export default function RogueWheelHub(props: HubShellProps) {
         <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_180px_60px_rgba(10,8,25,0.9)]" />
       </div>
 
-      {/* Title + tagline + profile (Profile pill is clickable if onProfile provided) */}
-      <div className="px-6 pt-10 md:px-10 max-w-xl">
-        <h1 className="text-4xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] md:text-6xl">
-          {logoText}
-        </h1>
-        <div className="mt-2 flex items-center justify-between">
-          <p className="text-purple-100/90 md:text-lg"><b>Spin</b>, <b>draft</b>, triumph.</p>
-          {onProfile ? (
-            <button
-              type="button"
-              onClick={onProfile}
-              className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25 hover:bg-black/45 focus:outline-none focus:ring-2 focus:ring-amber-300"
-              aria-label="Open Profile"
-            >
-              {profileBadge}
-            </button>
-          ) : (
-            <div className="rounded bg-black/35 px-3 py-1.5 text-sm ring-1 ring-amber-300/25">
-              {profileBadge}
-            </div>
-          )}
-        </div>
+      {/* Header: centered logo image; panel moved below with breathing room */}
+      <header className="mx-auto flex max-w-md flex-col items-center px-6 pt-10 md:max-w-lg md:px-10">
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt={logoText}
+            className="max-w-[82%] md:max-w-[72%] drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]"
+            draggable={false}
+          />
+        ) : (
+          <h1 className="text-center text-4xl font-extrabold tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,0.55)] md:text-6xl">
+            {logoText}
+          </h1>
+        )}
 
-        {/* Context-relevant "mascot" row: your tokens as characters */}
-        <MascotRow />
-      </div>
+        {/* tagline */}
+        <p className="mt-3 text-center text-purple-100/90 md:text-lg">
+          <b>Spin</b>, <b>draft</b>, triumph.
+        </p>
 
-      {/* MAIN COLUMN: push menu to bottom on mobile for thumb reach */}
-      <div className="flex min-h-[55vh] flex-col">
-        <div className="grow" />
+        {/* Player panel styled like a button, full width, extra spacing */}
+        <div className="mt-5 w-full">{ProfilePanel}</div>
+      </header>
 
-        {/* Vertical Menu (chunky/gamey) */}
-        <nav aria-label="Main menu" className="px-6 md:px-10">
-          <ul className="mx-auto w-full max-w-md">
-            {items.map((it, i) => (
+      {/* Menu: centered column with responsive gold interaction */}
+      <nav aria-label="Main menu" className="mt-6 px-6 md:mt-8 md:px-10">
+        <ul className="mx-auto w-full max-w-md">
+          {items.map((it, i) => {
+            const isActive = i === selected;
+            return (
               <li key={it.key} className="mb-3">
-                <ChunkyBtn
-                  active={i === selected}
+                <button
+                  role="button"
+                  aria-disabled={!it.onClick}
                   disabled={!it.onClick}
-                  onClick={() => it.onClick?.()}
-                  left={it.icon}
+                  onMouseEnter={() => setSelected(i)}             // hover -> gold
+                  onFocus={() => setSelected(i)}                  // keyboard focus -> gold
+                  onPointerDown={() => setSelected(i)}            // press -> gold
+                  onClick={() => it.onClick && it.onClick()}
+                  className={[
+                    "relative flex w-full items-center justify-between rounded-xl px-5 py-3",
+                    "text-left font-semibold tracking-wide outline-none transition",
+                    !it.onClick
+                      ? "cursor-not-allowed opacity-60 bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/20"
+                      : isActive
+                        ? "cursor-pointer bg-gradient-to-r from-amber-300 to-amber-500 text-indigo-950 shadow-[0_6px_18px_rgba(255,191,71,0.35)] ring-2 ring-amber-300"
+                        : "cursor-pointer bg-gradient-to-r from-black/40 to-black/20 ring-1 ring-amber-300/25 hover:from-black/30 hover:to-black/10",
+                    "focus-visible:ring-2 focus-visible:ring-amber-300 active:translate-y-[1px]",
+                  ].join(" ")}
+                  style={isActive ? { backgroundImage: `linear-gradient(90deg, ${THEME.btnGoldFrom}, ${THEME.btnGoldTo})` } : undefined}
                 >
-                  {it.label}
-                </ChunkyBtn>
+                  <span className="flex items-center gap-3 opacity-95">
+                    <span className="-ml-1 mr-1 text-amber-300">{isActive ? "❯" : "•"}</span>
+                    {it.icon}{it.label}
+                  </span>
+                  <span aria-hidden className="opacity-80">›</span>
+                </button>
               </li>
-            ))}
-          </ul>
-        </nav>
+            );
+          })}
+        </ul>
+      </nav>
 
-        {/* Bottom Dock (Codex / Profile / Forge) */}
-        <BottomDock
-          onHowTo={() => { onHowTo?.(); setShowHowTo(true); }}
-          onProfile={onProfile}
-          onSettings={() => { onSettings?.(); setShowOptions(true); }}
-        />
-
-        {/* Version */}
-        <footer className="pointer-events-none mt-2 flex items-end justify-end px-6 pb-[max(12px,env(safe-area-inset-bottom))] text-sm opacity-85 md:px-10">
-          <div className="pointer-events-auto rounded bg-black/35 px-3 py-1.5 ring-1 ring-amber-300/25">{version}</div>
-        </footer>
-      </div>
+      {/* Footer */}
+      <footer className="pointer-events-none absolute bottom-0 left-0 right-0 flex flex-wrap items-end justify-end gap-2 px-6 pb-4 text-sm opacity-85 md:px-10">
+        <div className="pointer-events-auto rounded bg-black/35 px-3 py-1.5 ring-1 ring-amber-300/25">{version}</div>
+      </footer>
 
       {/* Panels */}
       {showHowTo && (
@@ -246,143 +256,14 @@ export default function RogueWheelHub(props: HubShellProps) {
   );
 }
 
-/* ===================== UI PARTS ===================== */
-
-function ChunkyBtn({
-  active,
-  disabled,
-  left,
-  children,
-  onClick,
-}: {
-  active?: boolean;
-  disabled?: boolean;
-  left?: ReactNode;
-  children: ReactNode;
-  onClick?: () => void;
-}) {
-  const base =
-    "relative w-full select-none rounded-[18px] px-5 py-3.5 text-left font-semibold tracking-wide outline-none transition";
-  const state = disabled
-    ? "opacity-60 cursor-not-allowed"
-    : "cursor-pointer active:translate-y-[1px] focus-visible:ring-2 focus-visible:ring-amber-300";
-  const on = active
-    ? `text-[${THEME.textDark}] shadow-[0_6px_16px_rgba(245,192,99,0.32)]`
-    : "text-white ring-1 ring-amber-300/25 hover:brightness-110";
-
-  return (
-    <button
-      role="button"
-      aria-disabled={disabled}
-      disabled={disabled}
-      onClick={disabled ? undefined : onClick}
-      className={`${base} ${state} ${on}`}
-      style={{
-        background: active
-          ? `linear-gradient(180deg, ${THEME.btnStart}, ${THEME.btnEnd})`
-          : "linear-gradient(180deg, rgba(0,0,0,0.38), rgba(0,0,0,0.22))",
-        boxShadow: `inset 0 2px 0 ${THEME.faceTint}, 0 0 0 1px ${THEME.btnEdge}20`,
-        border: `1px solid ${active ? THEME.btnEdge + "66" : "transparent"}`,
-      }}
-    >
-      <span className="flex items-center justify-between">
-        <span className="flex items-center gap-3">
-          <span className="-ml-1 mr-1 text-amber-300">{active ? "❯" : "•"}</span>
-          {left}
-          {children}
-        </span>
-        <span aria-hidden className="opacity-80">›</span>
-      </span>
-    </button>
-  );
-}
-
-// Tiny character row using your palette (initiative, player, enemy)
-function MascotRow() {
-  const bubbles = [
-    { c: "#F0C94A" }, // initiative/gold
-    { c: "#84cc16" }, // player lime
-    { c: "#d946ef" }, // enemy fuchsia
-  ];
-  return (
-    <div className="mt-3 flex items-end gap-2">
-      {bubbles.map((b, i) => (
-        <div
-          key={i}
-          className="h-12 w-12 rounded-full shadow-lg"
-          style={{
-            background: `radial-gradient(circle at 30% 30%, #ffffff99, transparent 55%), ${b.c}`,
-            boxShadow: `0 8px 18px ${b.c}30, inset 0 2px 0 #ffffff40`,
-          }}
-        >
-          {/* subtle "eyes" slit to imply character */}
-          <div className="relative h-full w-full">
-            <div className="absolute left-1/2 top-[42%] h-[2px] w-5 -translate-x-1/2 rounded bg-black/35" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function BottomDock({
-  onHowTo,
-  onProfile,
-  onSettings,
-  shopBadge = 0,
-}: {
-  onHowTo?: () => void;
-  onProfile?: () => void;
-  onSettings?: () => void;
-  shopBadge?: number;
-}) {
-  const Item = ({
-    label,
-    icon,
-    onClick,
-    badge,
-  }: { label: string; icon: ReactNode; onClick?: () => void; badge?: number; }) => (
-    <button
-      onClick={onClick}
-      className="relative grid w-20 place-items-center gap-1 rounded-2xl px-2 py-2 text-xs font-semibold text-white/90 ring-1"
-      style={{ background: THEME.dockBg, borderColor: THEME.dockRing }}
-    >
-      <div className="relative grid h-12 w-12 place-items-center rounded-2xl bg-white/5 ring-1 ring-white/10">
-        {icon}
-        {!!badge && (
-          <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-indigo-950 ring-1 ring-amber-300">
-            {badge}
-          </span>
-        )}
-      </div>
-      <span>{label}</span>
-    </button>
-  );
-
-  return (
-    <div className="sticky bottom-0 z-20 mt-4 flex w-full justify-center pb-[max(12px,env(safe-area-inset-bottom))]">
-      <div
-        className="flex items-center gap-3 rounded-3xl px-3 py-2 ring-1"
-        style={{ background: THEME.dockBg, borderColor: THEME.dockRing }}
-      >
-        <Item label="Codex"   onClick={onHowTo}   icon={<span className="text-xl">{ICONS.book}</span>} />
-        <Item label="Profile" onClick={onProfile} icon={<span className="text-xl">🛡️</span>} />
-        <Item label="Forge"   onClick={onSettings} icon={<span className="text-xl">{ICONS.settings}</span>} badge={shopBadge} />
-      </div>
-    </div>
-  );
-}
-
-/* ===================== OVERLAYS ===================== */
-
+// ----- Overlay & Panel Content (unchanged) -----
 function Overlay({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  const titleId = "dlg-" + title.replace(/\s+/g, "-").toLowerCase();
   return (
-    <div role="dialog" aria-modal aria-labelledby={titleId} className="fixed inset-0 z-40 grid place-items-center">
+    <div role="dialog" aria-modal className="fixed inset-0 z-40 grid place-items-center">
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
       <div className="relative z-10 w-[92vw] max-w-2xl rounded-2xl bg-indigo-950/90 p-4 ring-1 ring-amber-300/25 backdrop-blur md:p-6">
         <div className="mb-3 flex items-center justify-between">
-          <h2 id={titleId} className="text-xl font-bold tracking-wide">{title}</h2>
+          <h2 className="text-xl font-bold tracking-wide">{title}</h2>
           <button
             onClick={onClose}
             className="rounded bg-white/10 px-3 py-1 text-sm hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-amber-300"
@@ -457,26 +338,14 @@ function OptionsContent() {
       }}
     >
       <Field label="Music Volume">
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={music}
+        <input type="range" min={0} max={1} step={0.01} value={music}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setMusic(parseFloat(e.target.value))}
-          className="w-full"
-        />
+          className="w-full" />
       </Field>
       <Field label="SFX Volume">
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.01}
-          value={sfx}
+        <input type="range" min={0} max={1} step={0.01} value={sfx}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSfx(parseFloat(e.target.value))}
-          className="w-full"
-        />
+          className="w-full" />
       </Field>
       <Toggle label="Screen Shake" value={screenShake} onChange={setScreenShake} />
       <Toggle label="Reduce Motion" value={reducedMotion} onChange={setReducedMotion} />
