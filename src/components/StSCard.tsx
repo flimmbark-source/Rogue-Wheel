@@ -37,7 +37,6 @@ export default memo(function StSCard({
   variant?: "default" | "minimal";
   showName?: boolean;
 
-
 }) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
   const showHeader = variant === "default";
