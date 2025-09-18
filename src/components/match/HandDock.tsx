@@ -124,7 +124,7 @@ export default function HandDock({
                   aria-pressed={isSelected}
                   aria-label={`Select ${card.name}`}
                 >
-                  <StSCard card={card} />
+                  <StSCard card={card} showReserve={false} showName={false} />
                 </button>
               </motion.div>
             </div>
@@ -145,7 +145,7 @@ export default function HandDock({
           aria-hidden
         >
           <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
-            <StSCard card={pointerDragCard} />
+            <StSCard card={pointerDragCard} showReserve={false} showName={false} />
           </div>
         </div>
       )}
