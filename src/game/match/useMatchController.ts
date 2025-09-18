@@ -241,6 +241,10 @@ useEffect(() => {
     enemy: 0,
   });
   const [round, setRound] = useState(1);
+  const shouldOpenShopThisRound = useMemo(
+    () => isGauntletMode && round > 0 && round % 3 === 0,
+    [isGauntletMode, round],
+  );
 
   const [freezeLayout, setFreezeLayout] = useState(false);
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
@@ -1002,6 +1006,12 @@ function createInitialGauntletState(): GauntletState {
     return true;
   }, [isGauntletMode, phase]);
 
+  useEffect(() => {
+    if (!shouldOpenShopThisRound) return;
+    if (phase !== "roundEnd") return;
+    openShopPhase();
+  }, [openShopPhase, phase, shouldOpenShopThisRound]);
+
   const revealRoundCore = useCallback(() => {
     const allow = phase === "choose" && canReveal;
     if (!allow) return false;
@@ -1488,7 +1498,7 @@ function createInitialGauntletState(): GauntletState {
 
   const handleNextClick = useCallback(() => {
     if (isGauntletMode) {
-      if (phase === "roundEnd") {
+      if (phase === "roundEnd" && shouldOpenShopThisRound) {
         openShopPhase();
         return;
       }
