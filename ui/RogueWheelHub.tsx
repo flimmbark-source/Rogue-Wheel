@@ -44,7 +44,7 @@ export default function RogueWheelHub(props: HubShellProps) {
   const {
     backgroundUrl = "/fantasy-hero.jpg",
     logoText = "Rotogo Snap",
-    logoUrl = "../assets/Rotogo_Snap_Logo.png", // 👈 default to your attached PNG
+    logoUrl = "../assets/Rotogo_Snap_Logo_(2).png", // 👈 default to your attached PNG
     hasSave = false,
     onContinue,
     onNew,
