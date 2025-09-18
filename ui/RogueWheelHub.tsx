@@ -186,7 +186,7 @@ export default function RogueWheelHub(props: HubShellProps) {
       </header>
 
       {/* Menu */}
-      <nav aria-label="Main menu" className="mt-3 px-6 md:mt-8 md:px-10">
+      <nav aria-label="Main menu" className="mt-6 px-6 md:mt-8 md:px-10">
         <ul className="mx-auto w-full max-w-md">
           {items.map((it, i) => {
             const isActive = i === selected;
