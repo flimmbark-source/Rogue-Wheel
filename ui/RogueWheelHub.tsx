@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState, ReactNode } from "react";
-import rotogoLogo from "./rotogo_snap_logo_2.png";
 
 const ICONS = {
   refresh: "↻",
@@ -9,7 +8,6 @@ const ICONS = {
   book: "📖",
 };
 
-// --- small theme tokens used by buttons & profile panel ---
 const THEME = {
   btnGoldFrom: "#F5C063",
   btnGoldTo: "#E8A936",
@@ -17,8 +15,8 @@ const THEME = {
 
 export type HubShellProps = {
   backgroundUrl?: string;
-  logoText?: string;               // fallback alt text
-  logoUrl?: string;                // optional override PNG path/URL
+  logoText?: string;               // alt text fallback
+  logoUrl?: string;                // optional override
   hasSave?: boolean;
   onContinue?: () => void;
   onNew?: () => void;
@@ -45,7 +43,7 @@ export default function RogueWheelHub(props: HubShellProps) {
   const {
     backgroundUrl = "/fantasy-hero.jpg",
     logoText = "Rotogo Snap",
-    logoUrl,
+    logoUrl, // optional override path/URL
     hasSave = false,
     onContinue,
     onNew,
@@ -61,10 +59,11 @@ export default function RogueWheelHub(props: HubShellProps) {
     profileExpToNext = 200,
   } = props;
 
-  const profileProgress = profileExpToNext > 0 ? Math.min(1, profileExp / profileExpToNext) : 0;
-  const effectiveLogo = logoUrl ?? rotogoLogo;
+  // ⚠️ Put the file at: public/rotogo_snap_logo_2.png
+  const effectiveLogo = logoUrl ?? "/rotogo_snap_logo_2.png";
 
-  // -------- profile pill now styled like a button & moved under logo --------
+  const profileProgress = profileExpToNext > 0 ? Math.min(1, profileExp / profileExpToNext) : 0;
+
   const ProfilePanel = (
     <button
       type="button"
@@ -100,7 +99,6 @@ export default function RogueWheelHub(props: HubShellProps) {
     </button>
   );
 
-  // Fallbacks so buttons still do something if handlers aren’t wired
   const safeOnNew = onNew ?? (() => {
     try { window.dispatchEvent(new CustomEvent("rw:new-run")); } catch {}
     console.warn("RogueWheelHub: onNew not provided. Dispatched `rw:new-run`.");
@@ -127,7 +125,6 @@ export default function RogueWheelHub(props: HubShellProps) {
     [hasSave, safeOnContinue, safeOnNew, onMultiplayer, onHowTo, onSettings, onQuit]
   );
 
-  // Keyboard navigation (unchanged, but also updates on hover & press for responsiveness)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowDown") { e.preventDefault(); setSelected((i) => wrapIndex(i + 1, items.length)); }
@@ -139,7 +136,6 @@ export default function RogueWheelHub(props: HubShellProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [items, selected]);
 
-  // Parallax background
   const parallaxRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const el = parallaxRef.current; if (!el) return;
@@ -174,7 +170,7 @@ export default function RogueWheelHub(props: HubShellProps) {
         <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_180px_60px_rgba(10,8,25,0.9)]" />
       </div>
 
-      {/* Header: centered logo image; panel moved below with breathing room */}
+      {/* Header */}
       <header className="mx-auto flex max-w-md flex-col items-center px-6 pt-10 md:max-w-lg md:px-10">
         <img
           src={effectiveLogo}
@@ -183,17 +179,13 @@ export default function RogueWheelHub(props: HubShellProps) {
           draggable={false}
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
         />
-
-        {/* tagline */}
         <p className="mt-6 text-center text-purple-100/90 md:text-lg">
           <b>Spin</b>, <b>draft</b>, triumph.
         </p>
-
-        {/* Player panel styled like a button, full width, extra spacing */}
         <div className="mt-5 w-full">{ProfilePanel}</div>
       </header>
 
-      {/* Menu: centered column with responsive gold interaction */}
+      {/* Menu */}
       <nav aria-label="Main menu" className="mt-0 px-6 md:mt-8 md:px-10">
         <ul className="mx-auto w-full max-w-md">
           {items.map((it, i) => {
@@ -204,9 +196,9 @@ export default function RogueWheelHub(props: HubShellProps) {
                   role="button"
                   aria-disabled={!it.onClick}
                   disabled={!it.onClick}
-                  onMouseEnter={() => setSelected(i)}             // hover -> gold
-                  onFocus={() => setSelected(i)}                  // keyboard focus -> gold
-                  onPointerDown={() => setSelected(i)}            // press -> gold
+                  onMouseEnter={() => setSelected(i)}
+                  onFocus={() => setSelected(i)}
+                  onPointerDown={() => setSelected(i)}
                   onClick={() => it.onClick && it.onClick()}
                   className={[
                     "relative flex w-full items-center justify-between rounded-xl px-5 py-3",
@@ -252,7 +244,6 @@ export default function RogueWheelHub(props: HubShellProps) {
   );
 }
 
-// ----- Overlay & Panel Content (unchanged) -----
 function Overlay({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
     <div role="dialog" aria-modal className="fixed inset-0 z-40 grid place-items-center">
