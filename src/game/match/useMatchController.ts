@@ -167,14 +167,6 @@ useEffect(() => {
   sendIntentRef.current = sendIntent;
 }, [sendIntent]);
 
-const emitIntent = useCallback(
-  (intent: MPIntent) => {
-    if (!isMultiplayer) return;
-    sendIntentRef.current?.(intent);
-  },
-  [isMultiplayer],
-);
-
 
 
   const localLegacySide: LegacySide = LEGACY_FROM_SIDE[localSide];
