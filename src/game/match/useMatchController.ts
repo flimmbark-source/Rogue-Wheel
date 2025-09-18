@@ -144,11 +144,23 @@ export function useMatchController({
   sendIntent,
   onExit,
   mode = "classic",
-export function useMatchController({...}: UseMatchControllerOptions) {
+}: UseMatchControllerOptions) {
   const matchMode = mode;
   const isGauntletMode = matchMode === "gauntlet";
 
   const sendIntentRef = useRef(sendIntent);
+  useEffect(() => {
+    sendIntentRef.current = sendIntent;
+  }, [sendIntent]);
+
+  const emitIntent = useCallback(
+    (intent: MPIntent) => {
+      if (!isMultiplayer) return;
+      sendIntentRef.current?.(intent);
+    },
+    [isMultiplayer],
+  );
+
 
 // Keep the ref fresh if sendIntent changes
 useEffect(() => {
