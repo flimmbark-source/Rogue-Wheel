@@ -23,7 +23,7 @@ function cardFromId(cardId: string): Card {
 
 /** Scales its child to fit the available width while preserving aspect. */
 function FitCard({
-  baseWidth = 160,          // assumed natural width of StSCard "md"
+  baseWidth = 130,          // assumed natural width of StSCard "md"
   children,
 }: { baseWidth?: number; children: React.ReactNode }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -196,7 +196,7 @@ export default function ProfilePage() {
 
         {/* Deck grid = drop target (add from inv / remove by dropping back) */}
         <div
-          className="mt-2 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 p-2 rounded-xl ring-1 ring-white/15 bg-black/30"
+          className="mt-2 grid grid-cols-4 sm:grid-cols-5 md:grid-cols-5 gap-2 p-2 rounded-xl ring-1 ring-white/15 bg-black/30"
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => {
             e.preventDefault();
