@@ -9,6 +9,14 @@ type CardId = string;
 export type InventoryItem = { cardId: CardId; qty: number };
 export type DeckCard = { cardId: CardId; qty: number };
 export type Deck = { id: string; name: string; isActive: boolean; cards: DeckCard[] };
+export type GauntletRun = {
+  id: string;
+  startedAt: number;
+  round: number;
+  gold: number;
+  deck: DeckCard[];
+  flags: Record<string, boolean>;
+};
 export type Profile = {
   id: string;
   displayName: string;
@@ -18,13 +26,20 @@ export type Profile = {
   exp: number;
   winStreak: number;
 };
-type LocalState = { version: number; profile: Profile; inventory: InventoryItem[]; decks: Deck[] };
+type LocalState = {
+  version: number;
+  profile: Profile;
+  inventory: InventoryItem[];
+  decks: Deck[];
+  gauntlet: GauntletRun | null;
+};
 
 // ===== Storage/config =====
 const KEY = "rw:single:state";
-const VERSION = 2;
+const VERSION = 3;
 const MAX_DECK_SIZE = 10;
 const MAX_COPIES_PER_DECK = 2;
+const GAUNTLET_MAX_DECK_SIZE = 30; // Gauntlet runs can expand the deck slightly beyond the standard limit.
 
 type SafeStorage = Pick<Storage, "getItem" | "setItem"> | null;
 
@@ -74,7 +89,73 @@ function seed(): LocalState {
     },
     inventory: SEED_INVENTORY,
     decks: [SEED_DECK],
+    gauntlet: null,
   };
+}
+
+const cloneDeckCards = (cards: DeckCard[]): DeckCard[] => cards.map(c => ({ ...c }));
+
+function migrateState(raw: unknown): { state: LocalState; changed: boolean } {
+  const seeded = seed();
+  const s = (raw && typeof raw === "object" ? raw : {}) as Partial<LocalState> & { [key: string]: any };
+  let changed = false;
+
+  if (typeof s.version !== "number") {
+    s.version = 1;
+    changed = true;
+  }
+
+  if (!s.profile || typeof s.profile !== "object") {
+    s.profile = { ...seeded.profile };
+    changed = true;
+  }
+
+  const profile = s.profile as Profile;
+  if (typeof profile.level !== "number") { profile.level = 1; changed = true; }
+  if (typeof profile.exp !== "number") { profile.exp = 0; changed = true; }
+  if (typeof profile.winStreak !== "number") { profile.winStreak = 0; changed = true; }
+
+  if (!Array.isArray(s.inventory)) {
+    s.inventory = [];
+    changed = true;
+  }
+
+  if (!Array.isArray(s.decks) || s.decks.length === 0) {
+    s.decks = [{ ...seeded.decks[0], cards: cloneDeckCards(seeded.decks[0].cards) }];
+    changed = true;
+  }
+
+  if (s.version < 2) {
+    s.version = 2;
+    changed = true;
+  }
+
+  if (!("gauntlet" in s)) {
+    s.gauntlet = null;
+    changed = true;
+  }
+
+  if ((s.version ?? VERSION) < 3) {
+    s.gauntlet = s.gauntlet ?? null;
+    s.version = 3;
+    changed = true;
+  }
+
+  if (s.gauntlet && typeof s.gauntlet === "object") {
+    const run = s.gauntlet as GauntletRun & { [key: string]: any };
+    if (!Array.isArray(run.deck)) { run.deck = []; changed = true; }
+    if (typeof run.gold !== "number") { run.gold = 0; changed = true; }
+    if (typeof run.round !== "number") { run.round = 0; changed = true; }
+    if (typeof run.startedAt !== "number") { run.startedAt = Date.now(); changed = true; }
+    if (!run.flags || typeof run.flags !== "object") { run.flags = {}; changed = true; }
+  }
+
+  if (s.version !== VERSION) {
+    s.version = VERSION;
+    changed = true;
+  }
+
+  return { state: s as LocalState, changed };
 }
 
 // ===== Load/save =====
@@ -101,20 +182,10 @@ function loadStateRaw(): LocalState {
     return s;
   }
   try {
-    const s = JSON.parse(raw) as LocalState;
-    if (!(s as any).version) (s as any).version = VERSION;
-    if (s.version < 2) {
-      s.version = 2;
-      if (!s.profile) {
-        s.profile = seed().profile;
-      } else {
-        if (typeof s.profile.level !== "number") s.profile.level = 1;
-        if (typeof s.profile.exp !== "number") s.profile.exp = 0;
-        if (typeof s.profile.winStreak !== "number") s.profile.winStreak = 0;
-      }
-      saveState(s);
-    }
-    return s;
+    const parsed = JSON.parse(raw) as unknown;
+    const { state, changed } = migrateState(parsed);
+    if (changed) saveState(state);
+    return state;
   } catch {
     const s = seed();
     try {
@@ -137,6 +208,31 @@ function saveState(state: LocalState) {
   }
 }
 
+function mutateGauntletRun(mutator: (run: GauntletRun) => void): GauntletRun {
+  const state = loadStateRaw();
+  const run = ensureGauntletRun(state);
+  mutator(run);
+  saveState(state);
+  return { ...run, deck: cloneDeckCards(run.deck), flags: { ...run.flags } };
+}
+
+export type GauntletDeckMutation = { remove?: SwapItem[]; add?: SwapItem[] };
+
+function applyGauntletDeckMutation(existing: DeckCard[], mutation: GauntletDeckMutation): DeckCard[] {
+  const next = cloneDeckCards(existing);
+  const tmp: Deck = { id: "gauntlet", name: "Gauntlet Deck", isActive: true, cards: next };
+
+  for (const r of mutation.remove ?? []) {
+    setQty(tmp, r.cardId, Math.max(0, qtyInDeck(tmp, r.cardId) - r.qty));
+  }
+  for (const a of mutation.add ?? []) {
+    setQty(tmp, a.cardId, qtyInDeck(tmp, a.cardId) + a.qty);
+  }
+
+  validateGauntletDeck(tmp.cards);
+  return tmp.cards;
+}
+
 // ===== Helpers =====
 const findActive = (s: LocalState) => s.decks.find(d => d.isActive) ?? s.decks[0];
 const sum = (cards: DeckCard[]) => cards.reduce((a, c) => a + c.qty, 0);
@@ -148,6 +244,19 @@ const setQty = (d: Deck, id: string, q: number) => {
 };
 const ownAtLeast = (inv: InventoryItem[], id: string, need: number) =>
   (inv.find(i => i.cardId === id)?.qty ?? 0) >= need;
+const ensureGauntletRun = (s: LocalState): GauntletRun => {
+  if (!s.gauntlet) throw new Error("No active Gauntlet run");
+  return s.gauntlet;
+};
+const validateGauntletDeck = (cards: DeckCard[]) => {
+  if (Number.isFinite(GAUNTLET_MAX_DECK_SIZE) && sum(cards) > GAUNTLET_MAX_DECK_SIZE) {
+    throw new Error(`Gauntlet deck too large (max ${GAUNTLET_MAX_DECK_SIZE})`);
+  }
+  for (const c of cards) {
+    if (!c.cardId.startsWith("basic_") && c.qty > MAX_COPIES_PER_DECK)
+      throw new Error(`Too many copies of ${c.cardId} (max ${MAX_COPIES_PER_DECK})`);
+  }
+};
 
 const EXP_BASE = 100;
 
@@ -232,12 +341,131 @@ export function recordMatchResult({ didWin }: { didWin: boolean }): MatchResultS
   };
 }
 
+// ===== Gauntlet API =====
+export type GauntletInitOptions = {
+  deckId?: string;
+  startingDeckCards?: DeckCard[];
+  startingGold?: number;
+  startingRound?: number;
+  flags?: Record<string, boolean>;
+};
+
+export function startGauntletRun(options: GauntletInitOptions = {}): GauntletRun {
+  const state = loadStateRaw();
+  const deckSource = options.startingDeckCards
+    ? { cards: options.startingDeckCards }
+    : options.deckId
+      ? state.decks.find(d => d.id === options.deckId)
+      : findActive(state) ?? state.decks[0];
+
+  const baseCards = deckSource?.cards ? cloneDeckCards(deckSource.cards) : cloneDeckCards(SEED_DECK.cards);
+  validateGauntletDeck(baseCards);
+
+  const run: GauntletRun = {
+    id: uid("gauntlet"),
+    startedAt: Date.now(),
+    round: Math.max(0, Math.trunc(options.startingRound ?? 0)),
+    gold: Math.max(0, Math.trunc(options.startingGold ?? 0)),
+    deck: baseCards,
+    flags: { ...(options.flags ?? {}) },
+  };
+
+  state.gauntlet = run;
+  saveState(state);
+  return { ...run, deck: cloneDeckCards(run.deck), flags: { ...run.flags } };
+}
+
+export function endGauntletRun() {
+  const state = loadStateRaw();
+  if (!state.gauntlet) return;
+  state.gauntlet = null;
+  saveState(state);
+}
+
+export function getGauntletRun(): GauntletRun | null {
+  const run = loadStateRaw().gauntlet;
+  if (!run) return null;
+  return { ...run, deck: cloneDeckCards(run.deck), flags: { ...run.flags } };
+}
+
+export function earnGauntletGold(amount: number): GauntletRun {
+  if (!Number.isFinite(amount) || amount < 0) throw new Error("Gold to add must be a positive number");
+  return mutateGauntletRun(run => {
+    run.gold += Math.trunc(amount);
+  });
+}
+
+export function spendGauntletGold(amount: number): GauntletRun {
+  if (!Number.isFinite(amount) || amount < 0) throw new Error("Gold to spend must be a positive number");
+  return mutateGauntletRun(run => {
+    const spend = Math.trunc(amount);
+    if (run.gold < spend) throw new Error("Not enough gold");
+    run.gold -= spend;
+  });
+}
+
+export function setGauntletGold(total: number): GauntletRun {
+  if (!Number.isFinite(total) || total < 0) throw new Error("Total gold must be a non-negative number");
+  return mutateGauntletRun(run => {
+    run.gold = Math.trunc(total);
+  });
+}
+
+export function advanceGauntletRound(delta = 1): GauntletRun {
+  if (!Number.isFinite(delta)) throw new Error("Round delta must be numeric");
+  return mutateGauntletRun(run => {
+    run.round = Math.max(0, run.round + Math.trunc(delta));
+  });
+}
+
+export function setGauntletRound(round: number): GauntletRun {
+  if (!Number.isFinite(round) || round < 0) throw new Error("Round must be a non-negative number");
+  return mutateGauntletRun(run => {
+    run.round = Math.trunc(round);
+  });
+}
+
+export function setGauntletFlag(flag: string, value: boolean): GauntletRun {
+  if (!flag) throw new Error("Flag key is required");
+  return mutateGauntletRun(run => {
+    if (!value) delete run.flags[flag];
+    else run.flags[flag] = true;
+  });
+}
+
+export function mutateGauntletDeck(mutation: GauntletDeckMutation): GauntletRun {
+  return mutateGauntletRun(run => {
+    run.deck = applyGauntletDeckMutation(run.deck, mutation);
+  });
+}
+
+export type GauntletPurchase = GauntletDeckMutation & { cost?: number };
+
+export function applyGauntletPurchase(purchase: GauntletPurchase): GauntletRun {
+  return mutateGauntletRun(run => {
+    const cost = Math.trunc(purchase.cost ?? 0);
+    if (cost < 0) throw new Error("Purchase cost cannot be negative");
+    if (cost > 0) {
+      if (run.gold < cost) throw new Error("Not enough gold to complete purchase");
+      run.gold -= cost;
+    }
+    run.deck = applyGauntletDeckMutation(run.deck, purchase);
+  });
+}
+
 // ===== Public profile/deck management API (used by UI) =====
-export type ProfileBundle = { profile: Profile; inventory: InventoryItem[]; decks: Deck[]; active: Deck | undefined };
+export type ProfileBundle = {
+  profile: Profile;
+  inventory: InventoryItem[];
+  decks: Deck[];
+  active: Deck | undefined;
+  gauntlet: GauntletRun | null;
+};
 
 export function getProfileBundle(): ProfileBundle {
   const s = loadStateRaw();
-  return { profile: s.profile, inventory: s.inventory, decks: s.decks, active: findActive(s) };
+  const gauntlet = s.gauntlet ? { ...s.gauntlet, deck: cloneDeckCards(s.gauntlet.deck), flags: { ...s.gauntlet.flags } } : null;
+  return { profile: s.profile, inventory: s.inventory, decks: s.decks, active: findActive(s), gauntlet };
 }
 export function createDeck(name = "New Deck") {
   const s = loadStateRaw();
