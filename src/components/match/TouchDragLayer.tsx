@@ -124,7 +124,7 @@ export default function TouchDragLayer({ dragCard, isDragging, pointerPosition }
       aria-hidden
     >
       <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
-        <StSCard card={dragCard} />
+        <StSCard card={dragCard} showReserve={false} />
       </div>
     </div>
   );
