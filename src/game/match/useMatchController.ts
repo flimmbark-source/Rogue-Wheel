@@ -1,0 +1,1193 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  startTransition,
+} from "react";
+
+import {
+  SLICES,
+  TARGET_WINS,
+  type Side as TwoSide,
+  type Card,
+  type Section,
+  type Fighter,
+  type SplitChoiceMap,
+  type Players,
+  LEGACY_FROM_SIDE,
+} from "../types";
+import { easeInOutCubic, inSection, createSeededRng } from "../math";
+import { genWheelSections } from "../wheel";
+import {
+  makeFighter,
+  drawOne,
+  refillTo,
+  freshFive,
+  recordMatchResult,
+  type MatchResultSummary,
+  type LevelProgress,
+} from "../../player/profileStore";
+import { isSplit, isNormal, effectiveValue } from "../values";
+import { MAX_WHEEL, calcWheelSize } from "./wheelSizing";
+
+export type LegacySide = "player" | "enemy";
+export type Phase = "choose" | "showEnemy" | "anim" | "roundEnd" | "ended";
+
+export type MPIntent =
+  | { type: "assign"; lane: number; side: LegacySide; card: Card }
+  | { type: "clear"; lane: number; side: LegacySide }
+  | { type: "reveal"; side: LegacySide }
+  | { type: "nextRound"; side: LegacySide }
+  | { type: "rematch"; side: LegacySide }
+  | { type: "reserve"; side: LegacySide; reserve: number; round: number };
+
+export interface UseMatchControllerOptions {
+  localSide: TwoSide;
+  players: Players;
+  seed: number;
+  hostId?: string;
+  targetWins?: number;
+  isMultiplayer: boolean;
+  sendIntent?: (intent: MPIntent) => void;
+  onExit?: () => void;
+}
+
+export type MatchController = ReturnType<typeof useMatchController>;
+
+export function useMatchController({
+  localSide,
+  players,
+  seed,
+  hostId,
+  targetWins,
+  isMultiplayer,
+  sendIntent,
+  onExit,
+}: UseMatchControllerOptions) {
+  const sendIntentRef = useRef(sendIntent);
+  useEffect(() => {
+    sendIntentRef.current = sendIntent;
+  }, [sendIntent]);
+
+  const emitIntent = useCallback(
+    (intent: MPIntent) => {
+      if (!isMultiplayer) return;
+      sendIntentRef.current?.(intent);
+    },
+    [isMultiplayer],
+  );
+
+  const localLegacySide: LegacySide = LEGACY_FROM_SIDE[localSide];
+  const remoteLegacySide: LegacySide = localLegacySide === "player" ? "enemy" : "player";
+
+  const HUD_COLORS = useMemo(
+    () => ({
+      player: players.left.color ?? "#84cc16",
+      enemy: players.right.color ?? "#d946ef",
+    }) as const,
+    [players.left.color, players.right.color],
+  );
+
+  const namesByLegacy: Record<LegacySide, string> = useMemo(
+    () => ({
+      player: players.left.name,
+      enemy: players.right.name,
+    }),
+    [players.left.name, players.right.name],
+  );
+
+  const winGoal = useMemo(() => {
+    if (typeof targetWins === "number" && Number.isFinite(targetWins)) {
+      return Math.max(1, Math.min(15, Math.round(targetWins)));
+    }
+    return TARGET_WINS;
+  }, [targetWins]);
+
+  const hostLegacySide: LegacySide = useMemo(() => {
+    if (!hostId) return "player";
+    if (players.left.id === hostId) return "player";
+    if (players.right.id === hostId) return "enemy";
+    return "player";
+  }, [hostId, players.left.id, players.right.id]);
+
+  const mountedRef = useRef(true);
+  const timeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      timeoutsRef.current.forEach(clearTimeout);
+      timeoutsRef.current.clear();
+    };
+  }, []);
+
+  const setSafeTimeout = useCallback((fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      if (mountedRef.current) {
+        fn();
+      }
+    }, ms);
+    timeoutsRef.current.add(id);
+    return id;
+  }, []);
+
+  const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
+  const [enemy, setEnemy] = useState<Fighter>(() => makeFighter("Shade Bandit"));
+
+  const [initiative, setInitiative] = useState<LegacySide>(() =>
+    hostId ? hostLegacySide : localLegacySide,
+  );
+  const [wins, setWins] = useState<{ player: number; enemy: number }>({
+    player: 0,
+    enemy: 0,
+  });
+  const [round, setRound] = useState(1);
+
+  const [freezeLayout, setFreezeLayout] = useState(false);
+  const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
+
+  const [phase, setPhase] = useState<Phase>("choose");
+
+  const [resolveVotes, setResolveVotes] = useState<{ player: boolean; enemy: boolean }>(
+    {
+      player: false,
+      enemy: false,
+    },
+  );
+
+  const markResolveVote = useCallback((side: LegacySide) => {
+    setResolveVotes((prev) => {
+      if (prev[side]) return prev;
+      return { ...prev, [side]: true };
+    });
+  }, []);
+
+  const clearResolveVotes = useCallback(() => {
+    setResolveVotes((prev) => {
+      if (!prev.player && !prev.enemy) return prev;
+      return { player: false, enemy: false };
+    });
+  }, []);
+
+  const [advanceVotes, setAdvanceVotes] = useState<{ player: boolean; enemy: boolean }>(
+    {
+      player: false,
+      enemy: false,
+    },
+  );
+
+  const markAdvanceVote = useCallback((side: LegacySide) => {
+    setAdvanceVotes((prev) => {
+      if (prev[side]) return prev;
+      return { ...prev, [side]: true };
+    });
+  }, []);
+
+  const clearAdvanceVotes = useCallback(() => {
+    setAdvanceVotes((prev) => {
+      if (!prev.player && !prev.enemy) return prev;
+      return { player: false, enemy: false };
+    });
+  }, []);
+
+  const [rematchVotes, setRematchVotes] = useState<{ player: boolean; enemy: boolean }>(
+    {
+      player: false,
+      enemy: false,
+    },
+  );
+
+  const markRematchVote = useCallback((side: LegacySide) => {
+    setRematchVotes((prev) => {
+      if (prev[side]) return prev;
+      return { ...prev, [side]: true };
+    });
+  }, []);
+
+  const clearRematchVotes = useCallback(() => {
+    setRematchVotes((prev) => {
+      if (!prev.player && !prev.enemy) return prev;
+      return { player: false, enemy: false };
+    });
+  }, []);
+
+  const [matchSummary, setMatchSummary] = useState<MatchResultSummary | null>(null);
+  const [xpDisplay, setXpDisplay] = useState<LevelProgress | null>(null);
+  const [levelUpFlash, setLevelUpFlash] = useState(false);
+  const hasRecordedResultRef = useRef(false);
+
+  const matchWinner: LegacySide | null =
+    wins.player >= winGoal ? "player" : wins.enemy >= winGoal ? "enemy" : null;
+  const localWinsCount = localLegacySide === "player" ? wins.player : wins.enemy;
+  const remoteWinsCount = localLegacySide === "player" ? wins.enemy : wins.player;
+  const localWon = matchWinner ? matchWinner === localLegacySide : false;
+  const winnerName = matchWinner ? namesByLegacy[matchWinner] : null;
+  const localName = namesByLegacy[localLegacySide];
+  const remoteName = namesByLegacy[remoteLegacySide];
+
+  useEffect(() => {
+    setInitiative(hostId ? hostLegacySide : localLegacySide);
+  }, [hostId, hostLegacySide, localLegacySide]);
+
+  useEffect(() => {
+    if (phase === "ended") {
+      if (!hasRecordedResultRef.current) {
+        const summary = recordMatchResult({ didWin: localWon });
+        hasRecordedResultRef.current = true;
+        setMatchSummary(summary);
+
+        if (summary.didWin) {
+          setXpDisplay(summary.before);
+          setLevelUpFlash(false);
+          if (summary.segments.length === 0) {
+            setXpDisplay(summary.after);
+          }
+          summary.segments.forEach((segment, idx) => {
+            setSafeTimeout(() => {
+              setXpDisplay({
+                level: segment.level,
+                exp: segment.exp,
+                expToNext: segment.expToNext,
+                percent: segment.percent,
+              });
+              if (segment.leveledUp) {
+                setLevelUpFlash(true);
+                setSafeTimeout(() => setLevelUpFlash(false), 900);
+              }
+            }, 600 * (idx + 1));
+          });
+        } else {
+          setXpDisplay(null);
+          setLevelUpFlash(false);
+        }
+      }
+    } else {
+      hasRecordedResultRef.current = false;
+      if (phase === "choose" && wins.player === 0 && wins.enemy === 0) {
+        setMatchSummary(null);
+        setXpDisplay(null);
+        setLevelUpFlash(false);
+      }
+    }
+  }, [phase, localWon, wins.player, wins.enemy, setSafeTimeout]);
+
+  const [handClearance, setHandClearance] = useState<number>(0);
+
+  const [wheelSize, setWheelSize] = useState<number>(() =>
+    typeof window !== "undefined"
+      ? calcWheelSize(window.innerHeight, window.innerWidth, 0)
+      : MAX_WHEEL,
+  );
+
+  useEffect(() => {
+    const onResize = () => {
+      if (freezeLayout || lockedWheelSize !== null) return;
+      setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth, handClearance));
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    const timeout = setTimeout(() => {
+      if (!freezeLayout && lockedWheelSize === null) {
+        onResize();
+      }
+    }, 350);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+      clearTimeout(timeout);
+    };
+  }, [freezeLayout, handClearance, lockedWheelSize]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (freezeLayout || lockedWheelSize !== null) return;
+    setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth, handClearance));
+  }, [handClearance, freezeLayout, lockedWheelSize]);
+
+  const wheelRngRef = useRef<() => number>(() => Math.random());
+  const [wheelSections, setWheelSections] = useState<Section[][]>(() => {
+    const seeded = createSeededRng(seed);
+    wheelRngRef.current = seeded;
+    return [
+      genWheelSections("bandit", seeded),
+      genWheelSections("sorcerer", seeded),
+      genWheelSections("beast", seeded),
+    ];
+  });
+
+  const generateWheelSet = useCallback((): Section[][] => {
+    const rng = wheelRngRef.current ?? Math.random;
+    return [
+      genWheelSections("bandit", rng),
+      genWheelSections("sorcerer", rng),
+      genWheelSections("beast", rng),
+    ];
+  }, []);
+
+  useEffect(() => {
+    wheelRngRef.current = createSeededRng(seed);
+    setWheelSections(generateWheelSet());
+  }, [seed, generateWheelSet]);
+
+  const [tokens, setTokens] = useState<[number, number, number]>([0, 0, 0]);
+  const [active] = useState<[boolean, boolean, boolean]>([true, true, true]);
+  const [wheelHUD, setWheelHUD] = useState<[string | null, string | null, string | null]>([
+    null,
+    null,
+    null,
+  ]);
+
+  const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>(
+    { player: [null, null, null], enemy: [null, null, null] },
+  );
+  const assignRef = useRef(assign);
+  useEffect(() => {
+    assignRef.current = assign;
+  }, [assign]);
+
+  const reserveReportsRef = useRef<
+    Record<LegacySide, { reserve: number; round: number } | null>
+  >({
+    player: null,
+    enemy: null,
+  });
+
+  const storeReserveReport = useCallback(
+    (side: LegacySide, reserve: number, roundValue: number) => {
+      const prev = reserveReportsRef.current[side];
+      if (!prev || prev.reserve !== reserve || prev.round !== roundValue) {
+        reserveReportsRef.current[side] = { reserve, round: roundValue };
+        return true;
+      }
+      return false;
+    },
+    [],
+  );
+
+  const broadcastLocalReserve = useCallback(() => {
+    const lane =
+      localLegacySide === "player" ? assignRef.current.player : assignRef.current.enemy;
+    const reserve = computeReserveSum(localLegacySide, lane);
+    const updated = storeReserveReport(localLegacySide, reserve, round);
+    if (isMultiplayer && updated) {
+      emitIntent({ type: "reserve", side: localLegacySide, reserve, round });
+    }
+  }, [emitIntent, isMultiplayer, localLegacySide, round, storeReserveReport]);
+
+  const [dragCardId, setDragCardId] = useState<string | null>(null);
+  const [dragOverWheelInternal, setDragOverWheelInternal] = useState<number | null>(null);
+  const dragOverRef = useRef<number | null>(null);
+  const setDragOverWheel = useCallback((index: number | null) => {
+    dragOverRef.current = index;
+    if (typeof (window as any).requestIdleCallback === "function") {
+      (window as any).requestIdleCallback(() => {
+        setDragOverWheelInternal(dragOverRef.current);
+      });
+    } else {
+      setTimeout(() => setDragOverWheelInternal(dragOverRef.current), 0);
+    }
+  }, []);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+
+  const [reserveSums, setReserveSums] = useState<null | { player: number; enemy: number }>(
+    null,
+  );
+
+  const START_LOG = "A Shade Bandit eyes your purse...";
+  const [log, setLog] = useState<string[]>([START_LOG]);
+  const appendLog = useCallback((entry: string) => {
+    setLog((prev) => [entry, ...prev].slice(0, 60));
+  }, []);
+
+  const canReveal = useMemo(() => {
+    const lane = localLegacySide === "player" ? assign.player : assign.enemy;
+    return lane.every((card, index) => !active[index] || !!card);
+  }, [assign, active, localLegacySide]);
+
+  type WheelRefHandle = { setVisualToken: (slice: number) => void };
+  const wheelRefs = [
+    useRef<WheelRefHandle | null>(null),
+    useRef<WheelRefHandle | null>(null),
+    useRef<WheelRefHandle | null>(null),
+  ];
+
+  const assignToWheelFor = useCallback(
+    (side: LegacySide, laneIndex: number, card: Card) => {
+      if (!active[laneIndex]) return false;
+
+      const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
+      const prevAtLane = lane[laneIndex];
+      const fromIdx = lane.findIndex((c) => c?.id === card.id);
+
+      if (prevAtLane && prevAtLane.id === card.id && fromIdx === laneIndex) {
+        if (side === localLegacySide) {
+          setSelectedCardId(null);
+        }
+        return false;
+      }
+
+      const isPlayer = side === "player";
+
+      startTransition(() => {
+        setAssign((prev) => {
+          const laneArr = isPlayer ? prev.player : prev.enemy;
+          const nextLane = [...laneArr];
+          const existingIdx = nextLane.findIndex((c) => c?.id === card.id);
+          if (existingIdx !== -1) nextLane[existingIdx] = null;
+          nextLane[laneIndex] = card;
+          return isPlayer ? { ...prev, player: nextLane } : { ...prev, enemy: nextLane };
+        });
+
+        if (isPlayer) {
+          setPlayer((p) => {
+            let hand = p.hand.filter((c) => c.id !== card.id);
+            if (
+              prevAtLane &&
+              prevAtLane.id !== card.id &&
+              !hand.some((c) => c.id === prevAtLane.id)
+            ) {
+              hand = [...hand, prevAtLane];
+            }
+            return { ...p, hand };
+          });
+        } else {
+          setEnemy((e) => {
+            let hand = e.hand.filter((c) => c.id !== card.id);
+            if (
+              prevAtLane &&
+              prevAtLane.id !== card.id &&
+              !hand.some((c) => c.id === prevAtLane.id)
+            ) {
+              hand = [...hand, prevAtLane];
+            }
+            return { ...e, hand };
+          });
+        }
+
+        if (side === localLegacySide) {
+          setSelectedCardId(null);
+        }
+      });
+
+      clearResolveVotes();
+
+      return true;
+    },
+    [active, clearResolveVotes, localLegacySide],
+  );
+
+  const clearAssignFor = useCallback(
+    (side: LegacySide, laneIndex: number) => {
+      const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
+      const prevCard = lane[laneIndex];
+      if (!prevCard) return false;
+
+      const isPlayer = side === "player";
+
+      startTransition(() => {
+        setAssign((prevState) => {
+          const laneArr = isPlayer ? prevState.player : prevState.enemy;
+          if (!laneArr[laneIndex]) return prevState;
+          const nextLane = [...laneArr];
+          nextLane[laneIndex] = null;
+          return isPlayer
+            ? { ...prevState, player: nextLane }
+            : { ...prevState, enemy: nextLane };
+        });
+
+        if (isPlayer) {
+          setPlayer((p) => {
+            if (p.hand.some((c) => c.id === prevCard.id)) return p;
+            return { ...p, hand: [...p.hand, prevCard] };
+          });
+        } else {
+          setEnemy((e) => {
+            if (e.hand.some((c) => c.id === prevCard.id)) return e;
+            return { ...e, hand: [...e.hand, prevCard] };
+          });
+        }
+
+        if (side === localLegacySide) {
+          setSelectedCardId((sel) => (sel === prevCard.id ? null : sel));
+        }
+      });
+
+      clearResolveVotes();
+
+      return true;
+    },
+    [clearResolveVotes, localLegacySide],
+  );
+
+  const assignToWheelLocal = useCallback(
+    (laneIndex: number, card: Card) => {
+      const changed = assignToWheelFor(localLegacySide, laneIndex, card);
+      if (changed && isMultiplayer) {
+        emitIntent({ type: "assign", lane: laneIndex, side: localLegacySide, card });
+      }
+      return changed;
+    },
+    [assignToWheelFor, emitIntent, isMultiplayer, localLegacySide],
+  );
+
+  const clearAssignLocal = useCallback(
+    (laneIndex: number) => {
+      const changed = clearAssignFor(localLegacySide, laneIndex);
+      if (changed && isMultiplayer) {
+        emitIntent({ type: "clear", lane: laneIndex, side: localLegacySide });
+      }
+      return changed;
+    },
+    [clearAssignFor, emitIntent, isMultiplayer, localLegacySide],
+  );
+
+  const revealRoundCore = useCallback(() => {
+    const allow = phase === "choose" && canReveal;
+    if (!allow) return false;
+
+    setFreezeLayout(true);
+    setLockedWheelSize(Math.round(wheelSize));
+    setPhase("showEnemy");
+
+    broadcastLocalReserve();
+
+    const autoPickEnemy = () => {
+      const { hand } = enemy;
+      if (hand.length === 0) {
+        appendLog("Enemy is out of cards!");
+        return [null, null, null] as (Card | null)[];
+      }
+
+      const picks: (Card | null)[] = [null, null, null];
+      const taken = new Set<string>();
+
+      const assignEnemyCard = (idx: number, card: Card) => {
+        picks[idx] = card;
+        taken.add(card.id);
+      };
+
+      const chooseForLane = (idx: number) => {
+        const lane = assign.enemy[idx];
+        if (lane) return;
+
+        const available = hand.filter((card) => !taken.has(card.id));
+        if (available.length === 0) return;
+
+        const best = available.reduce((bestCard, card) => {
+          if (!bestCard) return card;
+          return card.number > bestCard.number ? card : bestCard;
+        }, available[0]);
+
+        if (best) assignEnemyCard(idx, best);
+      };
+
+      chooseForLane(0);
+      chooseForLane(1);
+      chooseForLane(2);
+
+      return picks;
+    };
+
+    const enemyPicks: (Card | null)[] = isMultiplayer
+      ? [...assignRef.current.enemy]
+      : autoPickEnemy();
+
+    if (!isMultiplayer && enemyPicks.some(Boolean)) {
+      const pickIds = new Set((enemyPicks.filter(Boolean) as Card[]).map((c) => c.id));
+      setEnemy((prev) => ({
+        ...prev,
+        hand: prev.hand.filter((card) => !pickIds.has(card.id)),
+      }));
+      setAssign((a) => ({ ...a, enemy: enemyPicks }));
+    }
+
+    setSafeTimeout(() => {
+      if (!mountedRef.current) return;
+      setPhase("anim");
+      resolveRound(enemyPicks);
+    }, 600);
+
+    return true;
+  }, [
+    appendLog,
+    assign.enemy,
+    broadcastLocalReserve,
+    canReveal,
+    enemy,
+    isMultiplayer,
+    phase,
+    setSafeTimeout,
+    wheelSize,
+  ]);
+
+  const onReveal = useCallback(() => revealRoundCore(), [revealRoundCore]);
+
+  useEffect(() => {
+    if (!isMultiplayer) return;
+    if (phase !== "choose") return;
+    if (!canReveal) return;
+    if (!resolveVotes.player || !resolveVotes.enemy) return;
+    revealRoundCore();
+  }, [canReveal, isMultiplayer, phase, resolveVotes, revealRoundCore]);
+
+  function resolveRound(enemyPicks?: (Card | null)[]) {
+    const played = [0, 1, 2].map((i) => ({
+      p: assign.player[i] as Card | null,
+      e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null,
+    }));
+
+    const localPlayed =
+      localLegacySide === "player"
+        ? played.map((pe) => pe.p)
+        : played.map((pe) => pe.e);
+    const remotePlayed =
+      remoteLegacySide === "player"
+        ? played.map((pe) => pe.p)
+        : played.map((pe) => pe.e);
+
+    const localReserve = computeReserveSum(localLegacySide, localPlayed);
+    let remoteReserve: number;
+    let usedRemoteReport = false;
+
+    if (!isMultiplayer) {
+      remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+    } else {
+      const report = reserveReportsRef.current[remoteLegacySide];
+      if (report && report.round === round) {
+        remoteReserve = report.reserve;
+        usedRemoteReport = true;
+      } else {
+        remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+      }
+    }
+
+    storeReserveReport(localLegacySide, localReserve, round);
+    if (!isMultiplayer || !usedRemoteReport) {
+      storeReserveReport(remoteLegacySide, remoteReserve, round);
+    }
+
+    const pReserve = localLegacySide === "player" ? localReserve : remoteReserve;
+    const eReserve = localLegacySide === "enemy" ? localReserve : remoteReserve;
+
+    setReserveSums({ player: pReserve, enemy: eReserve });
+
+    type Outcome = {
+      steps: number;
+      targetSlice: number;
+      section: Section;
+      winner: LegacySide | null;
+      tie: boolean;
+      wheel: number;
+      detail: string;
+    };
+    const outcomes: Outcome[] = [];
+
+    for (let w = 0; w < 3; w++) {
+      const secList = wheelSections[w];
+      const baseP = played[w].p?.number ?? 0;
+      const baseE = played[w].e?.number ?? 0;
+      const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
+      const targetSlice = (tokens[w] + steps) % SLICES;
+      const section =
+        secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) ||
+        ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
+
+      const pVal = baseP;
+      const eVal = baseE;
+      let winner: LegacySide | null = null;
+      let tie = false;
+      let detail = "";
+      switch (section.id) {
+        case "Strongest":
+          if (pVal === eVal) tie = true;
+          else winner = pVal > eVal ? "player" : "enemy";
+          detail = `Strongest ${pVal} vs ${eVal}`;
+          break;
+        case "Weakest":
+          if (pVal === eVal) tie = true;
+          else winner = pVal < eVal ? "player" : "enemy";
+          detail = `Weakest ${pVal} vs ${eVal}`;
+          break;
+        case "ReserveSum":
+          if (pReserve === eReserve) tie = true;
+          else winner = pReserve > eReserve ? "player" : "enemy";
+          detail = `Reserve ${pReserve} vs ${eReserve}`;
+          break;
+        case "ClosestToTarget": {
+          const target = targetSlice === 0 ? section.target ?? 0 : targetSlice;
+          const pd = Math.abs(pVal - target);
+          const ed = Math.abs(eVal - target);
+          if (pd === ed) tie = true;
+          else winner = pd < ed ? "player" : "enemy";
+          detail = `Closest to ${target}: ${pVal} vs ${eVal}`;
+          break;
+        }
+        case "Initiative":
+          winner = initiative;
+          detail = `Initiative -> ${winner}`;
+          break;
+        default:
+          tie = true;
+          detail = "Slice 0: no section";
+          break;
+      }
+      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail });
+    }
+
+    const animateSpins = async () => {
+      const finalTokens: [number, number, number] = [...tokens] as [
+        number,
+        number,
+        number,
+      ];
+
+      for (const outcome of outcomes) {
+        const start = finalTokens[outcome.wheel];
+        const steps = outcome.steps;
+        if (steps <= 0) continue;
+        const total = Math.max(220, Math.min(1000, 110 + 70 * steps));
+        const t0 = performance.now();
+        await new Promise<void>((resolve) => {
+          const frame = (now: number) => {
+            if (!mountedRef.current) return resolve();
+            const tt = Math.max(0, Math.min(1, (now - t0) / total));
+            const progressed = Math.floor(easeInOutCubic(tt) * steps);
+            wheelRefs[outcome.wheel].current?.setVisualToken(
+              (start + progressed) % SLICES,
+            );
+            if (tt < 1) {
+              requestAnimationFrame(frame);
+            } else {
+              wheelRefs[outcome.wheel].current?.setVisualToken((start + steps) % SLICES);
+              resolve();
+            }
+          };
+          requestAnimationFrame(frame);
+        });
+        finalTokens[outcome.wheel] = (start + steps) % SLICES;
+        await new Promise((r) => setTimeout(r, 90));
+      }
+
+      setTokens(finalTokens);
+
+      let pWins = wins.player;
+      let eWins = wins.enemy;
+      const hudColors: [string | null, string | null, string | null] = [
+        null,
+        null,
+        null,
+      ];
+      const roundWinsCount: Record<LegacySide, number> = { player: 0, enemy: 0 };
+
+      outcomes.forEach((outcome) => {
+        if (outcome.tie) {
+          appendLog(
+            `Wheel ${outcome.wheel + 1} tie: ${outcome.detail} — no win.`,
+          );
+        } else if (outcome.winner) {
+          hudColors[outcome.wheel] = HUD_COLORS[outcome.winner];
+          roundWinsCount[outcome.winner] += 1;
+          if (outcome.winner === "player") pWins += 1;
+          else eWins += 1;
+          appendLog(
+            `Wheel ${outcome.wheel + 1} win -> ${outcome.winner} (${outcome.detail}).`,
+          );
+        }
+      });
+
+      if (!mountedRef.current) return;
+
+      const prevInitiative = initiative;
+      const roundScore = `${roundWinsCount.player}-${roundWinsCount.enemy}`;
+      let nextInitiative: LegacySide;
+      let initiativeLog: string;
+      if (roundWinsCount.player === roundWinsCount.enemy) {
+        nextInitiative = prevInitiative === "player" ? "enemy" : "player";
+        initiativeLog = `Round ${round} tie (${roundScore}) — initiative swaps to ${namesByLegacy[nextInitiative]}.`;
+      } else if (roundWinsCount.player > roundWinsCount.enemy) {
+        nextInitiative = "player";
+        initiativeLog = `${namesByLegacy.player} wins the round ${roundScore} and takes initiative next round.`;
+      } else {
+        nextInitiative = "enemy";
+        initiativeLog = `${namesByLegacy.enemy} wins the round ${roundScore} and takes initiative next round.`;
+      }
+
+      setInitiative(nextInitiative);
+      appendLog(initiativeLog);
+
+      setWheelHUD(hudColors);
+      setWins({ player: pWins, enemy: eWins });
+      setReserveSums({ player: pReserve, enemy: eReserve });
+      clearAdvanceVotes();
+      setPhase("roundEnd");
+      if (pWins >= winGoal || eWins >= winGoal) {
+        clearRematchVotes();
+        setPhase("ended");
+        const localWins = localLegacySide === "player" ? pWins : eWins;
+        appendLog(
+          localWins >= winGoal
+            ? "You win the match!"
+            : `${namesByLegacy[remoteLegacySide]} wins the match!`,
+        );
+      }
+    };
+
+    void animateSpins();
+  }
+
+  const nextRoundCore = useCallback(
+    (opts?: { force?: boolean }) => {
+      const allow = opts?.force || phase === "roundEnd";
+      if (!allow) return false;
+
+      clearResolveVotes();
+      clearAdvanceVotes();
+
+      const currentAssign = assignRef.current;
+      const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
+      const enemyPlayed = currentAssign.enemy.filter((c): c is Card => !!c);
+
+      wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
+
+      setFreezeLayout(false);
+      setLockedWheelSize(null);
+
+      setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
+      setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
+
+      setWheelSections(generateWheelSet());
+      setAssign({ player: [null, null, null], enemy: [null, null, null] });
+
+      setSelectedCardId(null);
+      setDragCardId(null);
+      setDragOverWheel(null);
+      setTokens([0, 0, 0]);
+      setReserveSums(null);
+      setWheelHUD([null, null, null]);
+
+      setPhase("choose");
+      setRound((r) => r + 1);
+
+      return true;
+    },
+    [
+      clearAdvanceVotes,
+      clearResolveVotes,
+      generateWheelSet,
+      phase,
+      setAssign,
+      setEnemy,
+      setFreezeLayout,
+      setLockedWheelSize,
+      setPlayer,
+      setReserveSums,
+      setTokens,
+      setWheelHUD,
+      setWheelSections,
+      wheelRefs,
+    ],
+  );
+
+  const nextRound = nextRoundCore;
+
+  const handleRemoteIntent = useCallback(
+    (msg: MPIntent) => {
+      switch (msg.type) {
+        case "assign": {
+          if (msg.side === localLegacySide) break;
+          assignToWheelFor(msg.side, msg.lane, msg.card);
+          break;
+        }
+        case "clear": {
+          if (msg.side === localLegacySide) break;
+          clearAssignFor(msg.side, msg.lane);
+          break;
+        }
+        case "reveal": {
+          if (msg.side === localLegacySide) break;
+          markResolveVote(msg.side);
+          break;
+        }
+        case "nextRound": {
+          if (msg.side === localLegacySide) break;
+          markAdvanceVote(msg.side);
+          break;
+        }
+        case "rematch": {
+          if (msg.side === localLegacySide) break;
+          markRematchVote(msg.side);
+          break;
+        }
+        case "reserve": {
+          if (msg.side === localLegacySide) break;
+          if (typeof msg.reserve === "number" && typeof msg.round === "number") {
+            storeReserveReport(msg.side, msg.reserve, msg.round);
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    },
+    [
+      assignToWheelFor,
+      clearAssignFor,
+      localLegacySide,
+      markAdvanceVote,
+      markRematchVote,
+      markResolveVote,
+      storeReserveReport,
+    ],
+  );
+
+  const handleRevealClick = useCallback(() => {
+    if (phase !== "choose" || !canReveal) return;
+
+    if (!isMultiplayer) {
+      onReveal();
+      return;
+    }
+
+    if (resolveVotes[localLegacySide]) return;
+
+    markResolveVote(localLegacySide);
+    emitIntent({ type: "reveal", side: localLegacySide });
+  }, [
+    canReveal,
+    emitIntent,
+    isMultiplayer,
+    localLegacySide,
+    markResolveVote,
+    onReveal,
+    phase,
+    resolveVotes,
+  ]);
+
+  const handleNextClick = useCallback(() => {
+    if (phase !== "roundEnd") return;
+
+    if (!isMultiplayer) {
+      nextRound();
+      return;
+    }
+
+    if (advanceVotes[localLegacySide]) return;
+
+    markAdvanceVote(localLegacySide);
+    emitIntent({ type: "nextRound", side: localLegacySide });
+  }, [
+    advanceVotes,
+    emitIntent,
+    isMultiplayer,
+    localLegacySide,
+    markAdvanceVote,
+    nextRound,
+    phase,
+  ]);
+
+  useEffect(() => {
+    if (!isMultiplayer) return;
+    if (phase !== "roundEnd") return;
+    if (!advanceVotes.player || !advanceVotes.enemy) return;
+    nextRound();
+  }, [advanceVotes, isMultiplayer, nextRound, phase]);
+
+  const resetMatch = useCallback(() => {
+    clearResolveVotes();
+    clearAdvanceVotes();
+    clearRematchVotes();
+
+    reserveReportsRef.current = { player: null, enemy: null };
+
+    wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
+
+    setFreezeLayout(false);
+    setLockedWheelSize(null);
+
+    setPlayer(() => makeFighter("Wanderer"));
+    setEnemy(() => makeFighter("Shade Bandit"));
+
+    setInitiative(hostId ? hostLegacySide : localLegacySide);
+
+    setWins({ player: 0, enemy: 0 });
+    setRound(1);
+    setPhase("choose");
+
+    const emptyAssign: { player: (Card | null)[]; enemy: (Card | null)[] } = {
+      player: [null, null, null],
+      enemy: [null, null, null],
+    };
+    assignRef.current = emptyAssign;
+    setAssign(emptyAssign);
+
+    setSelectedCardId(null);
+    setDragCardId(null);
+    dragOverRef.current = null;
+    setDragOverWheelInternal(null);
+
+    setTokens([0, 0, 0]);
+    setReserveSums(null);
+    setWheelHUD([null, null, null]);
+
+    setLog([START_LOG]);
+
+    wheelRngRef.current = createSeededRng(seed);
+    setWheelSections(generateWheelSet());
+  }, [
+    clearAdvanceVotes,
+    clearRematchVotes,
+    clearResolveVotes,
+    generateWheelSet,
+    hostId,
+    hostLegacySide,
+    localLegacySide,
+    seed,
+    setAssign,
+    setEnemy,
+    setFreezeLayout,
+    setInitiative,
+    setLockedWheelSize,
+    setLog,
+    setPhase,
+    setPlayer,
+    setReserveSums,
+    setRound,
+    setTokens,
+    setWheelHUD,
+    setWheelSections,
+    setWins,
+  ]);
+
+  useEffect(() => {
+    if (!isMultiplayer) return;
+    if (phase !== "ended") return;
+    if (!rematchVotes.player || !rematchVotes.enemy) return;
+    resetMatch();
+  }, [isMultiplayer, phase, rematchVotes, resetMatch]);
+
+  const handleRematchClick = useCallback(() => {
+    if (phase !== "ended") return;
+
+    if (!isMultiplayer) {
+      resetMatch();
+      return;
+    }
+
+    if (rematchVotes[localLegacySide]) return;
+
+    markRematchVote(localLegacySide);
+    emitIntent({ type: "rematch", side: localLegacySide });
+  }, [
+    emitIntent,
+    isMultiplayer,
+    localLegacySide,
+    markRematchVote,
+    phase,
+    rematchVotes,
+    resetMatch,
+  ]);
+
+  const handleExitClick = useCallback(() => {
+    onExit?.();
+  }, [onExit]);
+
+  return {
+    localLegacySide,
+    remoteLegacySide,
+    hostLegacySide,
+    players,
+    namesByLegacy,
+    HUD_COLORS,
+    winGoal,
+    isMultiplayer,
+    player,
+    enemy,
+    initiative,
+    wins,
+    round,
+    freezeLayout,
+    lockedWheelSize,
+    setLockedWheelSize,
+    handClearance,
+    setHandClearance,
+    wheelSize,
+    wheelSections,
+    tokens,
+    active,
+    wheelHUD,
+    assign,
+    dragCardId,
+    setDragCardId,
+    dragOverWheel: dragOverWheelInternal,
+    setDragOverWheel,
+    selectedCardId,
+    setSelectedCardId,
+    reserveSums,
+    log,
+    phase,
+    resolveVotes,
+    advanceVotes,
+    rematchVotes,
+    matchSummary,
+    xpDisplay,
+    levelUpFlash,
+    matchWinner,
+    localWinsCount,
+    remoteWinsCount,
+    localWon,
+    winnerName,
+    localName,
+    remoteName,
+    canReveal,
+    appendLog,
+    wheelRefs,
+    assignToWheelLocal,
+    clearAssignLocal,
+    handleRevealClick,
+    handleNextClick,
+    handleRematchClick,
+    handleExitClick,
+    nextRound,
+    onReveal,
+    resetMatch,
+    handleRemoteIntent,
+  };
+}
+
+function computeReserveSum(side: LegacySide, played: (Card | null)[]) {
+  const reserve = played.filter(Boolean) as Card[];
+  let sum = 0;
+  for (const card of reserve) {
+    if (isSplit(card)) {
+      const best = Object.values(card.split ?? ({} as SplitChoiceMap)).reduce(
+        (acc, val) => Math.max(acc, val),
+        0,
+      );
+      sum += best;
+    } else if (isNormal(card)) {
+      sum += effectiveValue(card);
+    }
+  }
+  return sum;
+}
+
+function settleFighterAfterRound(fighter: Fighter, played: Card[]) {
+  const deck = fighter.deck;
+  const discard = [...fighter.discard, ...played];
+  let hand = fighter.hand.filter((card) => !played.some((p) => p.id === card.id));
+
+  while (hand.length < 3 && deck.length > 0) {
+    const drawn = drawOne(deck, discard);
+    if (!drawn) break;
+    hand = [...hand, drawn.card];
+  }
+
+  if (hand.length < 3) {
+    const fresh = freshFive();
+    hand = refillTo(hand, fresh, 3);
+  }
+
+  return { ...fighter, hand, deck, discard };
+}
