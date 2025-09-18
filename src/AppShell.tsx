@@ -1,11 +1,11 @@
 // src/AppShell.tsx
 import React, { useState } from "react";
-import type { Realtime } from "ably";
 import App from "./App";
 import HubRoute from "./HubRoute";
 import MultiplayerRoute from "./MultiplayerRoute";
 import type { Players, Side } from "./game/types";
 import ProfilePage from "./ProfilePage";
+import SoloModeRoute from "./SoloModeRoute";
 
 type MPStartPayload = Parameters<
   NonNullable<React.ComponentProps<typeof MultiplayerRoute>["onStart"]>
@@ -13,9 +13,11 @@ type MPStartPayload = Parameters<
 
 type View =
   | { key: "hub" }
+  | { key: "soloMenu" }
   | { key: "mp" }
   | { key: "profile" }
-  | { key: "game"; mode: "solo" | "mp"; mpPayload?: MPStartPayload };
+  | { key: "game"; mode: "classic" | "gauntlet" }
+  | { key: "game"; mode: "mp"; mpPayload?: MPStartPayload };
 
 export default function AppShell() {
   const [view, setView] = useState<View>({ key: "hub" });
@@ -24,9 +26,19 @@ export default function AppShell() {
   if (view.key === "hub") {
     return (
       <HubRoute
-        onStart={() => setView({ key: "game", mode: "solo" })}
+        onStart={() => setView({ key: "soloMenu" })}
         onMultiplayer={() => setView({ key: "mp" })}
         onProfile={() => setView({ key: "profile" })}
+      />
+    );
+  }
+
+  if (view.key === "soloMenu") {
+    return (
+      <SoloModeRoute
+        onBack={() => setView({ key: "hub" })}
+        onSelectClassic={() => setView({ key: "game", mode: "classic" })}
+        onSelectGauntlet={() => setView({ key: "game", mode: "gauntlet" })}
       />
     );
   }
@@ -43,22 +55,20 @@ export default function AppShell() {
     );
   }
 
-
   if (view.key === "profile") {
-  return (
-    <div className="min-h-dvh flex flex-col">
-      <div className="p-2">
-        <button className="underline text-sm" onClick={() => setView({ key: "hub" })}>
-          ← Back to Main Menu
-        </button>
+    return (
+      <div className="min-h-dvh flex flex-col">
+        <div className="p-2">
+          <button className="underline text-sm" onClick={() => setView({ key: "hub" })}>
+            ← Back to Main Menu
+          </button>
+        </div>
+        <ProfilePage />
       </div>
-      <ProfilePage />
-    </div>
-  );
-}
+    );
+  }
 
   // ---- view.key === "game" ----
-  // (unchanged)
   let seed: number;
   let players: Players;
   let localSide: Side;
@@ -89,6 +99,7 @@ export default function AppShell() {
 
   return (
     <App
+      mode={view.mode === "gauntlet" ? "gauntlet" : "classic"}
       localSide={localSide}
       localPlayerId={localPlayerId}
       players={players}
