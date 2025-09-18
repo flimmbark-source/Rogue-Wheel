@@ -45,6 +45,7 @@ export default function RogueWheelHub(props: HubShellProps) {
   const {
     backgroundUrl = "/fantasy-hero.jpg",
     logoText = "Rotogo Snap",
+    logoUrl,
     hasSave = false,
     onContinue,
     onNew,
@@ -62,25 +63,6 @@ export default function RogueWheelHub(props: HubShellProps) {
 
   const profileProgress = profileExpToNext > 0 ? Math.min(1, profileExp / profileExpToNext) : 0;
   const effectiveLogo = logoUrl ?? rotogoLogo;
-
-  return (
-    <header className="mx-auto flex max-w-md flex-col items-center px-6 pt-10 md:max-w-lg md:px-10">
-  <img
-    src={effectiveLogo}
-    alt={logoText}
-    className="block max-w-[82%] md:max-w-[72%] drop-shadow-[0_12px_24px_rgba(0,0,0,0.45)]"
-    draggable={false}
-    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-  />
-
-  <p className="mt-6 text-center text-purple-100/90 md:text-lg">
-    <b>Spin</b>, <b>draft</b>, triumph.
-  </p>
-
-  <div className="mt-5 w-full">{ProfilePanel}</div>
-</header>
-  );
-}
 
   // -------- profile pill now styled like a button & moved under logo --------
   const ProfilePanel = (
