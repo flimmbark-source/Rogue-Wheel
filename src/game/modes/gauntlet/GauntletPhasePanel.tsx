@@ -19,6 +19,9 @@ export type GauntletPhasePanelProps = {
   shopReady: { player: boolean; enemy: boolean };
   gauntletState: GauntletState;
   gauntletRollShop: (inventory: Card[], round: number, roll?: number) => void;
+  configureShopInventory: (
+    inventory: Partial<Record<LegacySide, Card[]>>,
+  ) => void;
   purchaseFromShop: (side: LegacySide, card: Card, cost?: number) => boolean;
   markShopComplete: (side: LegacySide) => boolean;
   activationTurn: LegacySide | null;
@@ -42,6 +45,7 @@ export default function GauntletPhasePanel({
   shopReady,
   gauntletState,
   gauntletRollShop,
+  configureShopInventory,
   purchaseFromShop,
   markShopComplete,
   activationTurn,
@@ -69,6 +73,52 @@ export default function GauntletPhasePanel({
   const activationSelection = localGauntlet?.activation.selection ?? null;
   const localHand = localFighter.hand ?? [];
 
+  const getCardTraits = (card: Card): string[] => {
+    const traits: string[] = [];
+    const push = (trait: string) => {
+      if (!traits.includes(trait)) traits.push(trait);
+    };
+
+    const cardType = card.type ?? (card.split ? "split" : "normal");
+    if (cardType === "split" || card.split) {
+      push("Split");
+      const faces = card.split ? Object.values(card.split.faces) : [];
+      if (faces.some((face) => face.value < 0)) {
+        push("Negative");
+      }
+    }
+
+    if (typeof card.number === "number" && card.number < 0) {
+      push("Negative");
+    }
+
+    const hasBoost = (card.activation ?? []).some((ability) =>
+      ability.effects.some(
+        (effect) => effect.type === "selfValue" && Number.isFinite(effect.amount) && effect.amount > 0,
+      ),
+    );
+    if (hasBoost) {
+      push("Boost");
+    }
+
+    const influencesReserve =
+      Boolean(card.reserve) ||
+      (card.activation ?? []).some((ability) =>
+        ability.effects.some((effect) =>
+          effect.type === "reserveBonus" || effect.type === "reserveMultiplier",
+        ),
+      );
+    if (influencesReserve) {
+      push("Reserve");
+    }
+
+    if (traits.length === 0) {
+      push("Standard");
+    }
+
+    return traits;
+  };
+
   const readyMessage = (() => {
     if (localReady && remoteReady) {
       return "Both sides are ready to continue.";
@@ -84,6 +134,19 @@ export default function GauntletPhasePanel({
 
   const inventoryForRoll = localInventory.length > 0 ? localInventory : previousInventory;
   const canRollInventory = inventoryForRoll.length > 0;
+
+  useEffect(() => {
+    if (phase !== "shop") return;
+    if (localInventory.length > 0) return;
+    if (previousInventory.length === 0) return;
+    configureShopInventory({ [localLegacySide]: previousInventory });
+  }, [
+    configureShopInventory,
+    localInventory.length,
+    localLegacySide,
+    phase,
+    previousInventory,
+  ]);
 
   useEffect(() => {
     if (phase !== "shop") return;
@@ -127,25 +190,79 @@ export default function GauntletPhasePanel({
                 </div>
               ) : (
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  {localInventory.map((card) => (
-                    <div
-                      key={card.id}
-                      className="rounded-lg border border-amber-500/30 bg-amber-900/40 p-4 text-sm shadow-sm"
-                    >
-                      <div className="font-semibold text-amber-50">{card.name}</div>
-                      {typeof card.number === "number" ? (
-                        <div className="text-xs text-amber-200/80">Value {card.number}</div>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => purchaseFromShop(localLegacySide, card)}
-                        disabled={localGold <= 0}
-                        className="mt-3 inline-flex items-center justify-center rounded bg-amber-400 px-3 py-1 text-xs font-semibold text-slate-900 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+                  {localInventory.map((card) => {
+                    const traits = getCardTraits(card);
+                    const splitFaces = card.split ? Object.values(card.split.faces) : null;
+                    const cost = card.cost ?? 0;
+                    const canAfford = localGold >= cost;
+                    return (
+                      <div
+                        key={card.id}
+                        className="rounded-lg border border-amber-500/30 bg-amber-900/40 p-4 text-sm shadow-sm"
                       >
-                        Buy (1g)
-                      </button>
-                    </div>
-                  ))}
+                        <div className="font-semibold text-amber-50">{card.name}</div>
+                        <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-semibold uppercase tracking-wide">
+                          {traits.map((trait) => (
+                            <span
+                              key={trait}
+                              className="rounded-full border border-amber-500/40 bg-amber-900/50 px-2 py-0.5 text-amber-200/80"
+                            >
+                              {trait}
+                            </span>
+                          ))}
+                        </div>
+                        {splitFaces ? (
+                          <div className="mt-3 space-y-1 text-xs text-amber-200/80">
+                            {splitFaces.map((face) => (
+                              <div key={face.id} className="flex items-center justify-between gap-3">
+                                <span className="font-medium text-amber-100/90">
+                                  {face.label ?? (face.id === "left" ? "Left" : "Right")}
+                                </span>
+                                <span
+                                  className={`tabular-nums font-semibold ${
+                                    face.value < 0 ? "text-rose-300" : "text-amber-100"
+                                  }`}
+                                >
+                                  {face.value}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : typeof card.number === "number" ? (
+                          <div
+                            className={`mt-3 text-xs ${
+                              card.number < 0 ? "text-rose-300" : "text-amber-200/80"
+                            }`}
+                          >
+                            Value {card.number}
+                          </div>
+                        ) : null}
+                        {card.effectSummary ? (
+                          <p className="mt-3 text-xs leading-relaxed text-amber-100/80">
+                            {card.effectSummary}
+                          </p>
+                        ) : null}
+                        <div className="mt-4 flex items-center justify-between gap-3">
+                          <div className="text-xs text-amber-200/80">
+                            Cost: <span className="font-semibold text-amber-50">{cost}g</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => purchaseFromShop(localLegacySide, card, cost)}
+                            disabled={!canAfford}
+                            className="inline-flex items-center justify-center rounded bg-amber-400 px-3 py-1 text-xs font-semibold text-slate-900 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Buy ({cost}g)
+                          </button>
+                        </div>
+                        {!canAfford ? (
+                          <div className="mt-1 text-[11px] text-rose-200/70">
+                            Need {cost - localGold} more gold.
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

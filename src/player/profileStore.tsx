@@ -5,6 +5,7 @@ import { shuffle } from "../game/math";
 import type {
   ActivationAbility,
   Card,
+  CardRarity,
   CardSplit,
   CardSplitFace,
   Fighter,
@@ -74,8 +75,6 @@ function uid(prefix = "id") {
 }
 
 // ===== Card catalog & factory =====
-export type CardRarity = "common" | "uncommon" | "rare" | "legendary";
-
 export type CardBlueprint = {
   id: string;
   name: string;
@@ -117,6 +116,9 @@ const instantiateCard = (blueprint: CardBlueprint): Card => ({
   activation: blueprint.activation ? blueprint.activation.map(cloneActivation) : undefined,
   reserve: blueprint.reserve ? { ...blueprint.reserve } : undefined,
   tags: blueprint.tags ? [...blueprint.tags] : [],
+  cost: blueprint.cost,
+  rarity: blueprint.rarity,
+  effectSummary: blueprint.effectSummary,
 });
 
 const ABILITIES = {

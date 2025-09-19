@@ -128,6 +128,7 @@ export default function ClassicMatch({
     shopInventory,
     shopPurchases,
     shopReady,
+    configureShopInventory,
     markShopComplete,
     purchaseFromShop,
     gauntletRollShop,
@@ -227,6 +228,7 @@ export default function ClassicMatch({
       namesByLegacy={namesByLegacy}
       gauntletState={gauntletState}
       gauntletRollShop={gauntletRollShop}
+      configureShopInventory={configureShopInventory}
       purchaseFromShop={purchaseFromShop}
       markShopComplete={markShopComplete}
       activationTurn={activationTurn}
