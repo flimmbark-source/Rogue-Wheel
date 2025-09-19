@@ -230,7 +230,9 @@ export default function MatchBoard({
               showReserve={false}
 
               variant="minimal"
+              showAbilityHint
               adjustment={adjustmentDescriptor}
+
             />
           );
         };
