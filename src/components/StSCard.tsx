@@ -54,83 +54,83 @@ export default memo(function StSCard({
 
   const showHeader = variant === "default" && showName;
   const showFooter = variant === "default";
+/* ==== MERGE-RESOLVED: card kind + rarity palettes with full-surface backgrounds ==== */
 
-  /* ==== MERGE-RESOLVED: card kind + rarity palettes with full-surface backgrounds ==== */
+// Robust play value parsing (handles number|string|{value})
+const rawPV = getCardPlayValue(card) as unknown;
+const playVal =
+  typeof rawPV === "number"
+    ? rawPV
+    : typeof rawPV === "string"
+    ? parseFloat(rawPV)
+    : rawPV && typeof rawPV === "object" && "value" in (rawPV as any)
+    ? Number((rawPV as any).value)
+    : 0;
 
-  /** Robust play value parsing */
-  const rawPV = getCardPlayValue(card) as unknown;
-  const playVal =
-    typeof rawPV === "number"
-      ? rawPV
-      : typeof rawPV === "string"
-      ? parseFloat(rawPV)
-      : rawPV && typeof rawPV === "object" && "value" in (rawPV as any)
-      ? Number((rawPV as any).value)
-      : 0;
+// Multi-signal negative detection
+const id = String((card as any).id ?? "");
+const kindOrType = String((card as any).kind ?? (card as any).type ?? "");
+const idSaysNegative = /^neg[_-]/i.test(id);
+const kindSaysNegative = /negative|curse/i.test(kindOrType);
+const computedNegative = !isSplit(card) && Number.isFinite(playVal) && playVal < 0;
 
-  /** Multi-signal negative detection */
-  const id = String((card as any).id ?? "");
-  const kindOrType = String((card as any).kind ?? (card as any).type ?? "");
-  const idSaysNegative = /^neg[_-]/i.test(id);
-  const kindSaysNegative = /negative|curse/i.test(kindOrType);
-  const computedNegative = !isSplit(card) && Number.isFinite(playVal) && playVal < 0;
+// If you have a forceKind prop, it wins; otherwise compute from split/negative/normal
+let cardKind: Kind =
+  typeof forceKind !== "undefined"
+    ? forceKind
+    : isSplit(card)
+    ? "split"
+    : idSaysNegative || kindSaysNegative || computedNegative
+    ? "negative"
+    : "normal";
 
-  let cardKind: Kind =
-    typeof forceKind !== "undefined"
-      ? forceKind
-      : isSplit(card)
-      ? "split"
-      : idSaysNegative || kindSaysNegative || computedNegative
-      ? "negative"
-      : "normal";
+// Rarity palette only applies to "normal" cards
+type Rarity = NonNullable<Card["rarity"]> | "common";
+const rarity: Rarity = (card.rarity as Rarity) ?? "common";
 
-  /** Rarity palette only applies to "normal" cards */
-  type Rarity = NonNullable<Card["rarity"]> | "common";
-  const rarity: Rarity = (card.rarity as Rarity) ?? "common";
+// Background (button surface) + frame (border-only) per rarity
+const rarityPalette: Record<Rarity, { background: string; frame: string }> = {
+  common: {
+    background:
+      "bg-gradient-to-br from-slate-900/85 to-slate-800/70 border border-slate-700/70",
+    frame: "border-slate-400",
+  },
+  uncommon: {
+    background:
+      "bg-gradient-to-br from-emerald-950/90 to-emerald-900/70 border border-emerald-700/70",
+    frame: "border-emerald-300/80",
+  },
+  rare: {
+    background:
+      "bg-gradient-to-br from-sky-950/90 to-sky-900/70 border border-sky-700/70",
+    frame: "border-sky-300/80",
+  },
+  legendary: {
+    background:
+      "bg-gradient-to-br from-amber-950/90 to-amber-900/70 border border-amber-700/70",
+    frame: "border-amber-300/80",
+  },
+};
 
-  /** Background (button surface) + frame (border-only) per rarity */
-  const rarityPalette: Record<Rarity, { background: string; frame: string }> = {
-    common: {
-      background:
-        "bg-gradient-to-br from-slate-900/85 to-slate-800/70 border border-slate-700/70",
-      frame: "border-slate-400",
-    },
-    uncommon: {
-      background:
-        "bg-gradient-to-br from-emerald-950/90 to-emerald-900/70 border border-emerald-700/70",
-      frame: "border-emerald-300/80",
-    },
-    rare: {
-      background:
-        "bg-gradient-to-br from-sky-950/90 to-sky-900/70 border border-sky-700/70",
-      frame: "border-sky-300/80",
-    },
-    legendary: {
-      background:
-        "bg-gradient-to-br from-amber-950/90 to-amber-900/70 border border-amber-700/70",
-      frame: "border-amber-300/80",
-    },
-  };
+// Kind overrides: negative/split ignore rarity; normal uses rarity palette
+const backgroundsByKind: Record<Kind, string> = {
+  normal: rarityPalette[rarity].background,
+  negative:
+    "bg-gradient-to-br from-rose-950/90 to-rose-900/70 border border-rose-700/70",
+  split:
+    "bg-gradient-to-br from-indigo-950/90 to-indigo-900/70 border border-indigo-700/70",
+};
 
-  /** Kind overrides: negative/split ignore rarity; normal uses rarity palette */
-  const backgroundsByKind: Record<Kind, string> = {
-    normal: rarityPalette[rarity].background,
-    negative:
-      "bg-gradient-to-br from-rose-950/90 to-rose-900/70 border border-rose-700/70",
-    split:
-      "bg-gradient-to-br from-indigo-950/90 to-indigo-900/70 border border-indigo-700/70",
-  };
+const framesByKind: Record<Kind, string> = {
+  normal: rarityPalette[rarity].frame,
+  negative: "border-rose-500/70",
+  split: "border-indigo-500/70",
+};
 
-  const framesByKind: Record<Kind, string> = {
-    normal: rarityPalette[rarity].frame,
-    negative: "border-rose-500/70",
-    split: "border-indigo-500/70",
-  };
+const cardBackground = backgroundsByKind[cardKind];
+const frameBorder = framesByKind[cardKind];
 
-  const cardBackground = backgroundsByKind[cardKind];
-  const frameBorder = framesByKind[cardKind];
-
-  /* ==== END MERGE-RESOLVED ==== */
+/* ==== END MERGE-RESOLVED ==== */
 
   return (
     <button
