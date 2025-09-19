@@ -328,11 +328,6 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
 
         {showFooter && (
           <div className="space-y-1 text-[11px] leading-tight text-slate-200/90">
-            {showReserve && (
-              <div className="font-semibold">
-                Reserve {fmtNum(getCardReserveValue(card))}
-              </div>
-            )}
             {card.reserve?.summary && (
               <div className="text-slate-200/80">{card.reserve.summary}</div>
             )}
