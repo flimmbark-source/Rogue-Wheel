@@ -948,7 +948,7 @@ function createInitialGauntletState(): GauntletState {
   );
 
   const purchaseFromShop = useCallback(
-    (side: LegacySide, card: Card, cost = 1) => {
+    (side: LegacySide, card: Card, cost = 10) => {
       if (!isGauntletMode) return false;
       if (phase !== "shop") return false;
       const success = applyShopPurchase(side, card, cost, { force: false });
@@ -965,6 +965,8 @@ function createInitialGauntletState(): GauntletState {
     if (!isGauntletMode) return false;
     if (round < 3) return false;
     if (phase === "shop") return false;
+    setPlayer((prev) => discardHand(prev));
+    setEnemy((prev) => discardHand(prev));
     setShopReady(() => {
       const base = { player: false, enemy: false };
       if (isMultiplayer) {
@@ -1976,6 +1978,15 @@ function computeReserveSum(side: LegacySide, played: (Card | null)[]) {
 
   const reserve = played.filter(Boolean) as Card[];
   return reserve.reduce((total, card) => total + getCardReserveValue(card), 0);
+}
+
+function discardHand(fighter: Fighter): Fighter {
+  if (!fighter.hand.length) return fighter;
+  return {
+    ...fighter,
+    hand: [],
+    discard: [...fighter.discard, ...fighter.hand],
+  };
 }
 
 function settleFighterAfterRound(fighter: Fighter, played: Card[]) {

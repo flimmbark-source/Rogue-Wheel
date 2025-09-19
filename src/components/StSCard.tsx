@@ -38,9 +38,21 @@ export default memo(function StSCard({
   showName?: boolean;
 
 }) {
-  const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
-  const showHeader = variant === "default";
+  const dims =
+    size === "lg"
+      ? { w: 120, h: 160 }
+      : size === "md"
+      ? { w: 92, h: 128 }
+      : { w: 72, h: 96 };
+  const showHeader = variant === "default" && showName;
   const showFooter = variant === "default";
+  const isNegativeCard = !isSplit(card) && getCardPlayValue(card) < 0;
+  const frameGradient = isNegativeCard
+    ? "from-rose-700 to-rose-900 border-rose-500/70"
+    : "from-slate-600 to-slate-800 border-slate-400";
+  const innerPanel = isNegativeCard
+    ? "bg-gradient-to-br from-rose-950/90 to-rose-900/70 border border-rose-700/70"
+    : "bg-slate-900/85 border border-slate-700/70";
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onPick?.(); }}
@@ -53,8 +65,12 @@ export default memo(function StSCard({
       onDragEnd={onDragEnd}
       onPointerDown={onPointerDown}
     >
-      <div className="absolute inset-0 rounded-xl border bg-gradient-to-br from-slate-600 to-slate-800 border-slate-400"></div>
-      <div className="absolute inset-px rounded-[10px] bg-slate-900/85 backdrop-blur-[1px] border border-slate-700/70" />
+      <div
+        className={`absolute inset-0 rounded-xl border bg-gradient-to-br ${frameGradient}`}
+      ></div>
+      <div
+        className={`absolute inset-px rounded-[10px] backdrop-blur-[1px] ${innerPanel}`}
+      />
       <div
         className={`absolute inset-0 flex flex-col p-2 ${
           variant === "minimal" ? "items-center justify-center gap-1.5" : "justify-between"

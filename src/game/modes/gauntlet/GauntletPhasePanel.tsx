@@ -6,6 +6,7 @@ import type {
   LegacySide,
   Phase,
 } from "../../match/useMatchController";
+import StSCard from "../../../components/StSCard";
 
 export type GauntletPhasePanelProps = {
   phase: Phase;
@@ -56,57 +57,6 @@ export default function GauntletPhasePanel({
   const localGauntlet = gauntletState[localLegacySide];
   const currentRoll = localGauntlet?.shop.roll ?? 0;
   const previousInventory = localGauntlet?.shop.inventory ?? [];
-
-  const getCardTraits = (card: Card): string[] => {
-    const traits: string[] = [];
-    const push = (trait: string) => {
-      if (!traits.includes(trait)) traits.push(trait);
-    };
-
-    const cardType = card.type ?? (card.split ? "split" : "normal");
-    if (cardType === "split" || card.split) {
-      push("Split");
-      const faces = card.split ? Object.values(card.split.faces) : [];
-      if (faces.some((face) => face.value < 0)) {
-        push("Negative");
-      }
-    }
-
-    if (typeof card.number === "number" && card.number < 0) {
-      push("Negative");
-    }
-
-    const hasBoost = (card.activation ?? []).some((ability) =>
-      ability.effects.some(
-        (effect) =>
-          effect.type === "selfValue" &&
-          Number.isFinite(effect.amount) &&
-          effect.amount > 0,
-      ),
-    );
-    if (hasBoost) {
-      push("Boost");
-    }
-
-    const influencesReserve =
-      Boolean(card.reserve) ||
-      (card.activation ?? []).some((ability) =>
-        ability.effects.some(
-          (effect) =>
-            effect.type === "reserveBonus" ||
-            effect.type === "reserveMultiplier",
-        ),
-      );
-    if (influencesReserve) {
-      push("Reserve");
-    }
-
-    if (traits.length === 0) {
-      push("Standard");
-    }
-
-    return traits;
-  };
 
   const readyMessage = (() => {
     if (localReady && remoteReady) {
@@ -195,104 +145,57 @@ export default function GauntletPhasePanel({
                   : "No cards are available to purchase yet. Return after the next round."}
               </div>
             ) : (
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {localInventory.map((card) => {
-                  const traits = getCardTraits(card);
-                  const splitFaces = card.split
-                    ? Object.values(card.split.faces)
-                    : null;
                   const cost =
-                    typeof card.cost === "number" ? card.cost : 1; // default to 1g if missing
+                    typeof card.cost === "number" && card.cost > 0
+                      ? card.cost
+                      : 10;
                   const canAfford = localGold >= cost;
+                  const label = card.name ?? "Card";
+                  const summary = (card.effectSummary ?? label)
+                    .replace(/\s+/g, " ")
+                    .trim();
+                  const hoverText = summary
+                    ? `${label}: ${summary.length > 120 ? `${summary.slice(0, 117)}...` : summary}`
+                    : label;
 
                   return (
                     <div
                       key={card.id}
-                      className="rounded-lg border border-amber-500/30 bg-amber-900/40 p-4 text-sm shadow-sm"
+                      className="flex flex-col items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-900/30 p-4 text-sm shadow-sm"
+                      title={hoverText ?? undefined}
                     >
-                      <div className="font-semibold text-amber-50">
-                        {card.name}
+                      <StSCard
+                        card={card}
+                        size="md"
+                        variant="minimal"
+                        showReserve={false}
+                        disabled={!canAfford}
+                        onPick={() =>
+                          purchaseFromShop(localLegacySide, card, cost)
+                        }
+                      />
+                      <div className="flex w-full items-center justify-between text-xs text-amber-200/90">
+                        <span className="uppercase tracking-wide text-[10px] text-amber-200/70">
+                          Cost
+                        </span>
+                        <span className="font-semibold text-amber-50">
+                          {cost}g
+                        </span>
                       </div>
-
-                      {/* Traits */}
-                      {Array.isArray(traits) && traits.length > 0 ? (
-                        <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-semibold uppercase tracking-wide">
-                          {traits.map((trait) => (
-                            <span
-                              key={trait}
-                              className="rounded-full border border-amber-500/40 bg-amber-900/50 px-2 py-0.5 text-amber-200/80"
-                            >
-                              {trait}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {/* Split faces or single number */}
-                      {splitFaces ? (
-                        <div className="mt-3 space-y-1 text-xs text-amber-200/80">
-                          {splitFaces.map((face) => (
-                            <div
-                              key={face.id}
-                              className="flex items-center justify-between gap-3"
-                            >
-                              <span className="font-medium text-amber-100/90">
-                                {face.label ??
-                                  (face.id === "left" ? "Left" : "Right")}
-                              </span>
-                              <span
-                                className={`tabular-nums font-semibold ${
-                                  face.value < 0
-                                    ? "text-rose-300"
-                                    : "text-amber-100"
-                                }`}
-                              >
-                                {face.value}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : typeof card.number === "number" ? (
-                        <div
-                          className={`mt-3 text-xs ${
-                            card.number < 0
-                              ? "text-rose-300"
-                              : "text-amber-200/80"
-                          }`}
-                        >
-                          Value {card.number}
-                        </div>
-                      ) : null}
-
-                      {/* Optional effect summary */}
-                      {card.effectSummary ? (
-                        <p className="mt-3 text-xs leading-relaxed text-amber-100/80">
-                          {card.effectSummary}
-                        </p>
-                      ) : null}
-
-                      {/* Buy row */}
-                      <div className="mt-4 flex items-center justify-between gap-3">
-                        <div className="text-xs text-amber-200/80">
-                          Cost:{" "}
-                          <span className="font-semibold text-amber-50">
-                            {cost}g
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            purchaseFromShop(localLegacySide, card, cost)
-                          }
-                          disabled={!canAfford}
-                          className="inline-flex items-center justify-center rounded bg-amber-400 px-3 py-1 text-xs font-semibold text-slate-900 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          Buy ({cost}g)
-                        </button>
-                      </div>
-
+                      <button
+                        type="button"
+                        onClick={() =>
+                          purchaseFromShop(localLegacySide, card, cost)
+                        }
+                        disabled={!canAfford}
+                        className="inline-flex w-full items-center justify-center rounded bg-amber-400 px-3 py-1 text-xs font-semibold text-slate-900 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Buy
+                      </button>
                       {!canAfford ? (
-                        <div className="mt-1 text-[11px] text-rose-200/70">
+                        <div className="text-[11px] text-rose-200/70">
                           Need {cost - localGold} more gold.
                         </div>
                       ) : null}
