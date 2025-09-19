@@ -1,14 +1,16 @@
 // src/AppShell.tsx
-import React, { useCallback, useEffect, useState } from "react";
-import App from "./App";
+import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import HubRoute from "./HubRoute";
-import MultiplayerRoute from "./MultiplayerRoute";
 import type { Players, Side } from "./game/types";
-import ProfilePage from "./ProfilePage";
-import SoloModeRoute from "./SoloModeRoute";
+import type { default as MultiplayerRouteComponent } from "./MultiplayerRoute";
+
+const App = lazy(() => import("./App"));
+const MultiplayerRoute = lazy(() => import("./MultiplayerRoute"));
+const ProfilePage = lazy(() => import("./ProfilePage"));
+const SoloModeRoute = lazy(() => import("./SoloModeRoute"));
 
 type MPStartPayload = Parameters<
-  NonNullable<React.ComponentProps<typeof MultiplayerRoute>["onStart"]>
+  NonNullable<React.ComponentProps<MultiplayerRouteComponent>["onStart"]>
 >[0];
 
 type View =
@@ -51,23 +53,27 @@ export default function AppShell() {
 
   if (view.key === "soloMenu") {
     return (
-      <SoloModeRoute
-        onBack={goToHub}
-        onSelectClassic={startClassic}
-        onSelectGauntlet={startGauntlet}
-      />
+      <Suspense fallback={<div>Loading modes…</div>}>
+        <SoloModeRoute
+          onBack={goToHub}
+          onSelectClassic={startClassic}
+          onSelectGauntlet={startGauntlet}
+        />
+      </Suspense>
     );
   }
 
   if (view.key === "mp") {
     return (
-      <MultiplayerRoute
-        onBack={goToHub}
-        onStart={(payload) => {
-          setMpPayload(payload);
-          setView({ key: "game", mode: "mp", mpPayload: payload });
-        }}
-      />
+      <Suspense fallback={<div>Loading multiplayer…</div>}>
+        <MultiplayerRoute
+          onBack={goToHub}
+          onStart={(payload) => {
+            setMpPayload(payload);
+            setView({ key: "game", mode: "mp", mpPayload: payload });
+          }}
+        />
+      </Suspense>
     );
   }
 
@@ -79,7 +85,9 @@ export default function AppShell() {
             ← Back to Main Menu
           </button>
         </div>
-        <ProfilePage />
+        <Suspense fallback={<div className="p-4">Loading profile…</div>}>
+          <ProfilePage />
+        </Suspense>
       </div>
     );
   }
@@ -114,14 +122,16 @@ export default function AppShell() {
   };
 
   return (
-    <App
-      mode={view.mode === "gauntlet" ? "gauntlet" : "classic"}
-      localSide={localSide}
-      localPlayerId={localPlayerId}
-      players={players}
-      seed={seed}
-      onExit={exitToMenu}
-      {...extraProps}
-    />
+    <Suspense fallback={<div>Loading match…</div>}>
+      <App
+        mode={view.mode === "gauntlet" ? "gauntlet" : "classic"}
+        localSide={localSide}
+        localPlayerId={localPlayerId}
+        players={players}
+        seed={seed}
+        onExit={exitToMenu}
+        {...extraProps}
+      />
+    </Suspense>
   );
 }

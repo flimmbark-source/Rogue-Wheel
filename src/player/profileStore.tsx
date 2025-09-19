@@ -2,6 +2,9 @@
 // to match your existing game types/functions.
 
 import { shuffle } from "../game/math";
+import { expRequiredForLevel } from "./leveling";
+
+export { expRequiredForLevel } from "./leveling";
 import type {
   ActivationAbility,
   Card,
@@ -642,14 +645,8 @@ const validateGauntletDeck = (cards: DeckCard[]) => {
   }
 };
 
-const EXP_BASE = 100;
-
 export type LevelProgress = { level: number; exp: number; expToNext: number; percent: number };
 export type LevelProgressSegment = LevelProgress & { leveledUp?: boolean };
-
-export function expRequiredForLevel(level: number): number {
-  return (level + 1) * EXP_BASE;
-}
 
 const toLevelProgress = (profile: Profile): LevelProgress => {
   const expToNext = expRequiredForLevel(profile.level);
