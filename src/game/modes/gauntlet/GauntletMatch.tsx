@@ -462,7 +462,7 @@ export default function GauntletMatch({
           selectedCardId={selectedCardId}
           onSelectCard={setSelectedCardId}
           localLegacySide={localLegacySide}
-          phase={phase as Phase}
+          phase={phase}
           startPointerDrag={startPointerDrag}
           fighters={{ player, enemy }}
           dragCardId={dragCardId}
@@ -474,6 +474,8 @@ export default function GauntletMatch({
           hudColors={HUD_COLORS}
           wheelSections={wheelSections}
           wheelRefs={wheelRefs}
+          activationAdjustments={activationAdjustments}
+          activationSwapPairs={activationSwapPairs}
         />
       </div>
 
