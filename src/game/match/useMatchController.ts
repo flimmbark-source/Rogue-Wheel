@@ -242,7 +242,7 @@ useEffect(() => {
   });
   const [round, setRound] = useState(1);
   const shouldOpenShopThisRound = useMemo(
-    () => isGauntletMode && round > 0 && round % 3 === 0,
+    () => isGauntletMode && round >= 3 && round % 3 === 0,
     [isGauntletMode, round],
   );
 
@@ -1000,11 +1000,12 @@ function createInitialGauntletState(): GauntletState {
 
   const openShopPhase = useCallback(() => {
     if (!isGauntletMode) return false;
+    if (round < 3) return false;
     if (phase === "shop") return false;
     setShopReady({ player: false, enemy: false });
     setPhase("shop");
     return true;
-  }, [isGauntletMode, phase]);
+  }, [isGauntletMode, phase, round]);
 
   useEffect(() => {
     if (!shouldOpenShopThisRound) return;
@@ -1499,8 +1500,10 @@ function createInitialGauntletState(): GauntletState {
   const handleNextClick = useCallback(() => {
     if (isGauntletMode) {
       if (phase === "roundEnd" && shouldOpenShopThisRound) {
-        openShopPhase();
-        return;
+        const opened = openShopPhase();
+        if (opened) {
+          return;
+        }
       }
       if (phase === "shop" || phase === "activation") {
         return;
@@ -1527,6 +1530,7 @@ function createInitialGauntletState(): GauntletState {
     markAdvanceVote,
     nextRound,
     phase,
+    shouldOpenShopThisRound,
   ]);
 
   useEffect(() => {
