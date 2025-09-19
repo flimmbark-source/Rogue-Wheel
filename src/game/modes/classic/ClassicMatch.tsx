@@ -5,7 +5,6 @@ import HandDock from "../../../components/match/HandDock";
 import TouchDragLayer, {
   useTouchDragLayer,
 } from "../../../components/match/TouchDragLayer";
-import ActivationPhaseOverlay from "../../../components/match/ActivationPhaseOverlay";
 import GauntletPhasePanel from "../gauntlet/GauntletPhasePanel";
 import type { Players, Side as TwoSide } from "../../types";
 import useMultiplayerChannel from "../../match/useMultiplayerChannel";
@@ -185,6 +184,47 @@ export default function ClassicMatch({
     return null;
   }, [controllerIsMultiplayer, namesByLegacy, phase, resolveVotes, localLegacySide, remoteLegacySide]);
 
+  const activationCardNames = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const card of assign.player) {
+      if (card) map.set(card.id, card.name);
+    }
+    for (const card of assign.enemy) {
+      if (card) map.set(card.id, card.name);
+    }
+    return map;
+  }, [assign.enemy, assign.player]);
+
+  const describeActivationEntry = useCallback(
+    (entry: (typeof activationLog)[number]) => {
+      const actorName = namesByLegacy[entry.side];
+      if (entry.action === "pass") {
+        return `${actorName} passes.`;
+      }
+      const cardName = entry.cardId ? activationCardNames.get(entry.cardId) ?? "Card" : "Card";
+      return `${actorName} activates ${cardName}.`;
+    },
+    [activationCardNames, namesByLegacy],
+  );
+
+  const activationRecentText = useMemo(() => {
+    if (activationLog.length === 0) return null;
+    return describeActivationEntry(activationLog[activationLog.length - 1]);
+  }, [activationLog, describeActivationEntry]);
+
+  const isActivationPhase = phase === "activation";
+  const isLocalActivationTurn = activationTurn === localLegacySide;
+  const localHasActions = (activationAvailable[localLegacySide] ?? []).length > 0;
+  const localHasPassed = activationPasses[localLegacySide];
+  const remoteHasPassed = activationPasses[remoteLegacySide];
+  const activationStatusText = isLocalActivationTurn
+    ? localHasPassed
+      ? "You have passed."
+      : localHasActions
+      ? "Tap one of your cards to activate it."
+      : "No cards left — pass when ready."
+    : `Waiting for ${namesByLegacy[activationTurn ?? remoteLegacySide]}.`;
+
   const advanceButtonDisabled = controllerIsMultiplayer && advanceVotes[localLegacySide];
   const advanceButtonLabel =
     controllerIsMultiplayer && advanceVotes[localLegacySide] ? "Ready" : "Next";
@@ -236,25 +276,6 @@ export default function ClassicMatch({
       markShopComplete={markShopComplete}
     />
   ) : null;
-
-  const activationOverlay = (
-    <ActivationPhaseOverlay
-      phase={phase as Phase}
-      activationTurn={activationTurn}
-      activationAvailable={activationAvailable}
-      activationInitial={activationInitial}
-      activationPasses={activationPasses}
-      activationLog={activationLog}
-      activationAdjustments={activationAdjustments}
-      activationSwapPairs={activationSwapPairs}
-      pendingSwapCardId={pendingSwapCardId}
-      assign={assign}
-      localLegacySide={localLegacySide}
-      namesByLegacy={namesByLegacy}
-      onActivateCard={(cardId) => activateCurrent(localLegacySide, cardId)}
-      onPass={() => passActivation(localLegacySide)}
-    />
-  );
 
   const HUDPanels = useCallback(() => {
     const rsPlayer = reserveSums ? reserveSums.player : null;
@@ -424,6 +445,38 @@ export default function ClassicMatch({
               )}
             </div>
           )}
+          {isActivationPhase && (
+            <div className="flex flex-col items-end gap-1 text-right max-w-xs sm:max-w-sm">
+              <div className="text-[11px] uppercase tracking-wide text-emerald-200/80">Activation Phase</div>
+              <div className="text-sm text-emerald-100/90">{activationStatusText}</div>
+              {pendingSwapCardId ? (
+                <div className="text-[11px] text-sky-200/80">
+                  Swap primed: the next activation will exchange values with your swap card.
+                </div>
+              ) : null}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => passActivation(localLegacySide)}
+                  disabled={!isLocalActivationTurn || localHasPassed}
+                  className="rounded bg-emerald-500 px-3 py-1 text-[12px] font-semibold text-slate-900 disabled:opacity-50"
+                >
+                  {localHasPassed ? "Passed" : "Pass"}
+                </button>
+                {remoteHasPassed && !localHasPassed ? (
+                  <span className="text-[11px] text-emerald-100/70">
+                    {namesByLegacy[remoteLegacySide]} has passed.
+                  </span>
+                ) : null}
+              </div>
+              {activationRecentText ? (
+                <div className="w-full rounded border border-emerald-400/30 bg-emerald-950/40 p-2 text-left text-[11px] text-emerald-100/80">
+                  <div className="text-[10px] uppercase tracking-wide text-emerald-200/60">Last action</div>
+                  <p className="mt-1 leading-snug">{activationRecentText}</p>
+                </div>
+              ) : null}
+            </div>
+          )}
           {phase === "roundEnd" && (
             <div className="flex flex-col items-end gap-1">
               <button
@@ -448,11 +501,9 @@ export default function ClassicMatch({
     </div>
 
     {gauntletPhaseUI}
-    {activationOverlay}
-
     <div className="relative z-0" style={{ paddingBottom: handClearance }}>
       <MatchBoard
-          theme={THEME}
+        theme={THEME}
           active={active}
           assign={assign}
           namesByLegacy={namesByLegacy}
@@ -472,11 +523,17 @@ export default function ClassicMatch({
           wheelHUD={wheelHUD}
           hudColors={HUD_COLORS}
           wheelSections={wheelSections}
-          wheelRefs={wheelRefs}
-          activationAdjustments={activationAdjustments}
-          activationSwapPairs={activationSwapPairs}
-        />
-      </div>
+        wheelRefs={wheelRefs}
+        activationAdjustments={activationAdjustments}
+        activationSwapPairs={activationSwapPairs}
+        activationAvailable={activationAvailable}
+        activationInitial={activationInitial}
+        activationPasses={activationPasses}
+        activationTurn={activationTurn}
+        pendingSwapCardId={pendingSwapCardId}
+        onActivateCard={(cardId) => activateCurrent(localLegacySide, cardId)}
+      />
+    </div>
 
       <HandDock
         localFighter={localLegacySide === "player" ? player : enemy}

@@ -55,6 +55,12 @@ interface MatchBoardProps {
   wheelRefs: Array<RefObject<WheelHandle | null>>;
   activationAdjustments: ActivationAdjustmentsMap;
   activationSwapPairs: ActivationSwapPairs;
+  activationAvailable: Record<LegacySide, string[]>;
+  activationInitial: Record<LegacySide, string[]>;
+  activationPasses: { player: boolean; enemy: boolean };
+  activationTurn: LegacySide | null;
+  pendingSwapCardId: string | null;
+  onActivateCard?: (cardId: string) => void;
 }
 
 const SLOT_WIDTH = 80;
@@ -87,6 +93,12 @@ export default function MatchBoard({
   wheelRefs,
   activationAdjustments,
   activationSwapPairs,
+  activationAvailable,
+  activationInitial,
+  activationPasses,
+  activationTurn,
+  pendingSwapCardId,
+  onActivateCard,
 }: MatchBoardProps) {
   const lanes = Math.min(
     assign.player.length,
@@ -113,6 +125,17 @@ export default function MatchBoard({
     activationSwapPairs,
   );
   const swapPartnerMap = buildSwapPartnerMap(activationSwapPairs);
+  const activationAvailableSets: Record<LegacySide, Set<string>> = {
+    player: new Set(activationAvailable.player ?? []),
+    enemy: new Set(activationAvailable.enemy ?? []),
+  };
+  const activationInitialSets: Record<LegacySide, Set<string>> = {
+    player: new Set(activationInitial.player ?? []),
+    enemy: new Set(activationInitial.enemy ?? []),
+  };
+  const localHasPassed = activationPasses[localLegacySide];
+  const isActivationPhase = phase === "activation";
+  const isLocalActivationTurn = activationTurn === localLegacySide;
 
   return (
     <div className="flex flex-col items-center justify-start gap-1">
@@ -145,7 +168,18 @@ export default function MatchBoard({
         ) => {
           if (!slot.card) return null;
           const card = slot.card;
-          const interactable = slot.side === localLegacySide && phase === "choose";
+          const isLocalSlot = slot.side === localLegacySide;
+          const activationAvailableSet = activationAvailableSets[slot.side];
+          const activationInitialSet = activationInitialSets[slot.side];
+          const canAssign = isLocalSlot && phase === "choose";
+          const canActivate =
+            isLocalSlot &&
+            isActivationPhase &&
+            isLocalActivationTurn &&
+            !localHasPassed &&
+            activationAvailableSet.has(card.id) &&
+            typeof onActivateCard === "function";
+          const interactable = canAssign || canActivate;
 
           let adjustmentDescriptor: CardAdjustmentDescriptor | undefined;
           if (card) {
@@ -157,16 +191,45 @@ export default function MatchBoard({
 
             const statusLabels: string[] = [];
             let tone: CardAdjustmentStatusTone | undefined;
+            const pushStatus = (
+              label: string,
+              statusTone?: CardAdjustmentStatusTone,
+            ) => {
+              if (!statusLabels.includes(label)) {
+                statusLabels.push(label);
+              }
+              if (!tone && statusTone) {
+                tone = statusTone;
+              }
+            };
             if (modifier === "boost") {
-              statusLabels.push("Boosted");
-              tone = "positive";
+              pushStatus("Boosted", "positive");
             } else if (modifier === "split") {
-              statusLabels.push("Halved");
-              tone = "warning";
+              pushStatus("Halved", "warning");
             }
             if (swapVisible) {
-              statusLabels.push("Swapped");
-              if (!tone) tone = "info";
+              pushStatus("Swapped", "info");
+            }
+
+            if (isActivationPhase && activationInitialSet.has(card.id)) {
+              if (!activationAvailableSet.has(card.id)) {
+                pushStatus("Used", "info");
+              } else if (slot.side === localLegacySide) {
+                pushStatus(isLocalActivationTurn ? "Ready" : "Waiting", isLocalActivationTurn ? "positive" : "info");
+              } else {
+                pushStatus(
+                  activationTurn === slot.side ? "Acting" : "Ready",
+                  "info",
+                );
+              }
+            }
+
+            if (pendingSwapCardId === card.id) {
+              pushStatus("Waiting", "info");
+            }
+
+            if (isActivationPhase && isLocalSlot && localHasPassed) {
+              pushStatus("Passed", "info");
             }
 
             if (
@@ -188,15 +251,22 @@ export default function MatchBoard({
 
           const handlePick = () => {
             if (!interactable) return;
-            if (selectedCardId) {
-              tapAssignIfSelected();
-            } else {
-              onSelectCard(card.id);
+            if (canAssign) {
+              if (selectedCardId) {
+                tapAssignIfSelected();
+              } else {
+                onSelectCard(card.id);
+              }
+              return;
+            }
+            if (canActivate) {
+              onActivateCard?.(card.id);
+              return;
             }
           };
 
           const handleDragStart = (event: DragEvent<HTMLButtonElement>) => {
-            if (!interactable) return;
+            if (!canAssign) return;
             onSelectCard(card.id);
             onDragCardChange(card.id);
             try {
@@ -211,7 +281,7 @@ export default function MatchBoard({
           };
 
           const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
-            if (!interactable) return;
+            if (!canAssign) return;
             event.stopPropagation();
             startPointerDrag(card, event);
           };
@@ -221,9 +291,9 @@ export default function MatchBoard({
               card={card}
               size="sm"
               disabled={!interactable}
-              selected={isSlotSelected}
+              selected={phase === "choose" && isSlotSelected}
               onPick={handlePick}
-              draggable={interactable}
+              draggable={canAssign}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
               onPointerDown={handlePointerDown}
@@ -238,7 +308,7 @@ export default function MatchBoard({
         };
 
         const tapAssignIfSelected = () => {
-          if (!selectedCardId) return;
+          if (!selectedCardId || phase !== "choose") return;
           const isLocalPlayer = localLegacySide === "player";
           const { player, enemy } = fighters;
           const card =
@@ -249,7 +319,7 @@ export default function MatchBoard({
         };
 
         const handleDropCommon = (cardId: string | null, targetSide?: LegacySide) => {
-          if (!cardId || !active[laneIndex]) return;
+          if (!cardId || !active[laneIndex] || phase !== "choose") return;
           const intendedSide = targetSide ?? localLegacySide;
           if (intendedSide !== localLegacySide) {
             onDragOverWheelChange(null);
@@ -271,13 +341,16 @@ export default function MatchBoard({
 
         const onZoneDragOver = (event: DragEvent) => {
           event.preventDefault();
+          if (phase !== "choose") return;
           if (dragCardId && active[laneIndex]) onDragOverWheelChange(laneIndex);
         };
         const onZoneLeave = () => {
+          if (phase !== "choose") return;
           if (dragCardId) onDragOverWheelChange(null);
         };
         const onZoneDrop = (event: DragEvent, targetSide?: LegacySide) => {
           event.preventDefault();
+          if (phase !== "choose") return;
           handleDropCommon(event.dataTransfer.getData("text/plain") || dragCardId, targetSide);
         };
 
@@ -350,10 +423,23 @@ export default function MatchBoard({
                   onClick={(event) => {
                     event.stopPropagation();
                     if (leftSlot.side !== localLegacySide) return;
+                    const cardId = leftSlot.card?.id;
+                    if (isActivationPhase) {
+                      if (
+                        cardId &&
+                        isLocalActivationTurn &&
+                        !localHasPassed &&
+                        activationAvailableSets[localLegacySide].has(cardId)
+                      ) {
+                        onActivateCard?.(cardId);
+                      }
+                      return;
+                    }
+                    if (phase !== "choose") return;
                     if (selectedCardId) {
                       tapAssignIfSelected();
-                    } else if (leftSlot.card) {
-                      onSelectCard(leftSlot.card.id);
+                    } else if (cardId) {
+                      onSelectCard(cardId);
                     }
                   }}
                   className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
@@ -388,6 +474,7 @@ export default function MatchBoard({
                   onDrop={onZoneDrop}
                   onClick={(event) => {
                     event.stopPropagation();
+                    if (phase !== "choose") return;
                     tapAssignIfSelected();
                   }}
                   aria-label={`Wheel ${laneIndex + 1}`}
@@ -426,10 +513,23 @@ export default function MatchBoard({
                   onClick={(event) => {
                     event.stopPropagation();
                     if (rightSlot.side !== localLegacySide) return;
+                    const cardId = rightSlot.card?.id;
+                    if (isActivationPhase) {
+                      if (
+                        cardId &&
+                        isLocalActivationTurn &&
+                        !localHasPassed &&
+                        activationAvailableSets[localLegacySide].has(cardId)
+                      ) {
+                        onActivateCard?.(cardId);
+                      }
+                      return;
+                    }
+                    if (phase !== "choose") return;
                     if (selectedCardId) {
                       tapAssignIfSelected();
-                    } else if (rightSlot.card) {
-                      onSelectCard(rightSlot.card.id);
+                    } else if (cardId) {
+                      onSelectCard(cardId);
                     }
                   }}
                 >
