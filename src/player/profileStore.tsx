@@ -8,6 +8,7 @@ export { expRequiredForLevel } from "./leveling";
 import type {
   ActivationAbility,
   Card,
+  CardBehavior,
   CardRarity,
   CardSplit,
   CardSplitFace,
@@ -85,6 +86,7 @@ export type CardBlueprint = {
   number?: number;
   split?: CardSplit;
   activation?: ActivationAbility[];
+  behavior?: CardBehavior;
   reserve?: ReserveBehavior;
   tags?: TagId[];
   cost: number;
@@ -117,6 +119,7 @@ const instantiateCard = (blueprint: CardBlueprint): Card => ({
   number: blueprint.number,
   split: blueprint.split ? cloneSplit(blueprint.split) : undefined,
   activation: blueprint.activation ? blueprint.activation.map(cloneActivation) : undefined,
+  behavior: blueprint.behavior,
   reserve: blueprint.reserve ? { ...blueprint.reserve } : undefined,
   tags: blueprint.tags ? [...blueprint.tags] : [],
   cost: blueprint.cost,
@@ -351,10 +354,47 @@ const ADVANCED_BLUEPRINTS: CardBlueprint[] = [
   },
 ];
 
+const BEHAVIOR_BLUEPRINTS: CardBlueprint[] = [
+  {
+    id: "split_edge",
+    name: "Split Edge",
+    type: "normal",
+    number: 8,
+    behavior: "split",
+    tags: [],
+    cost: 30,
+    rarity: "uncommon",
+    effectSummary: "Activation: halves its value before the wheel resolves.",
+  },
+  {
+    id: "boost_core",
+    name: "Boost Core",
+    type: "normal",
+    number: 3,
+    behavior: "boost",
+    tags: [],
+    cost: 28,
+    rarity: "uncommon",
+    effectSummary: "Activation: doubles its value for this round.",
+  },
+  {
+    id: "swap_token",
+    name: "Swap Token",
+    type: "normal",
+    number: 5,
+    behavior: "swap",
+    tags: [],
+    cost: 32,
+    rarity: "rare",
+    effectSummary: "Activation: swaps its value with the next card that is activated.",
+  },
+];
+
 const CARD_BLUEPRINTS: CardBlueprint[] = [
   ...BASIC_BLUEPRINTS,
   ...NEGATIVE_BLUEPRINTS,
   ...ADVANCED_BLUEPRINTS,
+  ...BEHAVIOR_BLUEPRINTS,
 ];
 
 const NEGATIVE_BLUEPRINT_IDS = new Set(NEGATIVE_BLUEPRINTS.map((entry) => entry.id));

@@ -2,6 +2,7 @@
 import {
   ActivationAbility,
   Card,
+  CardBehavior,
   CardSplitFace,
   ReserveBehavior,
   SplitChoiceMap,
@@ -14,6 +15,13 @@ export const isSplit = (
   c: Card | null | undefined,
 ): c is Card & { type: "split"; split: NonNullable<Card["split"]> } =>
   !!c && c.type === "split" && !!c.split;
+
+export const getCardBehavior = (
+  card: Card | null | undefined,
+): CardBehavior | null => {
+  if (!card) return null;
+  return card.behavior ?? null;
+};
 
 export const isNormal = (
   c: Card | null | undefined,

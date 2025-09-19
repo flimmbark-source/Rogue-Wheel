@@ -5,6 +5,7 @@ import HandDock from "../../../components/match/HandDock";
 import TouchDragLayer, {
   useTouchDragLayer,
 } from "../../../components/match/TouchDragLayer";
+import ActivationPhaseOverlay from "../../../components/match/ActivationPhaseOverlay";
 import GauntletPhasePanel from "../gauntlet/GauntletPhasePanel";
 import type { Players, Side as TwoSide } from "../../types";
 import useMultiplayerChannel from "../../match/useMultiplayerChannel";
@@ -133,6 +134,16 @@ export default function ClassicMatch({
     purchaseFromShop,
     gauntletRollShop,
     gauntletState,
+    activationTurn,
+    activationPasses,
+    activationLog,
+    activationAvailable,
+    activationInitial,
+    activationSwapPairs,
+    activationAdjustments,
+    pendingSwapCardId,
+    activateCurrent,
+    passActivation,
   } = controller;
 
   const {
@@ -225,6 +236,25 @@ export default function ClassicMatch({
       markShopComplete={markShopComplete}
     />
   ) : null;
+
+  const activationOverlay = (
+    <ActivationPhaseOverlay
+      phase={phase as Phase}
+      activationTurn={activationTurn}
+      activationAvailable={activationAvailable}
+      activationInitial={activationInitial}
+      activationPasses={activationPasses}
+      activationLog={activationLog}
+      activationAdjustments={activationAdjustments}
+      activationSwapPairs={activationSwapPairs}
+      pendingSwapCardId={pendingSwapCardId}
+      assign={assign}
+      localLegacySide={localLegacySide}
+      namesByLegacy={namesByLegacy}
+      onActivateCard={(cardId) => activateCurrent(localLegacySide, cardId)}
+      onPass={() => passActivation(localLegacySide)}
+    />
+  );
 
   const HUDPanels = useCallback(() => {
     const rsPlayer = reserveSums ? reserveSums.player : null;
@@ -414,13 +444,14 @@ export default function ClassicMatch({
       </div>
 
       <div className="relative z-10">
-        <HUDPanels />
-      </div>
+      <HUDPanels />
+    </div>
 
-      {gauntletPhaseUI}
+    {gauntletPhaseUI}
+    {activationOverlay}
 
-      <div className="relative z-0" style={{ paddingBottom: handClearance }}>
-        <MatchBoard
+    <div className="relative z-0" style={{ paddingBottom: handClearance }}>
+      <MatchBoard
           theme={THEME}
           active={active}
           assign={assign}
