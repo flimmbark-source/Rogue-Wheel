@@ -1607,13 +1607,20 @@ function createInitialGauntletState(): GauntletState {
       opts?: { emit?: boolean },
     ) => {
       if (phase !== "activation") return false;
-      if (activationTurn && activationTurn !== params.side) return false;
+
+      const availableForSide = activationAvailableRef.current[params.side];
+
+      if (activationTurn && activationTurn !== params.side) {
+        const canForcePass = params.action === "pass" && availableForSide.length === 0;
+        if (!canForcePass) {
+          return false;
+        }
+      }
 
       if (params.action === "activate") {
         const cardId = params.cardId;
         if (!cardId) return false;
 
-        const availableForSide = activationAvailableRef.current[params.side];
         if (!availableForSide.includes(cardId)) {
           return false;
         }
@@ -1685,7 +1692,7 @@ function createInitialGauntletState(): GauntletState {
 
       const otherSide = oppositeSide(params.side);
       const otherHasCards = activationAvailableRef.current[otherSide].length > 0;
-      const selfHasCards = activationAvailableRef.current[params.side].length > 0;
+      const selfHasCards = availableForSide.length > 0;
 
       if (shouldFinish || (!otherHasCards && !selfHasCards)) {
         setActivationTurn(null);
@@ -1717,6 +1724,22 @@ function createInitialGauntletState(): GauntletState {
       applyActivationAction({ side, action: "pass" }, { emit: true }),
     [applyActivationAction],
   );
+
+  const applyActivationActionRef = useLatestRef(applyActivationAction);
+
+  useEffect(() => {
+    if (phase !== "activation") return;
+
+    const activationAction = applyActivationActionRef.current;
+    if (!activationAction) return;
+
+    (Object.keys(activationAvailable) as LegacySide[]).forEach((side) => {
+      if (activationAvailable[side].length > 0) return;
+      if (activationPasses[side]) return;
+
+      activationAction({ side, action: "pass" }, { emit: true });
+    });
+  }, [activationAvailable, activationPasses, phase, applyActivationActionRef]);
 
   useEffect(() => {
     if (isMultiplayer) return;
@@ -1961,7 +1984,6 @@ function createInitialGauntletState(): GauntletState {
   const applyGauntletGoldForRef = useLatestRef(applyGauntletGoldFor);
   const applyGauntletActivationSelectForRef = useLatestRef(applyGauntletActivationSelectFor);
   const applyGauntletActivationPassForRef = useLatestRef(applyGauntletActivationPassFor);
-  const applyActivationActionRef = useLatestRef(applyActivationAction);
 
   const handleRemoteIntent = useCallback(
     (msg: MPIntent) => {
