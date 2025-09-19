@@ -57,7 +57,9 @@ export default memo(function StSCard({
     <button
       onClick={(e) => { e.stopPropagation(); onPick?.(); }}
       disabled={disabled}
-      className={`relative select-none ${disabled ? 'opacity-60' : 'hover:scale-[1.02]'} transition will-change-transform ${selected ? 'ring-2 ring-amber-400' : ''}`}
+      className={`relative select-none rounded-xl overflow-hidden ${
+        disabled ? "opacity-60" : "hover:scale-[1.02]"
+      } transition will-change-transform ${selected ? "ring-2 ring-amber-400" : ""}`}
       style={{ width: dims.w, height: dims.h }}
       aria-label={`Card`}
       draggable={draggable}

@@ -210,36 +210,35 @@ const BASIC_BLUEPRINTS: CardBlueprint[] = Array.from({ length: 10 }, (_, n) => (
 const NEGATIVE_BLUEPRINTS: CardBlueprint[] = [
   {
     id: "cursed_pebble",
-    name: "Cursed Pebble",
+    name: "Negative 1",
     type: "normal",
     number: -1,
     tags: ["oddshift"],
     cost: 20,
 
     rarity: "uncommon",
-    effectSummary: "−1 power that helps win the weakest slices.",
+    effectSummary: "A -1 card for weakening a slice.",
   },
   {
     id: "void_lantern",
-    name: "Void Lantern",
+    name: "Negative 2",
     type: "normal",
     number: -2,
     tags: ["parityflip"],
     cost: 25,
 
     rarity: "rare",
-    effectSummary: "−2 power. Perfect bait for Weakest or parity twists.",
+    effectSummary: "A -2 card that flips parity in your favor.",
   },
   {
     id: "entropy_fragment",
-    name: "Entropy Fragment",
+    name: "Negative 3",
     type: "normal",
     number: -3,
     tags: ["echoreserve"],
     cost: 30,
-
     rarity: "rare",
-    effectSummary: "−3 power shard that supercharges reserve-based plans.",
+    effectSummary: "A -3 card for deep reserve strategies.",
   },
 ];
 

@@ -57,6 +57,7 @@ export default function GauntletPhasePanel({
   const localGauntlet = gauntletState[localLegacySide];
   const currentRoll = localGauntlet?.shop.roll ?? 0;
   const previousInventory = localGauntlet?.shop.inventory ?? [];
+  const purchasedIds = new Set(localPurchases.map((card) => card.id));
 
   const readyMessage = (() => {
     if (localReady && remoteReady) {
@@ -74,6 +75,7 @@ export default function GauntletPhasePanel({
   const inventoryForRoll =
     localInventory.length > 0 ? localInventory : previousInventory;
   const canRollInventory = inventoryForRoll.length > 0;
+  const shouldHideShop = localReady && remoteReady;
 
   useEffect(() => {
     if (phase !== "shop") return;
@@ -101,6 +103,10 @@ export default function GauntletPhasePanel({
     inventoryForRoll,
     round,
   ]);
+
+  if (shouldHideShop) {
+    return null;
+  }
 
   const continueLabel = localReady ? "Ready" : "Continue to next round";
 
@@ -151,12 +157,18 @@ export default function GauntletPhasePanel({
                     typeof card.cost === "number" && card.cost > 0
                       ? card.cost
                       : 10;
+
+                  const isPurchased = purchasedIds.has(card.id);
                   const canAfford = localGold >= cost;
+                  const canBuy = canAfford && !isPurchased;
                   const label = card.name ?? "Card";
                   const summary = (card.effectSummary ?? label)
                     .replace(/\s+/g, " ")
                     .trim();
-                  const hoverText = summary
+                  const hoverText = isPurchased
+                    ? `${label} has already been bought this round.`
+                    : summary
+
                     ? `${label}: ${summary.length > 120 ? `${summary.slice(0, 117)}...` : summary}`
                     : label;
 
@@ -166,16 +178,25 @@ export default function GauntletPhasePanel({
                       className="flex flex-col items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-900/30 p-4 text-sm shadow-sm"
                       title={hoverText ?? undefined}
                     >
-                      <StSCard
-                        card={card}
-                        size="md"
-                        variant="minimal"
-                        showReserve={false}
-                        disabled={!canAfford}
-                        onPick={() =>
-                          purchaseFromShop(localLegacySide, card, cost)
-                        }
-                      />
+                      <div className="relative">
+                        <StSCard
+                          card={card}
+                          size="md"
+                          variant="minimal"
+                          showReserve={false}
+                          disabled={!canBuy}
+                          onPick={
+                            canBuy
+                              ? () => purchaseFromShop(localLegacySide, card, cost)
+                              : undefined
+                          }
+                        />
+                        {isPurchased ? (
+                          <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-slate-950/85 text-xs font-semibold uppercase tracking-[0.4em] text-emerald-300">
+                            Bought
+                          </div>
+                        ) : null}
+                      </div>
                       <div className="flex w-full items-center justify-between text-xs text-amber-200/90">
                         <span className="uppercase tracking-wide text-[10px] text-amber-200/70">
                           Cost
@@ -187,16 +208,26 @@ export default function GauntletPhasePanel({
                       <button
                         type="button"
                         onClick={() =>
-                          purchaseFromShop(localLegacySide, card, cost)
+                          canBuy
+                            ? purchaseFromShop(localLegacySide, card, cost)
+                            : undefined
                         }
-                        disabled={!canAfford}
-                        className="inline-flex w-full items-center justify-center rounded bg-amber-400 px-3 py-1 text-xs font-semibold text-slate-900 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={!canBuy}
+                        className={`inline-flex w-full items-center justify-center rounded px-3 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                          isPurchased
+                            ? "bg-emerald-600/20 text-emerald-200"
+                            : "bg-amber-400 text-slate-900 hover:bg-amber-300"
+                        }`}
                       >
-                        Buy
+                        {isPurchased ? "Bought" : "Buy"}
                       </button>
-                      {!canAfford ? (
+                      {!canAfford && !isPurchased ? (
                         <div className="text-[11px] text-rose-200/70">
                           Need {cost - localGold} more gold.
+                        </div>
+                      ) : isPurchased ? (
+                        <div className="text-[11px] text-emerald-200/70">
+                          Added to your deck.
                         </div>
                       ) : null}
                     </div>

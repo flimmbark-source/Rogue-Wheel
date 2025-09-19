@@ -391,26 +391,16 @@ function createInitialGauntletState(): GauntletState {
         const alreadyRecorded = base.shop.purchases.some(
           (p) => p.cardId === purchase.cardId && p.round === purchase.round,
         );
-        const nextPurchases = alreadyRecorded
-          ? base.shop.purchases
-          : [...base.shop.purchases, { ...purchase }];
-        const nextInventory = [...base.shop.inventory];
-        let inventoryChanged = false;
-        const removeIdx = nextInventory.findIndex((card) => card.id === purchase.cardId);
-        if (removeIdx !== -1) {
-          nextInventory.splice(removeIdx, 1);
-          inventoryChanged = true;
-        }
-        if (!inventoryChanged && alreadyRecorded) {
+        if (alreadyRecorded) {
           return prev;
         }
         const nextSide: GauntletSideState = {
           ...base,
           shop: {
-            inventory: inventoryChanged ? nextInventory : base.shop.inventory,
+            inventory: base.shop.inventory,
             roll: base.shop.roll,
             round: base.shop.round,
-            purchases: nextPurchases,
+            purchases: [...base.shop.purchases, { ...purchase }],
           },
         };
         return { ...prev, [side]: nextSide };
@@ -918,6 +908,11 @@ function createInitialGauntletState(): GauntletState {
   const applyShopPurchase = useCallback(
     (side: LegacySide, card: Card, cost: number, opts?: { force?: boolean }) => {
       if (!isGauntletMode) return false;
+      const alreadyPurchased = shopPurchases[side].some((c) => c.id === card.id);
+      if (alreadyPurchased) {
+        return false;
+      }
+
       let allowed = false;
       setGold((prev) => {
         const current = prev[side];
@@ -927,24 +922,35 @@ function createInitialGauntletState(): GauntletState {
         allowed = true;
         return { ...prev, [side]: Math.max(0, current - cost) };
       });
-      if (!allowed && !opts?.force) {
+      if (!allowed) {
         return false;
       }
-      setShopInventory((prev) => ({
+
+      setShopPurchases((prev) => ({
         ...prev,
-        [side]: prev[side].filter((c) => c.id !== card.id),
+        [side]: [...prev[side], cloneCardForGauntlet(card)],
       }));
-      setShopPurchases((prev) => {
-        if (prev[side].some((c) => c.id === card.id)) return prev;
-        return { ...prev, [side]: [...prev[side], card] };
-      });
       setShopReady((prev) => ({ ...prev, [side]: false }));
+
+      if (side === "player") {
+        setPlayer((prev) => addPurchasedCardToFighter(prev, card));
+      } else {
+        setEnemy((prev) => addPurchasedCardToFighter(prev, card));
+      }
+
       appendLog(
         `${namesByLegacy[side]} purchases ${card.name} for ${cost} gold.`,
       );
       return true;
     },
-    [appendLog, isGauntletMode, namesByLegacy],
+    [
+      appendLog,
+      isGauntletMode,
+      namesByLegacy,
+      setEnemy,
+      setPlayer,
+      shopPurchases,
+    ],
   );
 
   const purchaseFromShop = useCallback(
@@ -1936,6 +1942,14 @@ function cloneCardForGauntlet(card: Card): Card {
   return {
     ...card,
     tags: Array.isArray(card.tags) ? [...card.tags] : [],
+  };
+}
+
+function addPurchasedCardToFighter(fighter: Fighter, card: Card): Fighter {
+  const purchased = cloneCardForGauntlet(card);
+  return {
+    ...fighter,
+    discard: [...fighter.discard, purchased],
   };
 }
 
