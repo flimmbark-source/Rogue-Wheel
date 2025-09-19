@@ -1476,6 +1476,9 @@ function createInitialGauntletState(): GauntletState {
         setShopPurchases({ player: [], enemy: [] });
         setShopReady({ player: false, enemy: false });
         resetGauntletShops();
+        setActivationTurn(null);
+        setActivationPasses({ player: false, enemy: false });
+        setActivationLog([]);
       }
       setRound((r) => r + 1);
 
@@ -2168,7 +2171,7 @@ function addPurchasedCardToFighter(fighter: Fighter, card: Card): Fighter {
   const purchased = cloneCardForGauntlet(card);
   return {
     ...fighter,
-    discard: [...fighter.discard, purchased],
+    deck: [purchased, ...fighter.deck],
   };
 }
 
