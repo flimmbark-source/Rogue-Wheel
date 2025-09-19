@@ -12,6 +12,16 @@ import {
 
 type Kind = "normal" | "negative" | "split";
 
+export type CardAdjustmentStatusTone = "info" | "positive" | "warning";
+
+export type CardAdjustmentDescriptor = {
+  value?: number;
+  status?: {
+    label: string;
+    tone?: CardAdjustmentStatusTone;
+  };
+};
+
 export function getCardEffectSummary(
   card: Card,
   { includeReserve = true }: { includeReserve?: boolean } = {},
@@ -52,6 +62,7 @@ export function getCardEffectSummary(
   return uniqueSegments.join(" • ");
 }
 
+
 export default memo(function StSCard({
   card,
   disabled,
@@ -70,6 +81,11 @@ export default memo(function StSCard({
   /** Optional: show a tiny badge with the computed kind */
   debugKind = false,
   ariaDescribedBy,
+
+  /** Optional: show a condensed reserve/ability hint when in minimal mode */
+  showAbilityHint = false,
+  adjustment,
+  
 }: {
   card: Card;
   disabled?: boolean;
@@ -86,6 +102,9 @@ export default memo(function StSCard({
   forceKind?: Kind;
   debugKind?: boolean;
   ariaDescribedBy?: string;
+  showAbilityHint?: boolean;
+  adjustment?: CardAdjustmentDescriptor;
+
 }) {
   // ---------- Dimensions ----------
   const dims =
@@ -177,7 +196,43 @@ const behavior = getCardBehavior(card);
 const behaviorIcon =
   behavior === "split" ? "✂️" : behavior === "boost" ? "⚡" : behavior === "swap" ? "🔄" : null;
 
+const displayValue =
+  typeof adjustment?.value === "number" ? adjustment.value : playVal;
+
+const statusToneClass: Record<CardAdjustmentStatusTone, string> = {
+  info: "bg-slate-900/70 text-slate-100",
+  positive: "bg-emerald-500/30 text-emerald-100",
+  warning: "bg-amber-500/40 text-amber-950",
+};
+const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
+
 /* ==== END MERGE-RESOLVED ==== */
+
+  const reserveValue = getCardReserveValue(card);
+  const activationSummaries = [
+    ...(card.activation ?? []).map((ability) => ability.summary),
+    ...getSplitFaces(card).flatMap((face) =>
+      (face.activation ?? []).map((ability) =>
+        `${face.label ?? (face.id === "left" ? "Left" : "Right")}: ${ability.summary}`,
+      ),
+    ),
+  ].filter(Boolean);
+  const uniqueActivationSummaries = Array.from(new Set(activationSummaries));
+
+  const abilityHintParts: string[] = [];
+  if (typeof reserveValue === "number" && Number.isFinite(reserveValue) && reserveValue !== 0) {
+    abilityHintParts.push(`Reserve ${fmtNum(reserveValue)}`);
+  }
+  if (card.reserve?.summary) {
+    abilityHintParts.push(card.reserve.summary);
+  }
+  if (uniqueActivationSummaries.length) {
+    abilityHintParts.push(...uniqueActivationSummaries);
+  }
+
+  const abilityHintText = abilityHintParts.join(" • ");
+  const shouldShowAbilityHint =
+    variant === "minimal" && showAbilityHint && abilityHintText.length > 0;
 
   return (
     <button
@@ -211,10 +266,20 @@ const behaviorIcon =
         className={`pointer-events-none absolute inset-0 rounded-xl border ${frameBorder} bg-transparent`}
       />
 
-      {/* Optional debug badge */}
-      {debugKind && (
-        <div className="pointer-events-none absolute right-1 top-1 rounded bg-black/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/80">
-          {cardKind}
+      {(adjustment?.status || debugKind) && (
+        <div className="pointer-events-none absolute right-1 top-1 flex flex-col items-end gap-1">
+          {adjustment?.status && (
+            <div
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusToneClass[statusTone]}`}
+            >
+              {adjustment.status.label}
+            </div>
+          )}
+          {debugKind && (
+            <div className="rounded bg-black/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/80">
+              {cardKind}
+            </div>
+          )}
         </div>
       )}
 
@@ -228,7 +293,9 @@ const behaviorIcon =
       <div
         className={`absolute inset-0 flex flex-col p-2 ${
           variant === "minimal"
-            ? "items-center justify-center gap-1.5"
+            ? `items-center justify-center gap-1.5 ${
+                shouldShowAbilityHint ? "pb-5" : ""
+              }`
             : "justify-between"
         }`}
       >
@@ -254,7 +321,7 @@ const behaviorIcon =
             </div>
           ) : (
             <div className="text-3xl font-extrabold text-white/90">
-              {fmtNum(playVal)}
+              {fmtNum(displayValue)}
             </div>
           )}
         </div>
@@ -277,6 +344,16 @@ const behaviorIcon =
           </div>
         )}
       </div>
+
+      {shouldShowAbilityHint && (
+        <div className="pointer-events-none absolute inset-x-1 bottom-1 flex justify-center">
+          <div className="max-w-full rounded bg-black/65 px-1.5 py-0.5 text-center text-[9px] font-medium leading-snug text-slate-100/90 shadow-[0_0_6px_rgba(0,0,0,0.35)]">
+            <span className="block overflow-hidden text-ellipsis whitespace-nowrap">
+              {abilityHintText}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* --- Tailwind safelist helper ---
          If your Tailwind build is purging dynamic classes, this ensures they're generated.

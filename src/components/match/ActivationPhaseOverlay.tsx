@@ -6,6 +6,10 @@ import type {
   LegacySide,
   Phase,
 } from "../../game/match/useMatchController";
+import type {
+  ActivationAdjustmentsMap,
+  ActivationSwapPairs,
+} from "../../game/match/valueAdjustments";
 
 export interface ActivationPhaseOverlayProps {
   phase: Phase;
@@ -14,8 +18,8 @@ export interface ActivationPhaseOverlayProps {
   activationInitial: Record<LegacySide, string[]>;
   activationPasses: { player: boolean; enemy: boolean };
   activationLog: { side: LegacySide; action: "activate" | "pass"; cardId?: string }[];
-  activationAdjustments: Record<string, { type: "split" | "boost" }>;
-  activationSwapPairs: Array<[string, string]>;
+  activationAdjustments: ActivationAdjustmentsMap;
+  activationSwapPairs: ActivationSwapPairs;
   pendingSwapCardId: string | null;
   assign: { player: (Card | null)[]; enemy: (Card | null)[] };
   localLegacySide: LegacySide;
