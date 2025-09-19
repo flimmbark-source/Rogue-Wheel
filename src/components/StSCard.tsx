@@ -55,7 +55,9 @@ export default memo(function StSCard({
   const showHeader = variant === "default" && showName;
   const showFooter = variant === "default";
 
-  // ---------- Robust play value parsing ----------
+  /* ==== MERGE-RESOLVED: card kind + rarity palettes with full-surface backgrounds ==== */
+
+  /** Robust play value parsing */
   const rawPV = getCardPlayValue(card) as unknown;
   const playVal =
     typeof rawPV === "number"
@@ -66,44 +68,69 @@ export default memo(function StSCard({
       ? Number((rawPV as any).value)
       : 0;
 
-  // ---------- Kind detection ----------
+  /** Multi-signal negative detection */
   const id = String((card as any).id ?? "");
   const kindOrType = String((card as any).kind ?? (card as any).type ?? "");
-
   const idSaysNegative = /^neg[_-]/i.test(id);
   const kindSaysNegative = /negative|curse/i.test(kindOrType);
   const computedNegative = !isSplit(card) && Number.isFinite(playVal) && playVal < 0;
 
   let cardKind: Kind =
-    forceKind ??
-    (isSplit(card)
+    typeof forceKind !== "undefined"
+      ? forceKind
+      : isSplit(card)
       ? "split"
       : idSaysNegative || kindSaysNegative || computedNegative
       ? "negative"
-      : "normal");
+      : "normal";
 
-  // ---------- Backgrounds on the BUTTON (full surface) ----------
-  const cardBackgroundByKind: Record<Kind, string> = {
-    // Warm wood/brown for normal cards
-    normal:
-      "bg-gradient-to-br from-amber-900/90 to-yellow-900/70 border border-amber-700/70",
-    // Red for negative cards
+  /** Rarity palette only applies to "normal" cards */
+  type Rarity = NonNullable<Card["rarity"]> | "common";
+  const rarity: Rarity = (card.rarity as Rarity) ?? "common";
+
+  /** Background (button surface) + frame (border-only) per rarity */
+  const rarityPalette: Record<Rarity, { background: string; frame: string }> = {
+    common: {
+      background:
+        "bg-gradient-to-br from-slate-900/85 to-slate-800/70 border border-slate-700/70",
+      frame: "border-slate-400",
+    },
+    uncommon: {
+      background:
+        "bg-gradient-to-br from-emerald-950/90 to-emerald-900/70 border border-emerald-700/70",
+      frame: "border-emerald-300/80",
+    },
+    rare: {
+      background:
+        "bg-gradient-to-br from-sky-950/90 to-sky-900/70 border border-sky-700/70",
+      frame: "border-sky-300/80",
+    },
+    legendary: {
+      background:
+        "bg-gradient-to-br from-amber-950/90 to-amber-900/70 border border-amber-700/70",
+      frame: "border-amber-300/80",
+    },
+  };
+
+  /** Kind overrides: negative/split ignore rarity; normal uses rarity palette */
+  const backgroundsByKind: Record<Kind, string> = {
+    normal: rarityPalette[rarity].background,
     negative:
       "bg-gradient-to-br from-rose-950/90 to-rose-900/70 border border-rose-700/70",
-    // Indigo/purple for split cards
     split:
       "bg-gradient-to-br from-indigo-950/90 to-indigo-900/70 border border-indigo-700/70",
   };
 
-  // ---------- Frame = border-only (transparent bg so it never hides the bg) ----------
-  const frameBorderByKind: Record<Kind, string> = {
-    normal: "border-amber-500/70",
+  const framesByKind: Record<Kind, string> = {
+    normal: rarityPalette[rarity].frame,
     negative: "border-rose-500/70",
     split: "border-indigo-500/70",
   };
 
-  const cardBackground = cardBackgroundByKind[cardKind];
-  const frameBorder = frameBorderByKind[cardKind];
+  const cardBackground = backgroundsByKind[cardKind];
+  const frameBorder = framesByKind[cardKind];
+
+  /* ==== END MERGE-RESOLVED ==== */
 
   return (
     <button
@@ -217,6 +244,9 @@ export default memo(function StSCard({
           from-rose-950/90 to-rose-900/70 border-rose-700/70 border-rose-500/70
           from-indigo-950/90 to-indigo-900/70 border-indigo-700/70 border-indigo-500/70
           from-amber-900/90 to-yellow-900/70 border-amber-700/70 border-amber-500/70
+          from-slate-900/85 to-slate-800/70 border-slate-700/70 border-slate-400
+          from-sky-950/90 to-sky-900/70 border-sky-700/70 border-sky-300/80
+          from-emerald-950/90 to-emerald-900/70 border-emerald-700/70 border-emerald-300/80
         "
       />
     </button>
