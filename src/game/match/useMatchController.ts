@@ -350,6 +350,19 @@ useEffect(() => {
     setGauntletState(reset);
   }, []);
 
+  const resetGauntletShops = useCallback(() => {
+    updateGauntletState((prev) => ({
+      player: {
+        ...prev.player,
+        shop: { inventory: [], roll: 0, round: 0, purchases: [] },
+      },
+      enemy: {
+        ...prev.enemy,
+        shop: { inventory: [], roll: 0, round: 0, purchases: [] },
+      },
+    }));
+  }, [updateGauntletState]);
+
   const applyGauntletShopRollFor = useCallback(
     (side: LegacySide, payload: GauntletShopRollPayload) => {
       updateGauntletState((prev) => {
@@ -1375,6 +1388,7 @@ function createInitialGauntletState(): GauntletState {
         setShopInventory({ player: [], enemy: [] });
         setShopPurchases({ player: [], enemy: [] });
         setShopReady({ player: false, enemy: false });
+        resetGauntletShops();
         setActivationTurn(null);
         setActivationPasses({ player: false, enemy: false });
         setActivationLog([]);
@@ -1389,6 +1403,7 @@ function createInitialGauntletState(): GauntletState {
       generateWheelSet,
       isGauntletMode,
       phase,
+      resetGauntletShops,
       setAssign,
       setEnemy,
       setFreezeLayout,
@@ -1956,7 +1971,7 @@ function addPurchasedCardToFighter(fighter: Fighter, card: Card): Fighter {
   const purchased = cloneCardForGauntlet(card);
   return {
     ...fighter,
-    discard: [...fighter.discard, purchased],
+    deck: [purchased, ...fighter.deck],
   };
 }
 

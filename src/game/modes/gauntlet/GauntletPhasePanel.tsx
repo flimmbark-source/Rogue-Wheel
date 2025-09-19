@@ -56,7 +56,9 @@ export default function GauntletPhasePanel({
   const localPurchases = shopPurchases[localLegacySide] ?? [];
   const localGauntlet = gauntletState[localLegacySide];
   const currentRoll = localGauntlet?.shop.roll ?? 0;
-  const previousInventory = localGauntlet?.shop.inventory ?? [];
+  const previousRound = localGauntlet?.shop.round ?? 0;
+  const previousInventory =
+    previousRound === round ? localGauntlet?.shop.inventory ?? [] : [];
   const purchasedIds = new Set(localPurchases.map((card) => card.id));
 
   const readyMessage = (() => {
@@ -81,6 +83,7 @@ export default function GauntletPhasePanel({
     if (phase !== "shop") return;
     if (localInventory.length > 0) return;
     if (previousInventory.length === 0) return;
+    if (previousRound !== round) return;
     configureShopInventory({ [localLegacySide]: previousInventory });
   }, [
     configureShopInventory,
@@ -88,6 +91,8 @@ export default function GauntletPhasePanel({
     localLegacySide,
     phase,
     previousInventory,
+    previousRound,
+    round,
   ]);
 
   useEffect(() => {
