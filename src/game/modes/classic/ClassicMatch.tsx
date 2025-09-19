@@ -6,7 +6,7 @@ import TouchDragLayer, {
   useTouchDragLayer,
 } from "../../../components/match/TouchDragLayer";
 import GauntletPhasePanel from "../gauntlet/GauntletPhasePanel";
-import type { Fighter, Players, Side as TwoSide } from "../../types";
+import type { Players, Side as TwoSide } from "../../types";
 import useMultiplayerChannel from "../../match/useMultiplayerChannel";
 import {
   type MPIntent,
@@ -132,12 +132,6 @@ export default function ClassicMatch({
     markShopComplete,
     purchaseFromShop,
     gauntletRollShop,
-    gauntletSelectActivation,
-    activationTurn,
-    activationPasses,
-    activationLog,
-    activateCurrent,
-    passActivation,
     gauntletState,
   } = controller;
 
@@ -213,8 +207,6 @@ export default function ClassicMatch({
 
   const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
 
-  const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
-
   const gauntletPhaseUI = isGauntletMode ? (
     <GauntletPhasePanel
       phase={phase as Phase}
@@ -231,13 +223,6 @@ export default function ClassicMatch({
       configureShopInventory={configureShopInventory}
       purchaseFromShop={purchaseFromShop}
       markShopComplete={markShopComplete}
-      activationTurn={activationTurn}
-      activationPasses={activationPasses}
-      activationLog={activationLog}
-      activateCurrent={activateCurrent}
-      passActivation={passActivation}
-      gauntletSelectActivation={gauntletSelectActivation}
-      localFighter={localFighter}
     />
   ) : null;
 
