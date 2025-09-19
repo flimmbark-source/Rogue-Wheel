@@ -29,6 +29,8 @@ export default memo(function StSCard({
   forceKind,
   /** Optional: show a tiny badge with the computed kind */
   debugKind = false,
+  /** Optional: show a condensed reserve/ability hint when in minimal mode */
+  showAbilityHint = false,
 }: {
   card: Card;
   disabled?: boolean;
@@ -44,6 +46,7 @@ export default memo(function StSCard({
   showName?: boolean;
   forceKind?: Kind;
   debugKind?: boolean;
+  showAbilityHint?: boolean;
 }) {
   // ---------- Dimensions ----------
   const dims =
@@ -137,6 +140,32 @@ const behaviorIcon =
 
 /* ==== END MERGE-RESOLVED ==== */
 
+  const reserveValue = getCardReserveValue(card);
+  const activationSummaries = [
+    ...(card.activation ?? []).map((ability) => ability.summary),
+    ...getSplitFaces(card).flatMap((face) =>
+      (face.activation ?? []).map((ability) =>
+        `${face.label ?? (face.id === "left" ? "Left" : "Right")}: ${ability.summary}`,
+      ),
+    ),
+  ].filter(Boolean);
+  const uniqueActivationSummaries = Array.from(new Set(activationSummaries));
+
+  const abilityHintParts: string[] = [];
+  if (typeof reserveValue === "number" && Number.isFinite(reserveValue) && reserveValue !== 0) {
+    abilityHintParts.push(`Reserve ${fmtNum(reserveValue)}`);
+  }
+  if (card.reserve?.summary) {
+    abilityHintParts.push(card.reserve.summary);
+  }
+  if (uniqueActivationSummaries.length) {
+    abilityHintParts.push(...uniqueActivationSummaries);
+  }
+
+  const abilityHintText = abilityHintParts.join(" • ");
+  const shouldShowAbilityHint =
+    variant === "minimal" && showAbilityHint && abilityHintText.length > 0;
+
   return (
     <button
       onClick={(e) => {
@@ -151,7 +180,9 @@ const behaviorIcon =
         ${cardBackground}
       `}
       style={{ width: dims.w, height: dims.h }}
-      aria-label={`Card ${card?.name ?? ""}`}
+      aria-label={`Card ${card?.name ?? ""}${
+        abilityHintText ? `, ${abilityHintText}` : ""
+      }`}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -182,7 +213,9 @@ const behaviorIcon =
       <div
         className={`absolute inset-0 flex flex-col p-2 ${
           variant === "minimal"
-            ? "items-center justify-center gap-1.5"
+            ? `items-center justify-center gap-1.5 ${
+                shouldShowAbilityHint ? "pb-5" : ""
+              }`
             : "justify-between"
         }`}
       >
@@ -223,27 +256,24 @@ const behaviorIcon =
             {card.reserve?.summary && (
               <div className="text-slate-200/80">{card.reserve.summary}</div>
             )}
-            {(() => {
-              const summaries = [
-                ...(card.activation ?? []).map((ability) => ability.summary),
-                ...getSplitFaces(card).flatMap((face) =>
-                  (face.activation ?? []).map(
-                    (ability) =>
-                      `${face.label ?? (face.id === "left" ? "Left" : "Right")}: ${
-                        ability.summary
-                      }`,
-                  ),
-                ),
-              ].filter(Boolean);
-              if (!summaries.length) return null;
-              const unique = Array.from(new Set(summaries));
-              return (
-                <div className="text-slate-200/80">{unique.join(" • ")}</div>
-              );
-            })()}
+            {uniqueActivationSummaries.length > 0 && (
+              <div className="text-slate-200/80">
+                {uniqueActivationSummaries.join(" • ")}
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {shouldShowAbilityHint && (
+        <div className="pointer-events-none absolute inset-x-1 bottom-1 flex justify-center">
+          <div className="max-w-full rounded bg-black/65 px-1.5 py-0.5 text-center text-[9px] font-medium leading-snug text-slate-100/90 shadow-[0_0_6px_rgba(0,0,0,0.35)]">
+            <span className="block overflow-hidden text-ellipsis whitespace-nowrap">
+              {abilityHintText}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* --- Tailwind safelist helper ---
          If your Tailwind build is purging dynamic classes, this ensures they're generated.
