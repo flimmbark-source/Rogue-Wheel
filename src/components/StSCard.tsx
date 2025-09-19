@@ -12,6 +12,46 @@ import {
 
 type Kind = "normal" | "negative" | "split";
 
+export function getCardEffectSummary(
+  card: Card,
+  { includeReserve = true }: { includeReserve?: boolean } = {},
+): string | null {
+  const segments: string[] = [];
+
+  if (card.effectSummary) {
+    segments.push(card.effectSummary);
+  }
+
+  const reserveSummary = card.reserve?.summary;
+  if (includeReserve && reserveSummary) {
+    segments.push(reserveSummary);
+  }
+
+  const activationSummaries = [
+    ...(card.activation ?? []).map((ability) => ability.summary),
+    ...getSplitFaces(card).flatMap((face) =>
+      (face.activation ?? []).map((ability) => {
+        const label = face.label ?? (face.id === "left" ? "Left" : "Right");
+        return ability.summary ? `${label}: ${ability.summary}` : null;
+      }),
+    ),
+  ].filter((summary): summary is string => Boolean(summary));
+
+  segments.push(...activationSummaries);
+
+  const uniqueSegments = Array.from(
+    new Set(
+      segments
+        .map((segment) => segment?.trim())
+        .filter((segment): segment is string => Boolean(segment)),
+    ),
+  );
+
+  if (uniqueSegments.length === 0) return null;
+
+  return uniqueSegments.join(" • ");
+}
+
 export default memo(function StSCard({
   card,
   disabled,
@@ -29,6 +69,7 @@ export default memo(function StSCard({
   forceKind,
   /** Optional: show a tiny badge with the computed kind */
   debugKind = false,
+  ariaDescribedBy,
 }: {
   card: Card;
   disabled?: boolean;
@@ -44,6 +85,7 @@ export default memo(function StSCard({
   showName?: boolean;
   forceKind?: Kind;
   debugKind?: boolean;
+  ariaDescribedBy?: string;
 }) {
   // ---------- Dimensions ----------
   const dims =
@@ -151,7 +193,11 @@ const behaviorIcon =
         ${cardBackground}
       `}
       style={{ width: dims.w, height: dims.h }}
-      aria-label={`Card ${card?.name ?? ""}`}
+      aria-label={`Card ${card?.name ?? ""}${(() => {
+        const summary = getCardEffectSummary(card);
+        return summary ? `, ${summary}` : "";
+      })()}`}
+      aria-describedby={ariaDescribedBy}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -224,22 +270,9 @@ const behaviorIcon =
               <div className="text-slate-200/80">{card.reserve.summary}</div>
             )}
             {(() => {
-              const summaries = [
-                ...(card.activation ?? []).map((ability) => ability.summary),
-                ...getSplitFaces(card).flatMap((face) =>
-                  (face.activation ?? []).map(
-                    (ability) =>
-                      `${face.label ?? (face.id === "left" ? "Left" : "Right")}: ${
-                        ability.summary
-                      }`,
-                  ),
-                ),
-              ].filter(Boolean);
-              if (!summaries.length) return null;
-              const unique = Array.from(new Set(summaries));
-              return (
-                <div className="text-slate-200/80">{unique.join(" • ")}</div>
-              );
+              const effectSummary = getCardEffectSummary(card, { includeReserve: false });
+              if (!effectSummary) return null;
+              return <div className="text-slate-200/80">{effectSummary}</div>;
             })()}
           </div>
         )}

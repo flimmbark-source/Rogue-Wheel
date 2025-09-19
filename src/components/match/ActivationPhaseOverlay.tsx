@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import StSCard from "../StSCard";
+import StSCard, { getCardEffectSummary } from "../StSCard";
 import type { Card } from "../../game/types";
 import type {
   LegacySide,
@@ -115,14 +115,18 @@ export default function ActivationPhaseOverlay({
       return canActivate ? "Ready" : null;
     })();
 
+    const effectSummary = getCardEffectSummary(card);
+    const summaryId = effectSummary ? `activation-card-summary-${card.id}` : undefined;
+
     return (
-      <div key={card.id} className="relative flex flex-col items-center gap-2">
+      <div key={card.id} className="relative flex w-32 flex-col items-center gap-2 text-center">
         <StSCard
           card={card}
           size="sm"
           variant="minimal"
           onPick={canActivate ? () => onActivateCard(card.id) : undefined}
           disabled={!canActivate}
+          ariaDescribedBy={summaryId}
         />
         {statusLabel ? (
           <span
@@ -139,6 +143,11 @@ export default function ActivationPhaseOverlay({
         ) : null}
         {isSwapTarget && statusLabel !== "Waiting" ? (
           <span className="text-[10px] uppercase tracking-wide text-sky-300">Swapped</span>
+        ) : null}
+        {effectSummary ? (
+          <p id={summaryId} className="text-[11px] leading-snug text-emerald-100/80">
+            {effectSummary}
+          </p>
         ) : null}
       </div>
     );
