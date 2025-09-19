@@ -232,7 +232,7 @@ export default function GauntletPhasePanel({
                         </div>
                       ) : isPurchased ? (
                         <div className="text-[11px] text-emerald-200/70">
-                          Added to your deck.
+                          Added to your discard.
                         </div>
                       ) : null}
                     </div>
