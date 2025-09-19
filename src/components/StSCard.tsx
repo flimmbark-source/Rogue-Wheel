@@ -54,83 +54,34 @@ export default memo(function StSCard({
 
   const showHeader = variant === "default" && showName;
   const showFooter = variant === "default";
-/* ==== MERGE-RESOLVED: card kind + rarity palettes with full-surface backgrounds ==== */
 
-// Robust play value parsing (handles number|string|{value})
-const rawPV = getCardPlayValue(card) as unknown;
-const playVal =
-  typeof rawPV === "number"
-    ? rawPV
-    : typeof rawPV === "string"
-    ? parseFloat(rawPV)
-    : rawPV && typeof rawPV === "object" && "value" in (rawPV as any)
-    ? Number((rawPV as any).value)
-    : 0;
+  // Robust play value parsing (handles number|string|{value})
+  const rawPV = getCardPlayValue(card) as unknown;
+  const playVal =
+    typeof rawPV === "number"
+      ? rawPV
+      : typeof rawPV === "string"
+      ? parseFloat(rawPV)
+      : rawPV && typeof rawPV === "object" && "value" in (rawPV as any)
+      ? Number((rawPV as any).value)
+      : 0;
 
-// Multi-signal negative detection
-const id = String((card as any).id ?? "");
-const kindOrType = String((card as any).kind ?? (card as any).type ?? "");
-const idSaysNegative = /^neg[_-]/i.test(id);
-const kindSaysNegative = /negative|curse/i.test(kindOrType);
-const computedNegative = !isSplit(card) && Number.isFinite(playVal) && playVal < 0;
+  // Multi-signal negative detection
+  const id = String((card as any).id ?? "");
+  const kindOrType = String((card as any).kind ?? (card as any).type ?? "");
+  const idSaysNegative = /^neg[_-]/i.test(id);
+  const kindSaysNegative = /negative|curse/i.test(kindOrType);
+  const computedNegative = !isSplit(card) && Number.isFinite(playVal) && playVal < 0;
 
-// If you have a forceKind prop, it wins; otherwise compute from split/negative/normal
-let cardKind: Kind =
-  typeof forceKind !== "undefined"
-    ? forceKind
-    : isSplit(card)
-    ? "split"
-    : idSaysNegative || kindSaysNegative || computedNegative
-    ? "negative"
-    : "normal";
-
-// Rarity palette only applies to "normal" cards
-type Rarity = NonNullable<Card["rarity"]> | "common";
-const rarity: Rarity = (card.rarity as Rarity) ?? "common";
-
-// Background (button surface) + frame (border-only) per rarity
-const rarityPalette: Record<Rarity, { background: string; frame: string }> = {
-  common: {
-    background:
-      "bg-gradient-to-br from-slate-900/85 to-slate-800/70 border border-slate-700/70",
-    frame: "border-slate-400",
-  },
-  uncommon: {
-    background:
-      "bg-gradient-to-br from-emerald-950/90 to-emerald-900/70 border border-emerald-700/70",
-    frame: "border-emerald-300/80",
-  },
-  rare: {
-    background:
-      "bg-gradient-to-br from-sky-950/90 to-sky-900/70 border border-sky-700/70",
-    frame: "border-sky-300/80",
-  },
-  legendary: {
-    background:
-      "bg-gradient-to-br from-amber-950/90 to-amber-900/70 border border-amber-700/70",
-    frame: "border-amber-300/80",
-  },
-};
-
-// Kind overrides: negative/split ignore rarity; normal uses rarity palette
-const backgroundsByKind: Record<Kind, string> = {
-  normal: rarityPalette[rarity].background,
-  negative:
-    "bg-gradient-to-br from-red-800/90 to-red-600/70 border border-red-700/70",
-  split:
-    "bg-gradient-to-br from-indigo-950/90 to-indigo-900/70 border border-indigo-700/70",
-};
-
-const framesByKind: Record<Kind, string> = {
-  normal: rarityPalette[rarity].frame,
-  negative: "border-rose-500/70",
-  split: "border-indigo-500/70",
-};
-
-const cardBackground = backgroundsByKind[cardKind];
-const frameBorder = framesByKind[cardKind];
-
-/* ==== END MERGE-RESOLVED ==== */
+  // If you have a forceKind prop, it wins; otherwise compute from split/negative/normal
+  let cardKind: Kind =
+    typeof forceKind !== "undefined"
+      ? forceKind
+      : isSplit(card)
+      ? "split"
+      : idSaysNegative || kindSaysNegative || computedNegative
+      ? "negative"
+      : "normal";
 
   return (
     <button
@@ -143,7 +94,6 @@ const frameBorder = framesByKind[cardKind];
         ${disabled ? "opacity-60" : "hover:scale-[1.02]"}
         transition will-change-transform
         ${selected ? "ring-2 ring-amber-400" : ""}
-        ${cardBackground}
       `}
       style={{ width: dims.w, height: dims.h }}
       aria-label={`Card ${card?.name ?? ""}`}
@@ -155,14 +105,14 @@ const frameBorder = framesByKind[cardKind];
       data-play-val={playVal}
       data-card-id={id}
     >
-      {/* Border-only frame; bg is transparent so it never masks the button background */}
-      <div
-        className={`pointer-events-none absolute inset-0 rounded-xl border ${frameBorder} bg-transparent`}
-      />
-
       {/* Optional debug badge */}
       {debugKind && (
-        <div className="pointer-events-none absolute right-1 top-1 rounded bg-black/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/80">
+        <div
+          className={[
+            "pointer-events-none absolute right-1 top-1 rounded bg-black/50 px-1.5 py-0.5 text-[10px]",
+            "font-semibold uppercase text-white/80",
+          ].join(" ")}
+        >
           {cardKind}
         </div>
       )}
@@ -234,21 +184,6 @@ const frameBorder = framesByKind[cardKind];
         )}
       </div>
 
-      {/* --- Tailwind safelist helper ---
-         If your Tailwind build is purging dynamic classes, this ensures they're generated.
-         For best practice, move this once to a top-level component instead of per card. */}
-      <span
-        aria-hidden
-        className="hidden
-          bg-gradient-to-br
-          from-rose-950/90 to-rose-900/70 border-rose-700/70 border-rose-500/70
-          from-indigo-950/90 to-indigo-900/70 border-indigo-700/70 border-indigo-500/70
-          from-amber-900/90 to-yellow-900/70 border-amber-700/70 border-amber-500/70
-          from-slate-900/85 to-slate-800/70 border-slate-700/70 border-slate-400
-          from-sky-950/90 to-sky-900/70 border-sky-700/70 border-sky-300/80
-          from-emerald-950/90 to-emerald-900/70 border-emerald-700/70 border-emerald-300/80
-        "
-      />
     </button>
   );
 });
