@@ -30,6 +30,8 @@ export type TagId = "oddshift" | "parityflip" | "echoreserve";
 
 export type CardType = "normal" | "split";
 
+export type CardRarity = "common" | "uncommon" | "rare" | "legendary";
+
 export type SplitFaceId = "left" | "right";
 
 export type ActivationTiming = "passive" | "onPlay" | "reserve";
@@ -75,6 +77,9 @@ export type Card = {
   activation?: ActivationAbility[];
   reserve?: ReserveBehavior;
   tags: TagId[];
+  cost?: number;
+  rarity?: CardRarity;
+  effectSummary?: string;
 };
 
 export type VC =

@@ -18,7 +18,15 @@ function cardFromId(cardId: string): Card {
   const mNeg = /^neg_(-?\d+)$/.exec(cardId);
   const mNum = /^num_(-?\d+)$/.exec(cardId);
   const num = mBasic ? +mBasic[1] : mNeg ? +mNeg[1] : mNum ? +mNum[1] : 0;
-  return { id: `preview_${cardId}`, name: `${num}`, type: "normal", number: num, tags: [] };
+  const cost = num < 0 ? 120 : 40;
+  return {
+    id: `preview_${cardId}`,
+    name: `${num}`,
+    type: "normal",
+    number: num,
+    tags: [],
+    cost,
+  };
 }
 
 /** Scales its child to fit the available width while preserving aspect. */

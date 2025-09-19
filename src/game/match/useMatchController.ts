@@ -1902,6 +1902,9 @@ function cardsEqual(a: Card, b: Card): boolean {
   if ((a.number ?? null) !== (b.number ?? null)) return false;
   if ((a.leftValue ?? null) !== (b.leftValue ?? null)) return false;
   if ((a.rightValue ?? null) !== (b.rightValue ?? null)) return false;
+  if ((a.cost ?? null) !== (b.cost ?? null)) return false;
+  if ((a.rarity ?? null) !== (b.rarity ?? null)) return false;
+  if ((a.effectSummary ?? null) !== (b.effectSummary ?? null)) return false;
   if (a.tags.length !== b.tags.length) return false;
   for (let i = 0; i < a.tags.length; i += 1) {
     if (a.tags[i] !== b.tags[i]) return false;
