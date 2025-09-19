@@ -47,6 +47,11 @@ function useLatestRef<T>(value: T) {
   return ref;
 }
 
+const isActivatableCard = (card: Card | null | undefined): card is Card => {
+  if (!card) return false;
+  return !!card.behavior;
+};
+
 export type LegacySide = "player" | "enemy";
 export type Phase =
   | "choose"
@@ -1530,8 +1535,11 @@ function createInitialGauntletState(): GauntletState {
       const playerCards = assignRef.current.player.filter((c): c is Card => !!c);
       const enemyCards = enemyPicks.filter((c): c is Card => !!c);
 
-      const playerIds = playerCards.map((card) => card.id);
-      const enemyIds = enemyCards.map((card) => card.id);
+      const playerActivatable = playerCards.filter((card) => isActivatableCard(card));
+      const enemyActivatable = enemyCards.filter((card) => isActivatableCard(card));
+
+      const playerIds = playerActivatable.map((card) => card.id);
+      const enemyIds = enemyActivatable.map((card) => card.id);
 
       activationEnemyPicksRef.current = enemyPicks;
 
