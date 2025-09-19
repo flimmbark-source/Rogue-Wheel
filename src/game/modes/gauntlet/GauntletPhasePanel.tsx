@@ -185,31 +185,19 @@ export default function GauntletPhasePanel({
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => gauntletRollShop(inventoryForRoll, round, currentRoll + 1)}
-                disabled={!canRollInventory}
-                className="inline-flex items-center justify-center gap-2 rounded border border-amber-500/40 bg-amber-400 px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <span aria-hidden="true">🎲</span> Reroll inventory
-              </button>
-            </div>
-            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={() => markShopComplete(localLegacySide)}
-                disabled={localReady}
-                className={`inline-flex items-center justify-center rounded px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-400/60 disabled:cursor-not-allowed disabled:opacity-60 ${
-                  localReady
-                    ? "border border-emerald-500/40 bg-emerald-900/30 text-emerald-200"
-                    : "border border-emerald-500/60 bg-emerald-400 text-slate-900 hover:bg-emerald-300"
-                }`}
-              >
-                {continueLabel}
-              </button>
-            </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => markShopComplete(localLegacySide)}
+              disabled={localReady}
+              className={`inline-flex items-center justify-center rounded px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-400/60 disabled:cursor-not-allowed disabled:opacity-60 ${
+                localReady
+                  ? "border border-emerald-500/40 bg-emerald-900/30 text-emerald-200"
+                  : "border border-emerald-500/60 bg-emerald-400 text-slate-900 hover:bg-emerald-300"
+              }`}
+            >
+              {continueLabel}
+            </button>
           </div>
         </div>
       </div>
