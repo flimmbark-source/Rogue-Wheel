@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./.test-dist",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "types": ["node"]
+  },
+  "include": [
+    "tests/**/*.ts",
+    "tests/**/*.d.ts",
+    "src/game/types.ts",
+    "src/game/values.ts",
+    "src/game/match/valueAdjustments.ts"
+  ],
+  "exclude": ["node_modules", "dist", ".test-dist"]
+}

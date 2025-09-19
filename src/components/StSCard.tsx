@@ -12,6 +12,16 @@ import {
 
 type Kind = "normal" | "negative" | "split";
 
+export type CardAdjustmentStatusTone = "info" | "positive" | "warning";
+
+export type CardAdjustmentDescriptor = {
+  value?: number;
+  status?: {
+    label: string;
+    tone?: CardAdjustmentStatusTone;
+  };
+};
+
 export default memo(function StSCard({
   card,
   disabled,
@@ -29,8 +39,11 @@ export default memo(function StSCard({
   forceKind,
   /** Optional: show a tiny badge with the computed kind */
   debugKind = false,
+
   /** Optional: show a condensed reserve/ability hint when in minimal mode */
   showAbilityHint = false,
+  adjustment,
+
 }: {
   card: Card;
   disabled?: boolean;
@@ -47,6 +60,8 @@ export default memo(function StSCard({
   forceKind?: Kind;
   debugKind?: boolean;
   showAbilityHint?: boolean;
+  adjustment?: CardAdjustmentDescriptor;
+
 }) {
   // ---------- Dimensions ----------
   const dims =
@@ -138,6 +153,16 @@ const behavior = getCardBehavior(card);
 const behaviorIcon =
   behavior === "split" ? "✂️" : behavior === "boost" ? "⚡" : behavior === "swap" ? "🔄" : null;
 
+const displayValue =
+  typeof adjustment?.value === "number" ? adjustment.value : playVal;
+
+const statusToneClass: Record<CardAdjustmentStatusTone, string> = {
+  info: "bg-slate-900/70 text-slate-100",
+  positive: "bg-emerald-500/30 text-emerald-100",
+  warning: "bg-amber-500/40 text-amber-950",
+};
+const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
+
 /* ==== END MERGE-RESOLVED ==== */
 
   const reserveValue = getCardReserveValue(card);
@@ -196,10 +221,20 @@ const behaviorIcon =
         className={`pointer-events-none absolute inset-0 rounded-xl border ${frameBorder} bg-transparent`}
       />
 
-      {/* Optional debug badge */}
-      {debugKind && (
-        <div className="pointer-events-none absolute right-1 top-1 rounded bg-black/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/80">
-          {cardKind}
+      {(adjustment?.status || debugKind) && (
+        <div className="pointer-events-none absolute right-1 top-1 flex flex-col items-end gap-1">
+          {adjustment?.status && (
+            <div
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${statusToneClass[statusTone]}`}
+            >
+              {adjustment.status.label}
+            </div>
+          )}
+          {debugKind && (
+            <div className="rounded bg-black/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/80">
+              {cardKind}
+            </div>
+          )}
         </div>
       )}
 
@@ -241,7 +276,7 @@ const behaviorIcon =
             </div>
           ) : (
             <div className="text-3xl font-extrabold text-white/90">
-              {fmtNum(playVal)}
+              {fmtNum(displayValue)}
             </div>
           )}
         </div>
