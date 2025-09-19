@@ -116,7 +116,7 @@ const rarityPalette: Record<Rarity, { background: string; frame: string }> = {
 const backgroundsByKind: Record<Kind, string> = {
   normal: rarityPalette[rarity].background,
   negative:
-    "bg-gradient-to-br from-rose-950/90 to-rose-900/70 border border-rose-700/70",
+    "bg-gradient-to-br from-red-800/90 to-red-600/70 border border-red-700/70",
   split:
     "bg-gradient-to-br from-indigo-950/90 to-indigo-900/70 border border-indigo-700/70",
 };
