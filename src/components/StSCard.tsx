@@ -47,12 +47,32 @@ export default memo(function StSCard({
   const showHeader = variant === "default" && showName;
   const showFooter = variant === "default";
   const isNegativeCard = !isSplit(card) && getCardPlayValue(card) < 0;
+  const rarity = card.rarity ?? "common";
+  const rarityPalette: Record<NonNullable<Card["rarity"]>, { frame: string; inner: string }> = {
+    common: {
+      frame: "from-slate-600 to-slate-800 border-slate-400",
+      inner: "bg-slate-900/85 border border-slate-700/70",
+    },
+    uncommon: {
+      frame: "from-emerald-600 to-emerald-800 border-emerald-300/80",
+      inner: "bg-gradient-to-br from-emerald-950/90 to-emerald-900/70 border border-emerald-700/70",
+    },
+    rare: {
+      frame: "from-sky-600 to-sky-800 border-sky-300/80",
+      inner: "bg-gradient-to-br from-sky-950/90 to-sky-900/70 border border-sky-700/70",
+    },
+    legendary: {
+      frame: "from-amber-500 to-amber-700 border-amber-300/80",
+      inner: "bg-gradient-to-br from-amber-950/90 to-amber-900/70 border border-amber-700/70",
+    },
+  };
+  const palette = rarityPalette[rarity] ?? rarityPalette.common;
   const frameGradient = isNegativeCard
     ? "from-rose-700 to-rose-900 border-rose-500/70"
-    : "from-slate-600 to-slate-800 border-slate-400";
+    : palette.frame;
   const innerPanel = isNegativeCard
     ? "bg-gradient-to-br from-rose-950/90 to-rose-900/70 border border-rose-700/70"
-    : "bg-slate-900/85 border border-slate-700/70";
+    : palette.inner;
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onPick?.(); }}
