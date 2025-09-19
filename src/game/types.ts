@@ -1,6 +1,7 @@
 // src/game/types.ts
 export const SLICES = 16 as const;
 export const TARGET_WINS = 7 as const;
+export const GAUNTLET_TARGET_WINS = 10 as const;
 
 /** New canonical sides for 2P */
 export type Side = "left" | "right";

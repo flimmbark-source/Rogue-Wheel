@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import type { Card, Fighter } from "../../types";
 import type {
   GauntletState,
@@ -69,71 +71,66 @@ export default function GauntletPhasePanel({
 
   const readyMessage = (() => {
     if (localReady && remoteReady) {
-      return "Both players are ready.";
+      return "Both sides are ready to continue.";
     }
     if (localReady && !remoteReady) {
       return `Waiting for ${remoteName}...`;
     }
     if (!localReady && remoteReady) {
-      return `${remoteName} is ready.`;
+      return `${remoteName} is ready to fight.`;
     }
-    return "Ready when you are.";
+    return "Spend your gold and continue when you're ready.";
   })();
 
   const inventoryForRoll = localInventory.length > 0 ? localInventory : previousInventory;
   const canRollInventory = inventoryForRoll.length > 0;
 
+  useEffect(() => {
+    if (phase !== "shop") return;
+    if (currentRoll > 0) return;
+    if (!canRollInventory) return;
+    gauntletRollShop(inventoryForRoll, round, currentRoll + 1);
+  }, [phase, currentRoll, canRollInventory, gauntletRollShop, inventoryForRoll, round]);
+
+  const continueLabel = localReady ? "Ready" : "Continue to next round";
+
   if (phase === "shop") {
     return (
-      <div className="relative z-10 mx-auto w-full max-w-3xl text-amber-100">
-        <div className="rounded-lg border border-amber-500/40 bg-amber-950/40 p-4 shadow-lg">
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-200/70">Gauntlet Shop</div>
-                <div className="text-lg font-semibold text-amber-100">{localName}'s shop phase</div>
-                <div className="text-xs text-amber-200/80">Round {round}</div>
-              </div>
-              <div className="text-right text-sm text-amber-200/80">
-                <div>
-                  Gold: <span className="font-semibold text-amber-100">{localGold}</span>
-                </div>
-                <div>Roll #{currentRoll}</div>
-              </div>
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4">
+        <div className="w-full max-w-4xl space-y-6 rounded-xl border border-amber-500/40 bg-amber-950/70 p-6 text-amber-100 shadow-2xl">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-200/70">Gauntlet Shop</div>
+              <div className="text-2xl font-semibold text-amber-50">{localName}'s shop</div>
+              <div className="text-xs text-amber-200/80">Round {round}</div>
             </div>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => gauntletRollShop(inventoryForRoll, round, currentRoll + 1)}
-                disabled={!canRollInventory}
-                className="inline-flex items-center justify-center rounded border border-amber-500/40 bg-amber-400 px-3 py-1 text-xs font-semibold text-slate-900 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Roll Inventory
-              </button>
-              <button
-                type="button"
-                onClick={() => markShopComplete(localLegacySide)}
-                disabled={localReady}
-                className="inline-flex items-center justify-center rounded border border-amber-500/40 bg-amber-500/20 px-3 py-1 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {localReady ? "Ready" : "Ready Up"}
-              </button>
-              <div className="flex items-center text-[11px] italic text-amber-200/80">{readyMessage}</div>
+            <div className="flex flex-col items-end gap-1 text-sm text-amber-200/80">
+              <div className="flex items-center gap-2 text-base">
+                <span className="text-amber-200/70">Gold</span>
+                <span className="flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-900/60 px-2 py-1 text-lg font-semibold text-amber-50">
+                  <span aria-hidden="true">🪙</span>
+                  <span className="tabular-nums">{localGold}</span>
+                </span>
+              </div>
+              <div>Roll #{currentRoll}</div>
             </div>
+          </div>
 
+          <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-200/70">Inventory</div>
               {localInventory.length === 0 ? (
-                <div className="mt-1 text-xs text-amber-200/70">
-                  No cards available to purchase yet. Configure the shop inventory or roll when new cards are available.
+                <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-900/20 p-4 text-sm text-amber-100/80">
+                  {canRollInventory
+                    ? "Preparing shop inventory..."
+                    : "No cards are available to purchase yet. Return after the next round."}
                 </div>
               ) : (
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   {localInventory.map((card) => (
                     <div
                       key={card.id}
-                      className="rounded border border-amber-500/30 bg-amber-900/40 p-3 text-sm shadow-sm"
+                      className="rounded-lg border border-amber-500/30 bg-amber-900/40 p-4 text-sm shadow-sm"
                     >
                       <div className="font-semibold text-amber-50">{card.name}</div>
                       {typeof card.number === "number" ? (
@@ -143,7 +140,7 @@ export default function GauntletPhasePanel({
                         type="button"
                         onClick={() => purchaseFromShop(localLegacySide, card)}
                         disabled={localGold <= 0}
-                        className="mt-2 inline-flex items-center justify-center rounded bg-amber-400 px-3 py-1 text-xs font-semibold text-slate-900 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="mt-3 inline-flex items-center justify-center rounded bg-amber-400 px-3 py-1 text-xs font-semibold text-slate-900 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Buy (1g)
                       </button>
@@ -153,18 +150,66 @@ export default function GauntletPhasePanel({
               )}
             </div>
 
-            {localPurchases.length > 0 ? (
-              <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-200/70">
-                  Purchased this round
+            <div className="flex flex-col gap-4">
+              <div className="rounded-lg border border-amber-500/30 bg-amber-900/30 p-4 text-sm">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-200/70">Status</div>
+                <div className="mt-3 space-y-2 text-xs text-amber-100">
+                  <div className="flex items-center justify-between">
+                    <span className="text-amber-200/70">{localName}</span>
+                    <span className={`font-semibold ${localReady ? "text-emerald-300" : "text-amber-100"}`}>
+                      {localReady ? "Ready" : "Shopping"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-amber-200/70">{remoteName}</span>
+                    <span className={`font-semibold ${remoteReady ? "text-emerald-300" : "text-amber-100"}`}>
+                      {remoteReady ? "Ready" : "Preparing"}
+                    </span>
+                  </div>
                 </div>
-                <ul className="mt-1 space-y-1 text-xs">
-                  {localPurchases.map((card) => (
-                    <li key={card.id}>• {card.name}</li>
-                  ))}
-                </ul>
+                <div className="mt-3 text-[11px] italic text-amber-200/80">{readyMessage}</div>
               </div>
-            ) : null}
+
+              {localPurchases.length > 0 ? (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-900/30 p-4 text-sm">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-200/70">
+                    Purchased this round
+                  </div>
+                  <ul className="mt-2 space-y-1 text-xs text-amber-100/90">
+                    {localPurchases.map((card) => (
+                      <li key={card.id}>• {card.name}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => gauntletRollShop(inventoryForRoll, round, currentRoll + 1)}
+                disabled={!canRollInventory}
+                className="inline-flex items-center justify-center gap-2 rounded border border-amber-500/40 bg-amber-400 px-4 py-2 text-xs font-semibold text-slate-900 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <span aria-hidden="true">🎲</span> Reroll inventory
+              </button>
+            </div>
+            <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => markShopComplete(localLegacySide)}
+                disabled={localReady}
+                className={`inline-flex items-center justify-center rounded px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-emerald-400/60 disabled:cursor-not-allowed disabled:opacity-60 ${
+                  localReady
+                    ? "border border-emerald-500/40 bg-emerald-900/30 text-emerald-200"
+                    : "border border-emerald-500/60 bg-emerald-400 text-slate-900 hover:bg-emerald-300"
+                }`}
+              >
+                {continueLabel}
+              </button>
+            </div>
           </div>
         </div>
       </div>

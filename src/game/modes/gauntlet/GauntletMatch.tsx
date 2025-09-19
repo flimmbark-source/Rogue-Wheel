@@ -205,6 +205,7 @@ export default function GauntletMatch({
   }, [controllerIsMultiplayer, namesByLegacy, phase, rematchVotes, localLegacySide, remoteLegacySide]);
 
   const localFighter = localLegacySide === "player" ? player : enemy;
+  const localGold = gold[localLegacySide] ?? 0;
   const gauntletPhaseUI = (
     <GauntletPhasePanel
       phase={phase}
@@ -337,15 +338,21 @@ export default function GauntletMatch({
       style={{ gridTemplateRows: "auto auto 1fr auto" }}
     >
       <div className="flex items-center justify-between text-[12px] min-h-[24px]">
-        <div className="flex items-center gap-3">
-          <div>
-            <span className="opacity-70">Round</span> <span className="font-semibold">{round}</span>
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <div>
+              <span className="opacity-70">Round</span> <span className="font-semibold">{round}</span>
+            </div>
+            <div>
+              <span className="opacity-70">Phase</span> <span className="font-semibold">{phase}</span>
+            </div>
+            <div>
+              <span className="opacity-70">Goal</span> <span className="font-semibold">First to {winGoal} wins</span>
+            </div>
           </div>
-          <div>
-            <span className="opacity-70">Phase</span> <span className="font-semibold">{phase}</span>
-          </div>
-          <div>
-            <span className="opacity-70">Goal</span> <span className="font-semibold">First to {winGoal} wins</span>
+          <div className="flex items-center gap-1 text-[11px] text-amber-200/80">
+            <span aria-hidden="true">🪙</span>
+            <span className="tabular-nums font-semibold text-amber-100">{localGold}</span>
           </div>
         </div>
         <div className="flex items-center gap-2 relative">
