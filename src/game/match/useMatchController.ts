@@ -1910,22 +1910,24 @@ function computeReserveSum(side: LegacySide, played: (Card | null)[]) {
 }
 
 function settleFighterAfterRound(fighter: Fighter, played: Card[]) {
-  const deck = fighter.deck;
-  const discard = [...fighter.discard, ...played];
-  let hand = fighter.hand.filter((card) => !played.some((p) => p.id === card.id));
+  let next: Fighter = {
+    ...fighter,
+    hand: fighter.hand.filter((card) => !played.some((p) => p.id === card.id)),
+    discard: [...fighter.discard, ...played],
+  };
 
-  while (hand.length < 3 && deck.length > 0) {
-    const drawn = drawOne(deck, discard);
-    if (!drawn) break;
-    hand = [...hand, drawn.card];
+  while (next.hand.length < 3) {
+    const before = next.hand.length;
+    next = drawOne(next);
+    if (next.hand.length === before) break;
   }
 
-  if (hand.length < 3) {
-    const fresh = freshFive();
-    hand = refillTo(hand, fresh, 3);
+  if (next.hand.length < 3) {
+    next = freshFive(next);
+    next = refillTo(next, 3);
   }
 
-  return { ...fighter, hand, deck, discard };
+  return next;
 }
 
 function oppositeSide(side: LegacySide): LegacySide {
