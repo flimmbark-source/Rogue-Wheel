@@ -1910,21 +1910,20 @@ function computeReserveSum(side: LegacySide, played: (Card | null)[]) {
 }
 
 function settleFighterAfterRound(fighter: Fighter, played: Card[]) {
+  const TARGET_HAND_SIZE = 5;
   let next: Fighter = {
     ...fighter,
     hand: fighter.hand.filter((card) => !played.some((p) => p.id === card.id)),
     discard: [...fighter.discard, ...played],
   };
 
-  while (next.hand.length < 3) {
-    const before = next.hand.length;
-    next = drawOne(next);
-    if (next.hand.length === before) break;
-  }
 
-  if (next.hand.length < 3) {
+  next = refillTo(next, TARGET_HAND_SIZE);
+
+  if (next.hand.length < TARGET_HAND_SIZE) {
     next = freshFive(next);
-    next = refillTo(next, 3);
+    next = refillTo(next, TARGET_HAND_SIZE);
+
   }
 
   return next;
