@@ -1,4 +1,5 @@
 import { Suspense, lazy } from "react";
+import LoadingScreen from "./components/LoadingScreen";
 import type { ClassicMatchProps } from "./game/modes/classic/ClassicMatch";
 import type { GauntletMatchProps } from "./game/modes/gauntlet/GauntletMatch";
 
@@ -9,7 +10,7 @@ export type AppProps =
   | ({ mode: "classic" } & ClassicMatchProps)
   | ({ mode: "gauntlet" } & GauntletMatchProps);
 
-const MATCH_FALLBACK = <div>Loading match…</div>;
+const MATCH_FALLBACK = <LoadingScreen />;
 
 export default function App(props: AppProps) {
   if (props.mode === "gauntlet") {
