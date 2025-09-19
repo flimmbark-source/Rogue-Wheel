@@ -1,5 +1,6 @@
 // src/AppShell.tsx
 import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import LoadingScreen from "./components/LoadingScreen";
 import HubRoute from "./HubRoute";
 import type { Players, Side } from "./game/types";
 import type { default as MultiplayerRouteComponent } from "./MultiplayerRoute";
@@ -53,7 +54,7 @@ export default function AppShell() {
 
   if (view.key === "soloMenu") {
     return (
-      <Suspense fallback={<div>Loading modes…</div>}>
+      <Suspense fallback={<LoadingScreen />}>
         <SoloModeRoute
           onBack={goToHub}
           onSelectClassic={startClassic}
@@ -65,7 +66,7 @@ export default function AppShell() {
 
   if (view.key === "mp") {
     return (
-      <Suspense fallback={<div>Loading multiplayer…</div>}>
+      <Suspense fallback={<LoadingScreen />}>
         <MultiplayerRoute
           onBack={goToHub}
           onStart={(payload) => {
@@ -85,7 +86,11 @@ export default function AppShell() {
             ← Back to Main Menu
           </button>
         </div>
-        <Suspense fallback={<div className="p-4">Loading profile…</div>}>
+        <Suspense
+          fallback={
+            <LoadingScreen className="flex-1" fullScreen={false} />
+          }
+        >
           <ProfilePage />
         </Suspense>
       </div>
@@ -122,7 +127,7 @@ export default function AppShell() {
   };
 
   return (
-    <Suspense fallback={<div>Loading match…</div>}>
+    <Suspense fallback={<LoadingScreen />}>
       <App
         mode={view.mode === "gauntlet" ? "gauntlet" : "classic"}
         localSide={localSide}
