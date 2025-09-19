@@ -80,7 +80,7 @@ button[aria-label^="Card"] {
   border: none;
 }
 button[aria-label^="Card"][data-card-kind="negative"] {
-  background-image: url("/assets/negative-card-frame.png");
+  background-image: url("/assets/negative-card-frame-1.png");
 }
 button[aria-label^="Card"] > div:first-child {
   opacity: 0;
