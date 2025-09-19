@@ -126,12 +126,6 @@ export default function GauntletMatch({
     markShopComplete,
     purchaseFromShop,
     gauntletRollShop,
-    gauntletSelectActivation,
-    activationTurn,
-    activationPasses,
-    activationLog,
-    activateCurrent,
-    passActivation,
     gauntletState,
   } = controller;
 
@@ -205,7 +199,6 @@ export default function GauntletMatch({
     return null;
   }, [controllerIsMultiplayer, namesByLegacy, phase, rematchVotes, localLegacySide, remoteLegacySide]);
 
-  const localFighter = localLegacySide === "player" ? player : enemy;
   const localGold = gold[localLegacySide] ?? 0;
   const gauntletPhaseUI = (
     <GauntletPhasePanel
@@ -223,13 +216,6 @@ export default function GauntletMatch({
       configureShopInventory={configureShopInventory}
       purchaseFromShop={purchaseFromShop}
       markShopComplete={markShopComplete}
-      activationTurn={activationTurn}
-      activationPasses={activationPasses}
-      activationLog={activationLog}
-      activateCurrent={activateCurrent}
-      passActivation={passActivation}
-      gauntletSelectActivation={gauntletSelectActivation}
-      localFighter={localFighter}
     />
   );
 
