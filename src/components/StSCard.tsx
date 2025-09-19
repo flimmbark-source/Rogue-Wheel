@@ -220,9 +220,6 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
   const uniqueActivationSummaries = Array.from(new Set(activationSummaries));
 
   const abilityHintParts: string[] = [];
-  if (typeof reserveValue === "number" && Number.isFinite(reserveValue) && reserveValue !== 0) {
-    abilityHintParts.push(`Reserve ${fmtNum(reserveValue)}`);
-  }
   if (card.reserve?.summary) {
     abilityHintParts.push(card.reserve.summary);
   }
