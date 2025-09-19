@@ -122,6 +122,7 @@ export default function GauntletMatch({
     shopInventory,
     shopPurchases,
     shopReady,
+    configureShopInventory,
     markShopComplete,
     purchaseFromShop,
     gauntletRollShop,
@@ -219,6 +220,7 @@ export default function GauntletMatch({
       namesByLegacy={namesByLegacy}
       gauntletState={gauntletState}
       gauntletRollShop={gauntletRollShop}
+      configureShopInventory={configureShopInventory}
       purchaseFromShop={purchaseFromShop}
       markShopComplete={markShopComplete}
       activationTurn={activationTurn}

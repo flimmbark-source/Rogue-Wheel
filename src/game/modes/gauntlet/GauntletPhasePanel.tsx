@@ -19,6 +19,9 @@ export type GauntletPhasePanelProps = {
   shopReady: { player: boolean; enemy: boolean };
   gauntletState: GauntletState;
   gauntletRollShop: (inventory: Card[], round: number, roll?: number) => void;
+  configureShopInventory: (
+    inventory: Partial<Record<LegacySide, Card[]>>,
+  ) => void;
   purchaseFromShop: (side: LegacySide, card: Card, cost?: number) => boolean;
   markShopComplete: (side: LegacySide) => boolean;
   activationTurn: LegacySide | null;
@@ -42,6 +45,7 @@ export default function GauntletPhasePanel({
   shopReady,
   gauntletState,
   gauntletRollShop,
+  configureShopInventory,
   purchaseFromShop,
   markShopComplete,
   activationTurn,
@@ -84,6 +88,19 @@ export default function GauntletPhasePanel({
 
   const inventoryForRoll = localInventory.length > 0 ? localInventory : previousInventory;
   const canRollInventory = inventoryForRoll.length > 0;
+
+  useEffect(() => {
+    if (phase !== "shop") return;
+    if (localInventory.length > 0) return;
+    if (previousInventory.length === 0) return;
+    configureShopInventory({ [localLegacySide]: previousInventory });
+  }, [
+    configureShopInventory,
+    localInventory.length,
+    localLegacySide,
+    phase,
+    previousInventory,
+  ]);
 
   useEffect(() => {
     if (phase !== "shop") return;
