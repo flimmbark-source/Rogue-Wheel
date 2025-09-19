@@ -215,6 +215,7 @@ const NEGATIVE_BLUEPRINTS: CardBlueprint[] = [
     number: -1,
     tags: ["oddshift"],
     cost: 20,
+
     rarity: "uncommon",
     effectSummary: "A -1 card for weakening a slice.",
   },
@@ -225,6 +226,7 @@ const NEGATIVE_BLUEPRINTS: CardBlueprint[] = [
     number: -2,
     tags: ["parityflip"],
     cost: 25,
+
     rarity: "rare",
     effectSummary: "A -2 card that flips parity in your favor.",
   },

@@ -157,6 +157,7 @@ export default function GauntletPhasePanel({
                     typeof card.cost === "number" && card.cost > 0
                       ? card.cost
                       : 10;
+
                   const isPurchased = purchasedIds.has(card.id);
                   const canAfford = localGold >= cost;
                   const canBuy = canAfford && !isPurchased;
@@ -167,6 +168,7 @@ export default function GauntletPhasePanel({
                   const hoverText = isPurchased
                     ? `${label} has already been bought this round.`
                     : summary
+
                     ? `${label}: ${summary.length > 120 ? `${summary.slice(0, 117)}...` : summary}`
                     : label;
 

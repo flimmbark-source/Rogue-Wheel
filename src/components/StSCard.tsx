@@ -71,7 +71,7 @@ export default memo(function StSCard({
         className={`absolute inset-0 rounded-xl border bg-gradient-to-br ${frameGradient}`}
       ></div>
       <div
-        className={`absolute inset-[3px] rounded-[12px] backdrop-blur-[1px] ${innerPanel}`}
+        className={`absolute inset-px rounded-[10px] backdrop-blur-[1px] ${innerPanel}`}
       />
       <div
         className={`absolute inset-0 flex flex-col p-2 ${
