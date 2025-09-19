@@ -1442,6 +1442,13 @@ function createInitialGauntletState(): GauntletState {
     ],
   );
 
+  useEffect(() => {
+    if (!isGauntletMode) return;
+    if (phase !== "shop") return;
+    if (!shopReady.player || !shopReady.enemy) return;
+    beginActivationPhase();
+  }, [beginActivationPhase, isGauntletMode, phase, shopReady.enemy, shopReady.player]);
+
   const markShopComplete = useCallback(
     (side: LegacySide) => completeShopForSide(side, { emit: true }),
     [completeShopForSide],

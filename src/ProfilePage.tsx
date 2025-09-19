@@ -8,9 +8,32 @@ import {
   deleteDeck,
   swapDeckCards,
   expRequiredForLevel,
-  type ProfileBundle,
+  CARD_CATALOG,
 } from "./player/profileStore";
-import type { Card } from "./game/types";
+import type { ProfileBundle } from "./player/profileStore";
+import type { Card, ActivationAbility, CardSplit, CardSplitFace } from "./game/types";
+
+const CARD_BLUEPRINT_LOOKUP = new Map(
+  CARD_CATALOG.map((entry) => [entry.id, entry]),
+);
+
+const cloneActivation = (ability: ActivationAbility): ActivationAbility => ({
+  ...ability,
+  effects: ability.effects.map((effect) => ({ ...effect })),
+});
+
+const cloneSplitFace = (face: CardSplitFace): CardSplitFace => ({
+  ...face,
+  activation: face.activation ? face.activation.map(cloneActivation) : undefined,
+});
+
+const cloneSplit = (split: CardSplit): CardSplit => ({
+  defaultFace: split.defaultFace,
+  faces: {
+    left: cloneSplitFace(split.faces.left),
+    right: cloneSplitFace(split.faces.right),
+  },
+});
 
 /** Map our string cardId → runtime Card for StSCard preview. */
 function cardFromId(cardId: string): Card {
@@ -18,14 +41,36 @@ function cardFromId(cardId: string): Card {
   const mNeg = /^neg_(-?\d+)$/.exec(cardId);
   const mNum = /^num_(-?\d+)$/.exec(cardId);
   const num = mBasic ? +mBasic[1] : mNeg ? +mNeg[1] : mNum ? +mNum[1] : 0;
-  const cost = num < 0 ? 120 : 40;
+  const fallbackCost = num < 0 ? 120 : 40;
+  const blueprint = CARD_BLUEPRINT_LOOKUP.get(cardId);
+
+  if (!blueprint) {
+    return {
+      id: `preview_${cardId}`,
+      name: `${num}`,
+      type: "normal",
+      number: num,
+      tags: [],
+      cost: fallbackCost,
+      rarity: num < 0 ? "uncommon" : "common",
+    };
+  }
+
+  const type = blueprint.type ?? "normal";
   return {
     id: `preview_${cardId}`,
-    name: `${num}`,
-    type: "normal",
-    number: num,
-    tags: [],
-    cost,
+    name: blueprint.name,
+    type,
+    number: type === "normal" ? blueprint.number ?? num : undefined,
+    split: blueprint.split ? cloneSplit(blueprint.split) : undefined,
+    activation: blueprint.activation
+      ? blueprint.activation.map(cloneActivation)
+      : undefined,
+    reserve: blueprint.reserve ? { ...blueprint.reserve } : undefined,
+    tags: blueprint.tags ? [...blueprint.tags] : [],
+    cost: blueprint.cost ?? fallbackCost,
+    rarity: blueprint.rarity,
+    effectSummary: blueprint.effectSummary,
   };
 }
 

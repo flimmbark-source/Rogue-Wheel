@@ -69,25 +69,15 @@ div.relative[aria-label^="Wheel"] {
 /*
  * Cards in the player's hand.
  * Each card is a <button> with an aria-label beginning with "Card".
- * Apply the wood frame image as the background, hide the gradient overlays,
- * and set the number color to a light parchment tone.
+ * Allow the React component to provide its own gradients and warning colors
+ * instead of forcing the legacy wood texture here.
  */
 button[aria-label^="Card"] {
-  background-image: url("/assets/card-frame.png");
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
-  border: none;
-}
-button[aria-label^="Card"] > div:first-child {
-  opacity: 0;
-}
-button[aria-label^="Card"] > div:nth-child(2) {
+  /* Allow individual card components to control their own backgrounds so
+   * Tailwind utilities (like red warning states) remain visible. */
+  background-image: none;
   background-color: transparent;
   border: none;
-}
-button[aria-label^="Card"] .text-3xl {
-  color: #f5e7c4;
 }
 
 /* Add margin below the last wheel to prevent overlap with the player's hand */
