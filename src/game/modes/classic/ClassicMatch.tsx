@@ -461,7 +461,7 @@ export default function ClassicMatch({
           selectedCardId={selectedCardId}
           onSelectCard={setSelectedCardId}
           localLegacySide={localLegacySide}
-          phase={phase as Phase}
+          phase={phase}
           startPointerDrag={startPointerDrag}
           fighters={{ player, enemy }}
           dragCardId={dragCardId}
@@ -473,6 +473,8 @@ export default function ClassicMatch({
           hudColors={HUD_COLORS}
           wheelSections={wheelSections}
           wheelRefs={wheelRefs}
+          activationAdjustments={activationAdjustments}
+          activationSwapPairs={activationSwapPairs}
         />
       </div>
 

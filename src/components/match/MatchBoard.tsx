@@ -1,10 +1,28 @@
 import type { PointerEvent, DragEvent, RefObject } from "react";
 import CanvasWheel, { WheelHandle } from "../CanvasWheel";
-import StSCard from "../StSCard";
+import StSCard, {
+  type CardAdjustmentDescriptor,
+  type CardAdjustmentStatusTone,
+} from "../StSCard";
 import type { Card, Fighter, Section } from "../../game/types";
+import {
+  buildSwapPartnerMap,
+  computeEffectiveCardValues,
+  type ActivationAdjustmentsMap,
+  type ActivationSwapPairs,
+} from "../../game/match/valueAdjustments";
+import { getCardPlayValue } from "../../game/values";
 
 export type LegacySide = "player" | "enemy";
-export type Phase = "choose" | "showEnemy" | "anim" | "roundEnd" | "ended";
+export type Phase =
+  | "choose"
+  | "showEnemy"
+  | "anim"
+  | "roundEnd"
+  | "ended"
+  | "activation"
+  | "activationComplete"
+  | "shop";
 
 interface MatchBoardProps {
   theme: {
@@ -35,6 +53,8 @@ interface MatchBoardProps {
   hudColors: { player: string; enemy: string };
   wheelSections: Section[][];
   wheelRefs: Array<RefObject<WheelHandle | null>>;
+  activationAdjustments: ActivationAdjustmentsMap;
+  activationSwapPairs: ActivationSwapPairs;
 }
 
 const SLOT_WIDTH = 80;
@@ -65,6 +85,8 @@ export default function MatchBoard({
   hudColors,
   wheelSections,
   wheelRefs,
+  activationAdjustments,
+  activationSwapPairs,
 }: MatchBoardProps) {
   const lanes = Math.min(
     assign.player.length,
@@ -76,6 +98,21 @@ export default function MatchBoard({
 
   const panelShadow = "0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)";
   const wheelDimension = Math.round(lockedWheelSize ?? wheelSize);
+
+  const cardsInPlay: Card[] = [];
+  for (let i = 0; i < lanes; i++) {
+    const p = assign.player[i];
+    const e = assign.enemy[i];
+    if (p) cardsInPlay.push(p);
+    if (e) cardsInPlay.push(e);
+  }
+
+  const effectiveValues = computeEffectiveCardValues(
+    cardsInPlay,
+    activationAdjustments,
+    activationSwapPairs,
+  );
+  const swapPartnerMap = buildSwapPartnerMap(activationSwapPairs);
 
   return (
     <div className="flex flex-col items-center justify-start gap-1">
@@ -109,6 +146,45 @@ export default function MatchBoard({
           if (!slot.card) return null;
           const card = slot.card;
           const interactable = slot.side === localLegacySide && phase === "choose";
+
+          let adjustmentDescriptor: CardAdjustmentDescriptor | undefined;
+          if (card) {
+            const baseValue = getCardPlayValue(card);
+            const finalValue = effectiveValues.get(card.id);
+            const modifier = activationAdjustments[card.id]?.type ?? null;
+            const swapPartner = swapPartnerMap.get(card.id);
+            const swapVisible = swapPartner ? effectiveValues.has(swapPartner) : false;
+
+            const statusLabels: string[] = [];
+            let tone: CardAdjustmentStatusTone | undefined;
+            if (modifier === "boost") {
+              statusLabels.push("Boosted");
+              tone = "positive";
+            } else if (modifier === "split") {
+              statusLabels.push("Halved");
+              tone = "warning";
+            }
+            if (swapVisible) {
+              statusLabels.push("Swapped");
+              if (!tone) tone = "info";
+            }
+
+            if (
+              typeof finalValue === "number" &&
+              (finalValue !== baseValue || statusLabels.length > 0)
+            ) {
+              adjustmentDescriptor = {
+                value: finalValue,
+                status: statusLabels.length
+                  ? { label: statusLabels.join(" • "), tone: tone ?? "info" }
+                  : undefined,
+              };
+            } else if (statusLabels.length > 0) {
+              adjustmentDescriptor = {
+                status: { label: statusLabels.join(" • "), tone: tone ?? "info" },
+              };
+            }
+          }
 
           const handlePick = () => {
             if (!interactable) return;
@@ -154,6 +230,7 @@ export default function MatchBoard({
               showReserve={false}
 
               variant="minimal"
+              adjustment={adjustmentDescriptor}
             />
           );
         };

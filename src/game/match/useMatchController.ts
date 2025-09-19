@@ -32,6 +32,12 @@ import {
 } from "../../player/profileStore";
 import { getCardPlayValue, getCardReserveValue } from "../values";
 import { MAX_WHEEL, calcWheelSize } from "./wheelSizing";
+import {
+  computeAdjustedCardValue,
+  computeEffectiveCardValues,
+  type ActivationAdjustmentsMap,
+  type ActivationSwapPairs,
+} from "./valueAdjustments";
 
 function useLatestRef<T>(value: T) {
   const ref = useRef(value);
@@ -292,22 +298,21 @@ useEffect(() => {
     enemy: [],
   });
   const [pendingSwapCardId, setPendingSwapCardId] = useState<string | null>(null);
-  const [activationSwapPairs, setActivationSwapPairs] = useState<Array<[string, string]>>([]);
-  const [activationAdjustments, setActivationAdjustments] = useState<
-    Record<string, { type: "split" | "boost" }>
-  >({});
+  const [activationSwapPairs, setActivationSwapPairs] = useState<ActivationSwapPairs>([]);
+  const [activationAdjustments, setActivationAdjustments] =
+    useState<ActivationAdjustmentsMap>({});
 
   const activationAvailableRef = useRef(activationAvailable);
   useEffect(() => {
     activationAvailableRef.current = activationAvailable;
   }, [activationAvailable]);
 
-  const activationAdjustmentsRef = useRef(activationAdjustments);
+  const activationAdjustmentsRef = useRef<ActivationAdjustmentsMap>(activationAdjustments);
   useEffect(() => {
     activationAdjustmentsRef.current = activationAdjustments;
   }, [activationAdjustments]);
 
-  const activationSwapPairsRef = useRef(activationSwapPairs);
+  const activationSwapPairsRef = useRef<ActivationSwapPairs>(activationSwapPairs);
   useEffect(() => {
     activationSwapPairsRef.current = activationSwapPairs;
   }, [activationSwapPairs]);
@@ -1161,45 +1166,20 @@ function createInitialGauntletState(): GauntletState {
       e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null,
     }));
 
-    const effectiveValues = new Map<string, number>();
     const adjustments = activationAdjustmentsRef.current;
     const swaps = activationSwapPairsRef.current;
 
-    const computeAdjustedValue = (card: Card | null): number => {
-      if (!card) return 0;
-      const base = getCardPlayValue(card);
-      const modifier = adjustments[card.id];
-      if (!modifier) return base;
-      if (modifier.type === "split") {
-        return Math.trunc(base / 2);
-      }
-      if (modifier.type === "boost") {
-        return base * 2;
-      }
-      return base;
-    };
-
-    for (const slot of played) {
-      if (slot.p) {
-        effectiveValues.set(slot.p.id, computeAdjustedValue(slot.p));
-      }
-      if (slot.e) {
-        effectiveValues.set(slot.e.id, computeAdjustedValue(slot.e));
-      }
-    }
-
-    for (const [a, b] of swaps) {
-      const aVal = effectiveValues.get(a) ?? 0;
-      const bVal = effectiveValues.get(b) ?? 0;
-      effectiveValues.set(a, bVal);
-      effectiveValues.set(b, aVal);
-    }
+    const effectiveValues = computeEffectiveCardValues(
+      played.flatMap((slot) => [slot.p, slot.e]),
+      adjustments,
+      swaps,
+    );
 
     const valueForCard = (card: Card | null): number => {
       if (!card) return 0;
       const cached = effectiveValues.get(card.id);
       if (typeof cached === "number") return cached;
-      const value = computeAdjustedValue(card);
+      const value = computeAdjustedCardValue(card, adjustments);
       effectiveValues.set(card.id, value);
       return value;
     };

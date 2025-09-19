@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "echo 'No tests'"
+    "test": "tsc -p tsconfig.test.json && node --test --experimental-loader ./tests/js-extension-loader.mjs .test-dist/tests"
   },
   "dependencies": {
     "ably": "^2.12.0",
