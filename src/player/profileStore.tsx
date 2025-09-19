@@ -202,10 +202,43 @@ const BASIC_BLUEPRINTS: CardBlueprint[] = Array.from({ length: 10 }, (_, n) => (
   type: "normal",
   number: n,
   tags: [],
-  cost: 0,
+  cost: 10,
   rarity: "common",
   effectSummary: `A simple value ${n} card.`,
 }));
+
+const NEGATIVE_BLUEPRINTS: CardBlueprint[] = [
+  {
+    id: "cursed_pebble",
+    name: "Cursed Pebble",
+    type: "normal",
+    number: -1,
+    tags: ["oddshift"],
+    cost: 20,
+    rarity: "uncommon",
+    effectSummary: "−1 power that helps win the weakest slices.",
+  },
+  {
+    id: "void_lantern",
+    name: "Void Lantern",
+    type: "normal",
+    number: -2,
+    tags: ["parityflip"],
+    cost: 25,
+    rarity: "rare",
+    effectSummary: "−2 power. Perfect bait for Weakest or parity twists.",
+  },
+  {
+    id: "entropy_fragment",
+    name: "Entropy Fragment",
+    type: "normal",
+    number: -3,
+    tags: ["echoreserve"],
+    cost: 30,
+    rarity: "rare",
+    effectSummary: "−3 power shard that supercharges reserve-based plans.",
+  },
+];
 
 const ADVANCED_BLUEPRINTS: CardBlueprint[] = [
   {
@@ -216,7 +249,7 @@ const ADVANCED_BLUEPRINTS: CardBlueprint[] = [
     activation: [ABILITIES.chargeUp],
     reserve: { type: "bonus", amount: 1, summary: "+1 reserve from stored energy." },
     tags: ["oddshift"],
-    cost: 160,
+    cost: 25,
     rarity: "uncommon",
     effectSummary: "4 base, +3 when played. Reserve stores +1 charge.",
   },
@@ -228,7 +261,7 @@ const ADVANCED_BLUEPRINTS: CardBlueprint[] = [
     activation: [ABILITIES.echoReserve],
     reserve: { type: "default", summary: "Echo stash builds momentum." },
     tags: ["echoreserve"],
-    cost: 210,
+    cost: 30,
     rarity: "rare",
     effectSummary: "3 power. Reserve gains +3 then doubles while held.",
   },
@@ -240,7 +273,7 @@ const ADVANCED_BLUEPRINTS: CardBlueprint[] = [
     activation: [ABILITIES.vaultReserve],
     reserve: { type: "default", summary: "Reserve fortifies into a vault." },
     tags: ["parityflip"],
-    cost: 190,
+    cost: 35,
     rarity: "uncommon",
     effectSummary: "5 power. Reserve adds +2 then doubles in the vault.",
   },
@@ -262,7 +295,7 @@ const ADVANCED_BLUEPRINTS: CardBlueprint[] = [
       preferredFace: "left",
     },
     tags: ["oddshift"],
-    cost: 220,
+    cost: 40,
     rarity: "uncommon",
     effectSummary: "Feint (2+2) or Strike 7. Reserve favors the hidden Feint.",
   },
@@ -285,7 +318,7 @@ const ADVANCED_BLUEPRINTS: CardBlueprint[] = [
       preferredFace: "left",
     },
     tags: ["echoreserve"],
-    cost: 240,
+    cost: 45,
     rarity: "rare",
     effectSummary: "Predict (1+1) or Claim 6. Reserve gains +2 then doubles from omens.",
   },
@@ -307,13 +340,19 @@ const ADVANCED_BLUEPRINTS: CardBlueprint[] = [
       preferredFace: "left",
     },
     tags: ["parityflip", "echoreserve"],
-    cost: 320,
+    cost: 50,
     rarity: "legendary",
     effectSummary: "Drag (-1+4) or Surge 9. Reserve adds +4 then doubles in stasis.",
   },
 ];
 
-const CARD_BLUEPRINTS: CardBlueprint[] = [...BASIC_BLUEPRINTS, ...ADVANCED_BLUEPRINTS];
+const CARD_BLUEPRINTS: CardBlueprint[] = [
+  ...BASIC_BLUEPRINTS,
+  ...NEGATIVE_BLUEPRINTS,
+  ...ADVANCED_BLUEPRINTS,
+];
+
+const NEGATIVE_BLUEPRINT_IDS = new Set(NEGATIVE_BLUEPRINTS.map((entry) => entry.id));
 
 const CARD_BLUEPRINT_MAP = new Map<string, CardBlueprint>(
   CARD_BLUEPRINTS.map((entry) => [entry.id, entry]),
@@ -356,19 +395,36 @@ export function rollStoreOfferings(
 ): StoreOffering[] {
   const pool = [...CARD_BLUEPRINTS];
   const offers: StoreOffering[] = [];
+
+  const makeOffer = (blueprint: CardBlueprint) => ({
+    id: blueprint.id,
+    rarity: blueprint.rarity,
+    cost: blueprint.cost,
+    summary: blueprint.effectSummary ?? blueprint.name,
+    card: instantiateCard(blueprint),
+  });
+
+  if (count > 0) {
+    const negativePool = pool.filter((entry) => NEGATIVE_BLUEPRINT_IDS.has(entry.id));
+    if (negativePool.length > 0) {
+      const forced = negativePool[pickWeightedIndex(negativePool, rng)];
+      if (forced) {
+        const forcedIndex = pool.findIndex((entry) => entry.id === forced.id);
+        const [blueprint] = forcedIndex >= 0 ? pool.splice(forcedIndex, 1) : [forced];
+        if (blueprint) {
+          offers.push(makeOffer(blueprint));
+        }
+      }
+    }
+  }
+
   while (offers.length < count && pool.length) {
     const index = pickWeightedIndex(pool, rng);
     const blueprint = pool.splice(index, 1)[0];
     if (!blueprint) break;
-    const summary = blueprint.effectSummary ?? blueprint.name;
-    offers.push({
-      id: blueprint.id,
-      rarity: blueprint.rarity,
-      cost: blueprint.cost,
-      summary,
-      card: instantiateCard(blueprint),
-    });
+    offers.push(makeOffer(blueprint));
   }
+
   return offers;
 }
 
@@ -385,7 +441,7 @@ const numberBlueprintFromId = (cardId: string): CardBlueprint | null => {
     type: "normal",
     number: value,
     tags: [],
-    cost: value < 0 ? 120 : 40,
+    cost: value < 0 ? 30 : 10,
     rarity: value < 0 ? "uncommon" : "common",
     effectSummary: `Straight value ${value}.`,
   };

@@ -26,6 +26,7 @@ import {
   refillTo,
   freshFive,
   recordMatchResult,
+  rollStoreOfferings,
   type MatchResultSummary,
   type LevelProgress,
 } from "../../player/profileStore";
@@ -947,7 +948,7 @@ function createInitialGauntletState(): GauntletState {
   );
 
   const purchaseFromShop = useCallback(
-    (side: LegacySide, card: Card, cost = 1) => {
+    (side: LegacySide, card: Card, cost = 10) => {
       if (!isGauntletMode) return false;
       if (phase !== "shop") return false;
       const success = applyShopPurchase(side, card, cost, { force: false });
@@ -960,51 +961,12 @@ function createInitialGauntletState(): GauntletState {
     [applyShopPurchase, emitIntent, isGauntletMode, isMultiplayer, phase],
   );
 
-  const beginActivationPhase = useCallback(() => {
-    if (!isGauntletMode) return;
-    setActivationTurn(initiative);
-    setActivationPasses({ player: false, enemy: false });
-    setActivationLog([]);
-    setPhase("activation");
-  }, [initiative, isGauntletMode]);
-
-  const completeShopForSide = useCallback(
-    (side: LegacySide, opts?: { emit?: boolean }) => {
-      if (!isGauntletMode) return false;
-      if (phase !== "shop") return false;
-      let changed = false;
-      let finalState: { player: boolean; enemy: boolean } | null = null;
-      setShopReady((prev) => {
-        if (prev[side]) {
-          finalState = prev;
-          return prev;
-        }
-        changed = true;
-        const updated = { ...prev, [side]: true };
-        finalState = updated;
-        return updated;
-      });
-      if (!changed) return false;
-      if (opts?.emit && isMultiplayer) {
-        emitIntent({ type: "shopReady", side });
-      }
-      if (finalState?.player && finalState?.enemy) {
-        beginActivationPhase();
-      }
-      return true;
-    },
-    [beginActivationPhase, emitIntent, isGauntletMode, isMultiplayer, phase],
-  );
-
-  const markShopComplete = useCallback(
-    (side: LegacySide) => completeShopForSide(side, { emit: true }),
-    [completeShopForSide],
-  );
-
   const openShopPhase = useCallback(() => {
     if (!isGauntletMode) return false;
     if (round < 3) return false;
     if (phase === "shop") return false;
+    setPlayer((prev) => discardHand(prev));
+    setEnemy((prev) => discardHand(prev));
     setShopReady(() => {
       const base = { player: false, enemy: false };
       if (isMultiplayer) {
@@ -1021,6 +983,28 @@ function createInitialGauntletState(): GauntletState {
     if (phase !== "roundEnd") return;
     openShopPhase();
   }, [openShopPhase, phase, shouldOpenShopThisRound]);
+
+  useEffect(() => {
+    if (!isGauntletMode) return;
+    if (phase !== "shop") return;
+    if (isMultiplayer && localLegacySide !== hostLegacySide) return;
+    const currentInventory = shopInventory[localLegacySide] ?? [];
+    if (currentInventory.length > 0) return;
+    const offerings = rollStoreOfferings();
+    if (offerings.length === 0) return;
+    setShopInventory((prev) => ({
+      ...prev,
+      [localLegacySide]: offerings.map((offer) => offer.card),
+    }));
+  }, [
+    hostLegacySide,
+    isGauntletMode,
+    isMultiplayer,
+    localLegacySide,
+    phase,
+    rollStoreOfferings,
+    shopInventory,
+  ]);
 
   const revealRoundCore = useCallback(() => {
     const allow = phase === "choose" && canReveal;
@@ -1414,6 +1398,49 @@ function createInitialGauntletState(): GauntletState {
 
   const nextRound = nextRoundCore;
 
+  const beginActivationPhase = useCallback(() => {
+    if (!isGauntletMode) return;
+    nextRoundCore({ force: true });
+  }, [isGauntletMode, nextRoundCore]);
+
+  const completeShopForSide = useCallback(
+    (side: LegacySide, opts?: { emit?: boolean }) => {
+      if (!isGauntletMode) return false;
+      if (phase !== "shop") return false;
+      let changed = false;
+      let shouldAdvance = false;
+      setShopReady((prev) => {
+        if (prev[side]) return prev;
+        changed = true;
+        const updated = { ...prev, [side]: true };
+        if (updated.player && updated.enemy) {
+          shouldAdvance = true;
+        }
+        return updated;
+      });
+      if (!changed) return false;
+      if (opts?.emit && isMultiplayer) {
+        emitIntent({ type: "shopReady", side });
+      }
+      if (shouldAdvance) {
+        beginActivationPhase();
+      }
+      return true;
+    },
+    [
+      beginActivationPhase,
+      emitIntent,
+      isGauntletMode,
+      isMultiplayer,
+      phase,
+    ],
+  );
+
+  const markShopComplete = useCallback(
+    (side: LegacySide) => completeShopForSide(side, { emit: true }),
+    [completeShopForSide],
+  );
+
   const finishActivationPhase = useCallback(() => {
     if (!isGauntletMode) return false;
     setPhase("activationComplete");
@@ -1655,6 +1682,7 @@ function createInitialGauntletState(): GauntletState {
   const markRematchVoteRef = useLatestRef(markRematchVote);
   const storeReserveReportRef = useLatestRef(storeReserveReport);
   const applyGauntletPurchaseForRef = useLatestRef(applyGauntletPurchaseFor);
+  const applyGauntletShopRollForRef = useLatestRef(applyGauntletShopRollFor);
   const applyShopPurchaseRef = useLatestRef(applyShopPurchase);
   const completeShopForSideRef = useLatestRef(completeShopForSide);
   const applyGauntletGoldForRef = useLatestRef(applyGauntletGoldFor);
@@ -1712,6 +1740,21 @@ function createInitialGauntletState(): GauntletState {
           break;
         }
 
+        case "shopRoll": {
+          if (msg.side === localLegacySide) break;
+          const applyShopRoll = applyGauntletShopRollForRef.current;
+          applyShopRoll?.(msg.side, {
+            inventory: msg.inventory,
+            round: msg.round,
+            roll: msg.roll,
+          });
+          setShopInventory((prev) => ({
+            ...prev,
+            [msg.side]: msg.inventory.map(cloneCardForGauntlet),
+          }));
+          break;
+        }
+
         case "shopPurchase": {
           if (msg.side === localLegacySide) break;
           if ("cardId" in msg && typeof msg.cardId === "string" && typeof msg.round === "number") {
@@ -1766,6 +1809,7 @@ function createInitialGauntletState(): GauntletState {
       markRematchVoteRef,
       storeReserveReportRef,
       applyGauntletPurchaseForRef,
+      applyGauntletShopRollForRef,
       applyShopPurchaseRef,
       completeShopForSideRef,
       applyGauntletGoldForRef,
@@ -1934,6 +1978,15 @@ function computeReserveSum(side: LegacySide, played: (Card | null)[]) {
 
   const reserve = played.filter(Boolean) as Card[];
   return reserve.reduce((total, card) => total + getCardReserveValue(card), 0);
+}
+
+function discardHand(fighter: Fighter): Fighter {
+  if (!fighter.hand.length) return fighter;
+  return {
+    ...fighter,
+    hand: [],
+    discard: [...fighter.discard, ...fighter.hand],
+  };
 }
 
 function settleFighterAfterRound(fighter: Fighter, played: Card[]) {
