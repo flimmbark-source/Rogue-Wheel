@@ -1728,6 +1728,66 @@ function createInitialGauntletState(): GauntletState {
     [applyActivationAction],
   );
 
+  useEffect(() => {
+    if (isMultiplayer) return;
+    if (phase !== "activation") return;
+    if (activationTurn !== remoteLegacySide) return;
+    if (activationPasses[remoteLegacySide]) return;
+
+    const activationAction = applyActivationActionRef.current;
+    if (!activationAction) return;
+
+    const availableIds = activationAvailable[remoteLegacySide];
+
+    const findCard = (cardId: string): Card | null => {
+      const fromAssign =
+        assignRef.current.player.find((card) => card?.id === cardId) ??
+        assignRef.current.enemy.find((card) => card?.id === cardId) ??
+        null;
+      if (fromAssign) return fromAssign;
+
+      const enemyPicks = activationEnemyPicksRef.current;
+      if (!enemyPicks) return null;
+      return enemyPicks.find((card) => card?.id === cardId) ?? null;
+    };
+
+    let bestCardId: string | undefined;
+    let bestValue = Number.NEGATIVE_INFINITY;
+
+    for (const cardId of availableIds) {
+      const card = findCard(cardId);
+      if (!card) continue;
+      const value = getCardPlayValue(card);
+      if (value > bestValue) {
+        bestValue = value;
+        bestCardId = cardId;
+      }
+    }
+
+    if (!bestCardId && availableIds.length > 0) {
+      bestCardId = availableIds[0];
+    }
+
+    const params: { side: LegacySide; action: "activate" | "pass"; cardId?: string } =
+      bestCardId
+        ? { side: remoteLegacySide, action: "activate", cardId: bestCardId }
+        : { side: remoteLegacySide, action: "pass" };
+
+    startTransition(() => {
+      const success = activationAction(params);
+      if (!success && params.action === "activate") {
+        activationAction({ side: remoteLegacySide, action: "pass" });
+      }
+    });
+  }, [
+    activationAvailable,
+    activationPasses,
+    activationTurn,
+    isMultiplayer,
+    phase,
+    remoteLegacySide,
+  ]);
+
   const grantGold = useCallback(
     (side: LegacySide, amount: number) => {
       if (!isGauntletMode) return false;
