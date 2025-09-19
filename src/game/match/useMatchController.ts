@@ -10,6 +10,7 @@ import {
 import {
   SLICES,
   TARGET_WINS,
+  GAUNTLET_TARGET_WINS,
   type Side as TwoSide,
   type Card,
   type Section,
@@ -195,12 +196,14 @@ useEffect(() => {
     [players.left.name, players.right.name],
   );
 
+  const defaultTargetWins = isGauntletMode ? GAUNTLET_TARGET_WINS : TARGET_WINS;
+
   const winGoal = useMemo(() => {
     if (typeof targetWins === "number" && Number.isFinite(targetWins)) {
       return Math.max(1, Math.min(15, Math.round(targetWins)));
     }
-    return TARGET_WINS;
-  }, [targetWins]);
+    return defaultTargetWins;
+  }, [targetWins, defaultTargetWins]);
 
   const hostLegacySide: LegacySide = useMemo(() => {
     if (!hostId) return "player";
@@ -1002,10 +1005,16 @@ function createInitialGauntletState(): GauntletState {
     if (!isGauntletMode) return false;
     if (round < 3) return false;
     if (phase === "shop") return false;
-    setShopReady({ player: false, enemy: false });
+    setShopReady(() => {
+      const base = { player: false, enemy: false };
+      if (isMultiplayer) {
+        return { ...base };
+      }
+      return { ...base, [remoteLegacySide]: true };
+    });
     setPhase("shop");
     return true;
-  }, [isGauntletMode, phase, round]);
+  }, [isGauntletMode, isMultiplayer, phase, remoteLegacySide, round]);
 
   useEffect(() => {
     if (!shouldOpenShopThisRound) return;
@@ -1299,15 +1308,30 @@ function createInitialGauntletState(): GauntletState {
       setWins({ player: pWins, enemy: eWins });
       setReserveSums({ player: pReserve, enemy: eReserve });
       if (isGauntletMode && pWins < winGoal && eWins < winGoal) {
+        const playerReserveGold = Number.isFinite(pReserve) ? pReserve : 0;
+        const enemyReserveGold = Number.isFinite(eReserve) ? eReserve : 0;
+
         setGold((prev) => ({
-          player: prev.player + roundWinsCount.player,
-          enemy: prev.enemy + roundWinsCount.enemy,
+          player:
+            prev.player + roundWinsCount.player + playerReserveGold,
+          enemy: prev.enemy + roundWinsCount.enemy + enemyReserveGold,
         }));
         setShopPurchases({ player: [], enemy: [] });
-        setShopReady({ player: false, enemy: false });
+        setShopReady(() => {
+          const base = { player: false, enemy: false };
+          if (isMultiplayer) {
+            return { ...base };
+          }
+          return { ...base, [remoteLegacySide]: true };
+        });
         appendLog(
           `Gauntlet rewards — ${namesByLegacy.player} gains ${roundWinsCount.player} gold, ${namesByLegacy.enemy} gains ${roundWinsCount.enemy} gold.`,
         );
+        if (playerReserveGold !== 0 || enemyReserveGold !== 0) {
+          appendLog(
+            `Reserve spoils — ${namesByLegacy.player} claims ${playerReserveGold} gold, ${namesByLegacy.enemy} claims ${enemyReserveGold} gold.`,
+          );
+        }
       }
       clearAdvanceVotes();
       setPhase("roundEnd");
