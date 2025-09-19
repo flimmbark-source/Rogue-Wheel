@@ -284,6 +284,41 @@ useEffect(() => {
     { side: LegacySide; action: "activate" | "pass"; cardId?: string }[]
   >([]);
 
+  const [activationAvailable, setActivationAvailable] = useState<
+    Record<LegacySide, string[]>
+  >({ player: [], enemy: [] });
+  const [activationInitial, setActivationInitial] = useState<Record<LegacySide, string[]>>({
+    player: [],
+    enemy: [],
+  });
+  const [pendingSwapCardId, setPendingSwapCardId] = useState<string | null>(null);
+  const [activationSwapPairs, setActivationSwapPairs] = useState<Array<[string, string]>>([]);
+  const [activationAdjustments, setActivationAdjustments] = useState<
+    Record<string, { type: "split" | "boost" }>
+  >({});
+
+  const activationAvailableRef = useRef(activationAvailable);
+  useEffect(() => {
+    activationAvailableRef.current = activationAvailable;
+  }, [activationAvailable]);
+
+  const activationAdjustmentsRef = useRef(activationAdjustments);
+  useEffect(() => {
+    activationAdjustmentsRef.current = activationAdjustments;
+  }, [activationAdjustments]);
+
+  const activationSwapPairsRef = useRef(activationSwapPairs);
+  useEffect(() => {
+    activationSwapPairsRef.current = activationSwapPairs;
+  }, [activationSwapPairs]);
+
+  const pendingSwapRef = useRef(pendingSwapCardId);
+  useEffect(() => {
+    pendingSwapRef.current = pendingSwapCardId;
+  }, [pendingSwapCardId]);
+
+  const activationEnemyPicksRef = useRef<(Card | null)[] | null>(null);
+
   const [resolveVotes, setResolveVotes] = useState<{ player: boolean; enemy: boolean }>(
     {
       player: false,
@@ -349,6 +384,19 @@ useEffect(() => {
     gauntletStateRef.current = reset;
     setGauntletState(reset);
   }, []);
+
+  const resetGauntletShops = useCallback(() => {
+    updateGauntletState((prev) => ({
+      player: {
+        ...prev.player,
+        shop: { inventory: [], roll: 0, round: 0, purchases: [] },
+      },
+      enemy: {
+        ...prev.enemy,
+        shop: { inventory: [], roll: 0, round: 0, purchases: [] },
+      },
+    }));
+  }, [updateGauntletState]);
 
   const applyGauntletShopRollFor = useCallback(
     (side: LegacySide, payload: GauntletShopRollPayload) => {
@@ -1080,8 +1128,7 @@ function createInitialGauntletState(): GauntletState {
 
     setSafeTimeout(() => {
       if (!mountedRef.current) return;
-      setPhase("anim");
-      resolveRound(enemyPicks);
+      startActivationPhase(enemyPicks);
     }, 600);
 
     return true;
@@ -1094,6 +1141,7 @@ function createInitialGauntletState(): GauntletState {
     isMultiplayer,
     phase,
     setSafeTimeout,
+    startActivationPhase,
     wheelSize,
   ]);
 
@@ -1112,6 +1160,49 @@ function createInitialGauntletState(): GauntletState {
       p: assign.player[i] as Card | null,
       e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null,
     }));
+
+    const effectiveValues = new Map<string, number>();
+    const adjustments = activationAdjustmentsRef.current;
+    const swaps = activationSwapPairsRef.current;
+
+    const computeAdjustedValue = (card: Card | null): number => {
+      if (!card) return 0;
+      const base = getCardPlayValue(card);
+      const modifier = adjustments[card.id];
+      if (!modifier) return base;
+      if (modifier.type === "split") {
+        return Math.trunc(base / 2);
+      }
+      if (modifier.type === "boost") {
+        return base * 2;
+      }
+      return base;
+    };
+
+    for (const slot of played) {
+      if (slot.p) {
+        effectiveValues.set(slot.p.id, computeAdjustedValue(slot.p));
+      }
+      if (slot.e) {
+        effectiveValues.set(slot.e.id, computeAdjustedValue(slot.e));
+      }
+    }
+
+    for (const [a, b] of swaps) {
+      const aVal = effectiveValues.get(a) ?? 0;
+      const bVal = effectiveValues.get(b) ?? 0;
+      effectiveValues.set(a, bVal);
+      effectiveValues.set(b, aVal);
+    }
+
+    const valueForCard = (card: Card | null): number => {
+      if (!card) return 0;
+      const cached = effectiveValues.get(card.id);
+      if (typeof cached === "number") return cached;
+      const value = computeAdjustedValue(card);
+      effectiveValues.set(card.id, value);
+      return value;
+    };
 
     const localPlayed =
       localLegacySide === "player"
@@ -1163,8 +1254,8 @@ function createInitialGauntletState(): GauntletState {
       const secList = wheelSections[w];
       const cardP = played[w].p ?? null;
       const cardE = played[w].e ?? null;
-      const baseP = getCardPlayValue(cardP);
-      const baseE = getCardPlayValue(cardE);
+      const baseP = valueForCard(cardP);
+      const baseE = valueForCard(cardE);
       const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
       const targetSlice = (tokens[w] + steps) % SLICES;
       const section =
@@ -1371,13 +1462,20 @@ function createInitialGauntletState(): GauntletState {
       setWheelHUD([null, null, null]);
 
       setPhase("choose");
+      setActivationTurn(null);
+      setActivationPasses({ player: false, enemy: false });
+      setActivationLog([]);
+      setActivationAvailable({ player: [], enemy: [] });
+      setActivationInitial({ player: [], enemy: [] });
+      setActivationSwapPairs([]);
+      setActivationAdjustments({});
+      setPendingSwapCardId(null);
+      activationEnemyPicksRef.current = null;
       if (isGauntletMode) {
         setShopInventory({ player: [], enemy: [] });
         setShopPurchases({ player: [], enemy: [] });
         setShopReady({ player: false, enemy: false });
-        setActivationTurn(null);
-        setActivationPasses({ player: false, enemy: false });
-        setActivationLog([]);
+        resetGauntletShops();
       }
       setRound((r) => r + 1);
 
@@ -1389,6 +1487,7 @@ function createInitialGauntletState(): GauntletState {
       generateWheelSet,
       isGauntletMode,
       phase,
+      resetGauntletShops,
       setAssign,
       setEnemy,
       setFreezeLayout,
@@ -1404,7 +1503,7 @@ function createInitialGauntletState(): GauntletState {
 
   const nextRound = nextRoundCore;
 
-  const beginActivationPhase = useCallback(() => {
+  const resumeAfterShop = useCallback(() => {
     if (!isGauntletMode) return;
     nextRoundCore({ force: true });
   }, [isGauntletMode, nextRoundCore]);
@@ -1429,25 +1528,68 @@ function createInitialGauntletState(): GauntletState {
         emitIntent({ type: "shopReady", side });
       }
       if (shouldAdvance) {
-        beginActivationPhase();
+        resumeAfterShop();
       }
       return true;
     },
-    [
-      beginActivationPhase,
-      emitIntent,
-      isGauntletMode,
-      isMultiplayer,
-      phase,
-    ],
+    [resumeAfterShop, emitIntent, isGauntletMode, isMultiplayer, phase],
   );
 
   useEffect(() => {
     if (!isGauntletMode) return;
     if (phase !== "shop") return;
     if (!shopReady.player || !shopReady.enemy) return;
-    beginActivationPhase();
-  }, [beginActivationPhase, isGauntletMode, phase, shopReady.enemy, shopReady.player]);
+    resumeAfterShop();
+  }, [isGauntletMode, phase, resumeAfterShop, shopReady.enemy, shopReady.player]);
+
+  const startActivationPhase = useCallback(
+    (enemyPicks: (Card | null)[]) => {
+      const playerCards = assignRef.current.player.filter((c): c is Card => !!c);
+      const enemyCards = enemyPicks.filter((c): c is Card => !!c);
+
+      const playerIds = playerCards.map((card) => card.id);
+      const enemyIds = enemyCards.map((card) => card.id);
+
+      activationEnemyPicksRef.current = enemyPicks;
+
+      setActivationInitial({ player: playerIds, enemy: enemyIds });
+      setActivationAvailable({ player: playerIds, enemy: enemyIds });
+      setActivationPasses({ player: false, enemy: false });
+      setActivationLog([]);
+      setActivationAdjustments({});
+      setActivationSwapPairs([]);
+      setPendingSwapCardId(null);
+
+      const hasPlayerCards = playerIds.length > 0;
+      const hasEnemyCards = enemyIds.length > 0;
+
+      const starter: LegacySide | null = (() => {
+        if (!hasPlayerCards && !hasEnemyCards) return null;
+        if (initiative === "player") {
+          if (hasPlayerCards) return "player";
+          if (hasEnemyCards) return "enemy";
+        } else {
+          if (hasEnemyCards) return "enemy";
+          if (hasPlayerCards) return "player";
+        }
+        if (hasPlayerCards) return "player";
+        if (hasEnemyCards) return "enemy";
+        return null;
+      })();
+
+      setActivationTurn(starter);
+
+      if (!hasPlayerCards && !hasEnemyCards) {
+        setPhase("anim");
+        resolveRound(enemyPicks);
+        return;
+      }
+
+      appendLog("Activation phase begins.");
+      setPhase("activation");
+    },
+    [appendLog, initiative, resolveRound, setPhase],
+  );
 
   const markShopComplete = useCallback(
     (side: LegacySide) => completeShopForSide(side, { emit: true }),
@@ -1455,58 +1597,117 @@ function createInitialGauntletState(): GauntletState {
   );
 
   const finishActivationPhase = useCallback(() => {
-    if (!isGauntletMode) return false;
-    setPhase("activationComplete");
+    if (phase !== "activation") return false;
+    const enemyPicks = activationEnemyPicksRef.current ?? assignRef.current.enemy;
     setActivationTurn(null);
     setActivationPasses({ player: false, enemy: false });
-    setActivationLog([]);
-    nextRoundCore({ force: true });
+    setPendingSwapCardId(null);
+    activationEnemyPicksRef.current = null;
+    setPhase("anim");
+    resolveRound(enemyPicks);
     return true;
-  }, [isGauntletMode, nextRoundCore]);
+  }, [assignRef, phase, resolveRound, setPhase]);
 
   const applyActivationAction = useCallback(
     (
       params: { side: LegacySide; action: "activate" | "pass"; cardId?: string },
       opts?: { emit?: boolean },
     ) => {
-      if (!isGauntletMode) return false;
       if (phase !== "activation") return false;
-      if (activationTurn !== params.side) return false;
+      if (activationTurn && activationTurn !== params.side) return false;
+
       if (params.action === "activate") {
+        const cardId = params.cardId;
+        if (!cardId) return false;
+
+        const availableForSide = activationAvailableRef.current[params.side];
+        if (!availableForSide.includes(cardId)) {
+          return false;
+        }
+
+        const card =
+          assignRef.current.player.find((c) => c?.id === cardId) ??
+          assignRef.current.enemy.find((c) => c?.id === cardId) ??
+          null;
+        if (!card) return false;
+
+        const swapSource = pendingSwapRef.current;
+        if (swapSource && swapSource !== cardId) {
+          setActivationSwapPairs((prev) => [...prev, [swapSource, cardId]]);
+          setPendingSwapCardId(null);
+        } else if (swapSource && swapSource === cardId) {
+          setPendingSwapCardId(null);
+        }
+
+        const behavior = card.behavior ?? null;
+        if (behavior === "split") {
+          setActivationAdjustments((prev) => ({ ...prev, [cardId]: { type: "split" } }));
+        } else if (behavior === "boost") {
+          setActivationAdjustments((prev) => ({ ...prev, [cardId]: { type: "boost" } }));
+        } else if (behavior === "swap") {
+          setPendingSwapCardId(cardId);
+        }
+
+        const nextAvailableForSide = availableForSide.filter((id) => id !== cardId);
+        setActivationAvailable((prev) => ({
+          ...prev,
+          [params.side]: nextAvailableForSide,
+        }));
         setActivationLog((prev) => [...prev, { ...params }]);
         setActivationPasses({ player: false, enemy: false });
+
         if (opts?.emit && isMultiplayer) {
           emitIntent({ type: "activation", ...params });
         }
-        setActivationTurn(oppositeSide(params.side));
-      } else {
-        let shouldFinish = false;
-        setActivationPasses((prev) => {
-          if (prev[params.side]) return prev;
-          const updated = { ...prev, [params.side]: true };
-          if (updated.player && updated.enemy) {
-            shouldFinish = true;
-          }
-          return updated;
-        });
-        setActivationLog((prev) => [...prev, { ...params }]);
-        if (opts?.emit && isMultiplayer) {
-          emitIntent({ type: "activation", ...params });
-        }
-        if (shouldFinish) {
+
+        const otherSide = oppositeSide(params.side);
+        const otherHasCards = activationAvailableRef.current[otherSide].length > 0;
+        const selfHasCardsAfter = nextAvailableForSide.length > 0;
+
+        if (!otherHasCards && !selfHasCardsAfter) {
+          setActivationTurn(null);
           finishActivationPhase();
           return true;
         }
-        setActivationTurn(oppositeSide(params.side));
+
+        const nextTurn = otherHasCards ? otherSide : params.side;
+        setActivationTurn(nextTurn);
         return true;
       }
+
+      let shouldFinish = false;
+      setActivationPasses((prev) => {
+        if (prev[params.side]) return prev;
+        const updated = { ...prev, [params.side]: true };
+        if (updated.player && updated.enemy) {
+          shouldFinish = true;
+        }
+        return updated;
+      });
+      setActivationLog((prev) => [...prev, { ...params }]);
+
+      if (opts?.emit && isMultiplayer) {
+        emitIntent({ type: "activation", ...params });
+      }
+
+      const otherSide = oppositeSide(params.side);
+      const otherHasCards = activationAvailableRef.current[otherSide].length > 0;
+      const selfHasCards = activationAvailableRef.current[params.side].length > 0;
+
+      if (shouldFinish || (!otherHasCards && !selfHasCards)) {
+        setActivationTurn(null);
+        finishActivationPhase();
+        return true;
+      }
+
+      const nextTurn = otherHasCards ? otherSide : params.side;
+      setActivationTurn(nextTurn);
       return true;
     },
     [
       activationTurn,
       emitIntent,
       finishActivationPhase,
-      isGauntletMode,
       isMultiplayer,
       phase,
     ],
@@ -1634,6 +1835,12 @@ function createInitialGauntletState(): GauntletState {
     setActivationTurn(null);
     setActivationPasses({ player: false, enemy: false });
     setActivationLog([]);
+    setActivationAvailable({ player: [], enemy: [] });
+    setActivationInitial({ player: [], enemy: [] });
+    setActivationSwapPairs([]);
+    setActivationAdjustments({});
+    setPendingSwapCardId(null);
+    activationEnemyPicksRef.current = null;
 
     const emptyAssign: { player: (Card | null)[]; enemy: (Card | null)[] } = {
       player: [null, null, null],
@@ -1886,6 +2093,11 @@ function createInitialGauntletState(): GauntletState {
     activationTurn,
     activationPasses,
     activationLog,
+    activationAvailable,
+    activationInitial,
+    activationSwapPairs,
+    activationAdjustments,
+    pendingSwapCardId,
     activateCurrent,
     passActivation,
     finishActivationPhase,
@@ -1967,6 +2179,7 @@ function cardsEqual(a: Card, b: Card): boolean {
   if ((a.number ?? null) !== (b.number ?? null)) return false;
   if ((a.leftValue ?? null) !== (b.leftValue ?? null)) return false;
   if ((a.rightValue ?? null) !== (b.rightValue ?? null)) return false;
+  if ((a.behavior ?? null) !== (b.behavior ?? null)) return false;
   if ((a.cost ?? null) !== (b.cost ?? null)) return false;
   if ((a.rarity ?? null) !== (b.rarity ?? null)) return false;
   if ((a.effectSummary ?? null) !== (b.effectSummary ?? null)) return false;

@@ -5,6 +5,7 @@ import HandDock from "../../../components/match/HandDock";
 import TouchDragLayer, {
   useTouchDragLayer,
 } from "../../../components/match/TouchDragLayer";
+import ActivationPhaseOverlay from "../../../components/match/ActivationPhaseOverlay";
 import GauntletPhasePanel from "./GauntletPhasePanel";
 import type { Players, Side as TwoSide } from "../../types";
 import useMultiplayerChannel from "../../match/useMultiplayerChannel";
@@ -127,6 +128,16 @@ export default function GauntletMatch({
     purchaseFromShop,
     gauntletRollShop,
     gauntletState,
+    activationTurn,
+    activationPasses,
+    activationLog,
+    activationAvailable,
+    activationInitial,
+    activationSwapPairs,
+    activationAdjustments,
+    pendingSwapCardId,
+    activateCurrent,
+    passActivation,
   } = controller;
 
   const {
@@ -216,6 +227,25 @@ export default function GauntletMatch({
       configureShopInventory={configureShopInventory}
       purchaseFromShop={purchaseFromShop}
       markShopComplete={markShopComplete}
+    />
+  );
+
+  const activationOverlay = (
+    <ActivationPhaseOverlay
+      phase={phase}
+      activationTurn={activationTurn}
+      activationAvailable={activationAvailable}
+      activationInitial={activationInitial}
+      activationPasses={activationPasses}
+      activationLog={activationLog}
+      activationAdjustments={activationAdjustments}
+      activationSwapPairs={activationSwapPairs}
+      pendingSwapCardId={pendingSwapCardId}
+      assign={assign}
+      localLegacySide={localLegacySide}
+      namesByLegacy={namesByLegacy}
+      onActivateCard={(cardId) => activateCurrent(localLegacySide, cardId)}
+      onPass={() => passActivation(localLegacySide)}
     />
   );
 
@@ -419,6 +449,7 @@ export default function GauntletMatch({
       </div>
 
       {gauntletPhaseUI}
+      {activationOverlay}
 
       <div className="relative z-0" style={{ paddingBottom: handClearance }}>
         <MatchBoard

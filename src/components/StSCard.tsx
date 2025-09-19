@@ -3,6 +3,7 @@ import React, { memo } from "react";
 import { Card } from "../game/types";
 import {
   fmtNum,
+  getCardBehavior,
   getCardPlayValue,
   getCardReserveValue,
   getSplitFaces,
@@ -130,6 +131,10 @@ const framesByKind: Record<Kind, string> = {
 const cardBackground = backgroundsByKind[cardKind];
 const frameBorder = framesByKind[cardKind];
 
+const behavior = getCardBehavior(card);
+const behaviorIcon =
+  behavior === "split" ? "✂️" : behavior === "boost" ? "⚡" : behavior === "swap" ? "🔄" : null;
+
 /* ==== END MERGE-RESOLVED ==== */
 
   return (
@@ -164,6 +169,12 @@ const frameBorder = framesByKind[cardKind];
       {debugKind && (
         <div className="pointer-events-none absolute right-1 top-1 rounded bg-black/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white/80">
           {cardKind}
+        </div>
+      )}
+
+      {behaviorIcon && (
+        <div className="pointer-events-none absolute left-1 top-1 text-lg leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.65)]">
+          {behaviorIcon}
         </div>
       )}
 

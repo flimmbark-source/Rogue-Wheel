@@ -30,6 +30,8 @@ export type TagId = "oddshift" | "parityflip" | "echoreserve";
 
 export type CardType = "normal" | "split";
 
+export type CardBehavior = "split" | "boost" | "swap";
+
 export type CardRarity = "common" | "uncommon" | "rare" | "legendary";
 
 export type SplitFaceId = "left" | "right";
@@ -75,6 +77,7 @@ export type Card = {
   number?: number;      // when type === "normal"
   split?: CardSplit;    // when type === "split"
   activation?: ActivationAbility[];
+  behavior?: CardBehavior;
   reserve?: ReserveBehavior;
   tags: TagId[];
   cost?: number;
