@@ -318,6 +318,7 @@ useEffect(() => {
   }, [pendingSwapCardId]);
 
   const activationEnemyPicksRef = useRef<(Card | null)[] | null>(null);
+  const startActivationPhaseRef = useRef<(enemyPicks: (Card | null)[]) => void>(() => {});
 
   const [resolveVotes, setResolveVotes] = useState<{ player: boolean; enemy: boolean }>(
     {
@@ -1128,7 +1129,7 @@ function createInitialGauntletState(): GauntletState {
 
     setSafeTimeout(() => {
       if (!mountedRef.current) return;
-      startActivationPhase(enemyPicks);
+      startActivationPhaseRef.current(enemyPicks);
     }, 600);
 
     return true;
@@ -1141,7 +1142,6 @@ function createInitialGauntletState(): GauntletState {
     isMultiplayer,
     phase,
     setSafeTimeout,
-    startActivationPhase,
     wheelSize,
   ]);
 
@@ -1598,6 +1598,8 @@ function createInitialGauntletState(): GauntletState {
     (side: LegacySide) => completeShopForSide(side, { emit: true }),
     [completeShopForSide],
   );
+
+  startActivationPhaseRef.current = startActivationPhase;
 
   const finishActivationPhase = useCallback(() => {
     if (phase !== "activation") return false;
