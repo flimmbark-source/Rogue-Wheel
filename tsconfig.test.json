@@ -12,6 +12,7 @@
     "tests/**/*.d.ts",
     "src/game/types.ts",
     "src/game/values.ts",
+    "src/game/match/useMatchController.ts",
     "src/game/match/valueAdjustments.ts",
     "src/player/profileStore.tsx"
   ],
