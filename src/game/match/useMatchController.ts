@@ -1121,58 +1121,104 @@ function createInitialGauntletState(): GauntletState {
     ],
   );
 
-  const purchaseFromShop = useCallback(
-    (side: LegacySide, target: StoreOffering | string) => {
-      if (!isGauntletMode) return false;
-      if (phase !== "shop") return false;
-// Resolve to a concrete card, cost, and sourceId (offeringId when available)
-const costToUse = (resolvedOffering?.cost ?? fallbackCost ?? 1);
-const sourceId =
-  (resolvedOfferingId ?? (card ? getCardSourceId(card) : undefined)) ?? null;
+// Purchase from shop (merged: offering-based + card-based, supports sourceId)
+const purchaseFromShop = useCallback(
+  (
+    side: LegacySide,
+    target:
+      | StoreOffering
+      | { offeringId: string; cost?: number }
+      | string
+      | { card: Card; cost: number; sourceId?: string | null },
+  ): boolean => {
+    if (!isGauntletMode) return false;
+    if (phase !== "shop") return false;
 
-// Apply the purchase (card + cost + optional sourceId)
-const success = applyShopPurchase(side, card, costToUse, {
-  force: false,
-  sourceId,
-});
-if (!success) return false;
+    // Resolve offering/card/cost/source
+    let resolvedOffering: StoreOffering | undefined;
+    let resolvedOfferingId: string | undefined;
+    let fallbackCard: Card | undefined;
+    let fallbackCost: number | undefined;
 
-// Emit multiplayer intent in the most appropriate shape
-if (isMultiplayer) {
-  if (resolvedOfferingId) {
-    // Offering-based payload (current shape)
-    emitIntent({
-      type: "shopPurchase",
-      side,
-      offeringId: resolvedOfferingId,
-      cost: costToUse,
-    });
-  } else if (card) {
-    // Card-based payload (new/legacy shape with optional sourceId)
-    emitIntent({
-      type: "shopPurchase",
-      side,
-      card,
-      cost: costToUse,
+    if (typeof target === "string") {
+      // offering id
+      resolvedOfferingId = target;
+      resolvedOffering = findOfferingForSide(side, target);
+    } else if (
+      typeof target === "object" &&
+      target !== null &&
+      "offeringId" in target
+    ) {
+      // { offeringId, cost? }
+      const payload = target as { offeringId: string; cost?: number };
+      resolvedOfferingId = payload.offeringId;
+      resolvedOffering = findOfferingForSide(side, payload.offeringId);
+      fallbackCost = payload.cost;
+    } else if (isStoreOffering(target)) {
+      // StoreOffering
+      resolvedOffering = target;
+      resolvedOfferingId = target.id;
+    } else if (isLegacyShopCardPayload(target)) {
+      // { card, cost, sourceId? }
+      fallbackCard = target.card;
+      fallbackCost = target.cost;
+      resolvedOfferingId = target.sourceId ?? getCardSourceId(target.card);
+    } else {
+      return false;
+    }
+
+    const card = resolvedOffering?.card ?? fallbackCard;
+    if (!card) return false;
+
+    // Already purchased this round?
+    const alreadyPurchased = shopPurchases[side].some((c) => c.id === card.id);
+    if (alreadyPurchased) return false;
+
+    const costToUse = (resolvedOffering?.cost ?? fallbackCost ?? 1);
+    const sourceId = (resolvedOfferingId ?? getCardSourceId(card)) ?? null;
+
+    // Apply purchase
+    const ok = applyShopPurchase(side, card, costToUse, {
+      force: false,
       sourceId,
     });
-  }
-}
+    if (!ok) return false;
 
-return true;
-
+    // Emit MP intent
+    if (isMultiplayer) {
+      if (resolvedOfferingId && resolvedOffering) {
+        // offering-based payload
+        emitIntent({
+          type: "shopPurchase",
+          side,
+          offeringId: resolvedOfferingId,
+          cost: costToUse,
+        });
+      } else {
+        // card-based payload (new/legacy)
+        emitIntent({
+          type: "shopPurchase",
+          side,
+          card,
+          cost: costToUse,
+          sourceId,
+        });
       }
-      return true;
-    },
-    [
-      applyShopPurchase,
-      emitIntent,
-      findOfferingForSide,
-      isGauntletMode,
-      isMultiplayer,
-      phase,
-    ],
-  );
+    }
+
+    return true;
+  },
+  [
+    isGauntletMode,
+    phase,
+    shopPurchases,
+    applyShopPurchase,
+    isMultiplayer,
+    emitIntent,
+    findOfferingForSide,
+  ],
+);
+
 
   const openShopPhase = useCallback(() => {
     if (!isGauntletMode) return false;
