@@ -995,15 +995,27 @@ function cardFromId(cardId: string): Card {
 }
 
 // ====== Build a runtime deck (Card[]) from the ACTIVE profile deck ======
-export function buildActiveDeckAsCards(): Card[] {
-  const { active } = getProfileBundle();
-  if (!active || !active.cards?.length) return starterDeck(); // fallback
+function buildDeckEntriesAsCards(entries: DeckCard[] | undefined): Card[] {
+  if (!entries?.length) return starterDeck();
 
   const pool: Card[] = [];
-  for (const entry of active.cards) {
-    for (let i = 0; i < entry.qty; i++) pool.push(cardFromId(entry.cardId));
+  for (const entry of entries) {
+    for (let i = 0; i < entry.qty; i += 1) {
+      pool.push(cardFromId(entry.cardId));
+    }
   }
   return shuffle(pool);
+}
+
+export function buildActiveDeckAsCards(): Card[] {
+  const { active } = getProfileBundle();
+  return buildDeckEntriesAsCards(active?.cards);
+}
+
+export function buildGauntletDeckAsCards(): Card[] {
+  const run = getGauntletRun();
+  if (!run) return buildActiveDeckAsCards();
+  return buildDeckEntriesAsCards(run.deck);
 }
 
 // ====== Runtime helpers (folded from your src/game/decks.ts) ======
@@ -1049,7 +1061,11 @@ export function addPurchasedCardToFighter(fighter: Fighter, card: Card): Fighter
 }
 
 /** Make a fighter using the ACTIVE profile deck (draw 5 to start). */
-export function makeFighter(name: string): Fighter {
-  const deck = buildActiveDeckAsCards();
-  return refillTo({ name, deck, hand: [], discard: [] }, 5);
+export type MakeFighterOptions = {
+  deck?: Card[];
+};
+
+export function makeFighter(name: string, options: MakeFighterOptions = {}): Fighter {
+  const sourceDeck = options.deck ? [...options.deck] : buildActiveDeckAsCards();
+  return refillTo({ name, deck: sourceDeck, hand: [], discard: [] }, 5);
 }
