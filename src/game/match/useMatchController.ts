@@ -2243,7 +2243,7 @@ function addPurchasedCardToFighter(fighter: Fighter, card: Card): Fighter {
   const purchased = cloneCardForGauntlet(card);
   return {
     ...fighter,
-    deck: [purchased, ...fighter.deck],
+    discard: [purchased, ...fighter.discard],
   };
 }
 
