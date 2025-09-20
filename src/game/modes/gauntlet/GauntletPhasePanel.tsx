@@ -6,6 +6,7 @@ import type {
   GauntletState,
   LegacySide,
   Phase,
+  PendingShopPurchase,
 } from "../../match/useMatchController";
 import StSCard from "../../../components/StSCard";
 
@@ -16,7 +17,7 @@ export type GauntletPhasePanelProps = {
   remoteLegacySide: LegacySide;
   namesByLegacy: Record<LegacySide, string>;
   gold: Record<LegacySide, number>;
-  shopInventory: Record<LegacySide, StoreOffering[]>;
+  shopInventory: Record<LegacySide, Card[]>;
   shopPurchases: Record<LegacySide, Card[]>;
   shopReady: { player: boolean; enemy: boolean };
   gauntletState: GauntletState;
@@ -60,7 +61,7 @@ export default function GauntletPhasePanel({
   const previousRound = localGauntlet?.shop.round ?? 0;
   const previousInventory =
     previousRound === round ? localGauntlet?.shop.inventory ?? [] : [];
-  const purchasedIds = new Set(localPurchases.map((card) => card.id));
+  const purchasedIds = new Set(localPurchases.map((purchase) => purchase.card.id));
 
   const readyMessage = (() => {
     if (localReady && remoteReady) {
@@ -283,8 +284,8 @@ export default function GauntletPhasePanel({
                   Purchased this round
                 </div>
                 <ul className="mt-2 space-y-1 text-xs text-amber-100/90">
-                  {localPurchases.map((card) => (
-                    <li key={card.id}>• {card.name}</li>
+                  {localPurchases.map((purchase) => (
+                    <li key={purchase.card.id}>• {purchase.card.name}</li>
                   ))}
                 </ul>
               </div>

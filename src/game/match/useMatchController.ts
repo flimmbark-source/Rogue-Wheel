@@ -80,6 +80,12 @@ export type GauntletShopState = {
   purchases: GauntletShopPurchase[];
 };
 
+export type PendingShopPurchase = {
+  card: Card;
+  sourceId: string | null;
+  cost: number;
+};
+
 export type GauntletActivationState = {
   selection: string | null;
   passed: boolean;
@@ -115,7 +121,10 @@ export type MPIntent =
   | ({ type: "shopRoll"; side: LegacySide } & GauntletShopRollPayload)
   | { type: "shopReady"; side: LegacySide }
   | ({ type: "shopPurchase"; side: LegacySide } & (
-      { offeringId: string; cost: number } | { cardId: string; round: number } | { card: Card; cost: number }
+  { offeringId: string; cost: number }
+  | { cardId: string; round: number }
+  | { card: Card; cost: number; sourceId?: string | null }
+
     ))
   | ({ type: "gold"; side: LegacySide } & GauntletGoldPayload)
   | { type: "activationSelect"; side: LegacySide; activationId: string }
@@ -133,9 +142,9 @@ type ShopReadyIntent =
 // Back-compat: support both legacy (cardId+round) and new (card+cost)
 type ShopPurchaseIntent =
   ({ type: "shopPurchase"; side: LegacySide } & (
-    | { offeringId: string; cost: number } // current shape
-    | { cardId: string; round: number }    // legacy shape
-    | { card: Card; cost: number }         // legacy shape
+    | { offeringId: string; cost: number }                  // current shape
+    | { cardId: string; round: number }                     // legacy shape
+    | { card: Card; cost: number; sourceId?: string | null } // new shape
   ));
 
 type GoldIntent =
@@ -285,7 +294,9 @@ useEffect(() => {
     player: [],
     enemy: [],
   });
-  const [shopPurchases, setShopPurchases] = useState<Record<LegacySide, Card[]>>({
+  const [shopPurchases, setShopPurchases] = useState<
+    Record<LegacySide, PendingShopPurchase[]>
+  >({
     player: [],
     enemy: [],
   });
@@ -1010,7 +1021,7 @@ function createInitialGauntletState(): GauntletState {
         | StoreOffering
         | { offeringId: string; cost?: number }
         | string
-        | { card: Card; cost: number },
+        | { card: Card; cost: number; sourceId?: string | null },
       opts?: { force?: boolean },
     ) => {
       if (!isGauntletMode) return false;
@@ -1038,7 +1049,7 @@ function createInitialGauntletState(): GauntletState {
       } else if (isLegacyShopCardPayload(target)) {
         fallbackCard = target.card;
         fallbackCost = target.cost;
-        resolvedOfferingId = getCardSourceId(target.card);
+        resolvedOfferingId = target.sourceId ?? getCardSourceId(target.card);
       } else {
         return false;
       }
@@ -1048,7 +1059,10 @@ function createInitialGauntletState(): GauntletState {
         return false;
       }
 
-      const alreadyPurchased = shopPurchases[side].some((c) => c.id === card.id);
+      const alreadyPurchased = shopPurchases[side].some(
+        (purchase) => purchase.id === card.id,
+      );
+
       if (alreadyPurchased) {
         return false;
       }
@@ -1069,9 +1083,14 @@ function createInitialGauntletState(): GauntletState {
         return false;
       }
 
+      const purchaseSourceId =
+        opts && "sourceId" in opts ? opts.sourceId ?? null : getCardSourceId(card);
       setShopPurchases((prev) => ({
         ...prev,
-        [side]: [...prev[side], cloneCardForGauntlet(card)],
+        [side]: [
+          ...prev[side],
+          { card: cloneCardForGauntlet(card), sourceId: purchaseSourceId ?? null, cost },
+        ],
       }));
       setShopReady((prev) => ({ ...prev, [side]: false }));
 
@@ -1090,6 +1109,7 @@ function createInitialGauntletState(): GauntletState {
         }
       }
 
+
       return true;
     },
     [
@@ -1098,7 +1118,6 @@ function createInitialGauntletState(): GauntletState {
       isGauntletMode,
       namesByLegacy,
       shopPurchases,
-      localLegacySide,
     ],
   );
 
@@ -1106,19 +1125,42 @@ function createInitialGauntletState(): GauntletState {
     (side: LegacySide, target: StoreOffering | string) => {
       if (!isGauntletMode) return false;
       if (phase !== "shop") return false;
+// Resolve to a concrete card, cost, and sourceId (offeringId when available)
+const costToUse = (resolvedOffering?.cost ?? fallbackCost ?? 1);
+const sourceId =
+  (resolvedOfferingId ?? (card ? getCardSourceId(card) : undefined)) ?? null;
 
-      const offering =
-        typeof target === "string" ? findOfferingForSide(side, target) : target;
+// Apply the purchase (card + cost + optional sourceId)
+const success = applyShopPurchase(side, card, costToUse, {
+  force: false,
+  sourceId,
+});
+if (!success) return false;
 
-      const success = applyShopPurchase(side, offering ?? target, { force: false });
-      if (!success) return false;
-      if (isMultiplayer && offering) {
-        emitIntent({
-          type: "shopPurchase",
-          side,
-          offeringId: offering.id,
-          cost: offering.cost,
-        });
+// Emit multiplayer intent in the most appropriate shape
+if (isMultiplayer) {
+  if (resolvedOfferingId) {
+    // Offering-based payload (current shape)
+    emitIntent({
+      type: "shopPurchase",
+      side,
+      offeringId: resolvedOfferingId,
+      cost: costToUse,
+    });
+  } else if (card) {
+    // Card-based payload (new/legacy shape with optional sourceId)
+    emitIntent({
+      type: "shopPurchase",
+      side,
+      card,
+      cost: costToUse,
+      sourceId,
+    });
+  }
+}
+
+return true;
+
       }
       return true;
     },
@@ -1194,40 +1236,17 @@ function createInitialGauntletState(): GauntletState {
         return [null, null, null] as (Card | null)[];
       }
 
-      const picks: (Card | null)[] = [null, null, null];
-      const taken = new Set<string>();
+      const playerHand = playerRef.current.hand;
 
-      const assignEnemyCard = (idx: number, card: Card) => {
-        picks[idx] = card;
-        taken.add(card.id);
-      };
-
-      const chooseForLane = (idx: number) => {
-        const lane = assign.enemy[idx];
-        if (lane) return;
-
-        const available = hand.filter((card) => !taken.has(card.id));
-        if (available.length === 0) return;
-
-        let best = available[0];
-        let bestValue = getCardPlayValue(best);
-        for (let i = 1; i < available.length; i++) {
-          const candidate = available[i];
-          const value = getCardPlayValue(candidate);
-          if (value > bestValue) {
-            best = candidate;
-            bestValue = value;
-          }
-        }
-
-        if (best) assignEnemyCard(idx, best);
-      };
-
-      chooseForLane(0);
-      chooseForLane(1);
-      chooseForLane(2);
-
-      return picks;
+      return chooseEnemyAssignments({
+        enemyHand: hand,
+        currentEnemyAssign: assign.enemy,
+        playerAssign: assign.player,
+        playerHand,
+        wheelSections,
+        tokens,
+        initiative,
+      });
     };
 
     const enemyPicks: (Card | null)[] = isMultiplayer
@@ -1252,12 +1271,17 @@ function createInitialGauntletState(): GauntletState {
   }, [
     appendLog,
     assign.enemy,
+    assign.player,
     broadcastLocalReserve,
     canReveal,
     enemy,
+    initiative,
     isMultiplayer,
     phase,
+    playerRef,
     setSafeTimeout,
+    tokens,
+    wheelSections,
     wheelSize,
   ]);
 
@@ -1347,69 +1371,23 @@ function createInitialGauntletState(): GauntletState {
 
     setReserveSums({ player: pReserve, enemy: eReserve });
 
-    type Outcome = {
-      steps: number;
-      targetSlice: number;
-      section: Section;
-      winner: LegacySide | null;
-      tie: boolean;
-      wheel: number;
-      detail: string;
-    };
+    type Outcome = LaneOutcome & { wheel: number };
     const outcomes: Outcome[] = [];
 
     for (let w = 0; w < 3; w++) {
-      const secList = wheelSections[w];
       const cardP = played[w].p ?? null;
       const cardE = played[w].e ?? null;
-      const baseP = valueForCard(cardP);
-      const baseE = valueForCard(cardE);
-      const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
-      const targetSlice = (tokens[w] + steps) % SLICES;
-      const section =
-        secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) ||
-        ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
-
-      const pVal = baseP;
-      const eVal = baseE;
-      let winner: LegacySide | null = null;
-      let tie = false;
-      let detail = "";
-      switch (section.id) {
-        case "Strongest":
-          if (pVal === eVal) tie = true;
-          else winner = pVal > eVal ? "player" : "enemy";
-          detail = `Strongest ${pVal} vs ${eVal}`;
-          break;
-        case "Weakest":
-          if (pVal === eVal) tie = true;
-          else winner = pVal < eVal ? "player" : "enemy";
-          detail = `Weakest ${pVal} vs ${eVal}`;
-          break;
-        case "ReserveSum":
-          if (pReserve === eReserve) tie = true;
-          else winner = pReserve > eReserve ? "player" : "enemy";
-          detail = `Reserve ${pReserve} vs ${eReserve}`;
-          break;
-        case "ClosestToTarget": {
-          const target = targetSlice === 0 ? section.target ?? 0 : targetSlice;
-          const pd = Math.abs(pVal - target);
-          const ed = Math.abs(eVal - target);
-          if (pd === ed) tie = true;
-          else winner = pd < ed ? "player" : "enemy";
-          detail = `Closest to ${target}: ${pVal} vs ${eVal}`;
-          break;
-        }
-        case "Initiative":
-          winner = initiative;
-          detail = `Initiative -> ${winner}`;
-          break;
-        default:
-          tie = true;
-          detail = "Slice 0: no section";
-          break;
-      }
-      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail });
+      const outcome = evaluateLaneOutcome({
+        playerCard: cardP,
+        enemyCard: cardE,
+        playerReserve: pReserve,
+        enemyReserve: eReserve,
+        token: tokens[w],
+        sections: wheelSections[w] ?? [],
+        initiative,
+        valueForCard,
+      });
+      outcomes.push({ ...outcome, wheel: w });
     }
 
     const animateSpins = async () => {
@@ -1625,13 +1603,31 @@ function createInitialGauntletState(): GauntletState {
       setEnemy((prev) => stackPurchasesOnDeck(prev, pending.enemy));
     }
 
+    const localPending = pending[localLegacySide];
+    for (const purchase of localPending) {
+      if (!purchase.sourceId) continue;
+      try {
+        applyGauntletPurchase({
+          add: [{ cardId: purchase.sourceId, qty: 1 }],
+          cost: purchase.cost,
+        });
+      } catch (error) {
+        console.error("Failed to record gauntlet purchase", error);
+      }
+    }
+
+    setShopPurchases({ player: [], enemy: [] });
+
     nextRoundCore({ force: true });
   }, [
+    applyGauntletPurchase,
     isGauntletMode,
+    localLegacySide,
     nextRoundCore,
     setEnemy,
     setPlayer,
     shopPurchasesRef,
+    setShopPurchases,
   ]);
 
   const completeShopForSide = useCallback(
@@ -2198,8 +2194,22 @@ function createInitialGauntletState(): GauntletState {
             applyShopPurchaseFn?.(msg.side, { offeringId: msg.offeringId, cost }, { force: true });
           } else if ("cardId" in msg && typeof msg.cardId === "string" && typeof msg.round === "number") {
             applyGauntletPurchaseFn?.(msg.side, { cardId: msg.cardId, round: msg.round });
-          } else if ("card" in msg && msg.card && typeof (msg as any).cost === "number") {
-            applyShopPurchaseFn?.(msg.side, { card: (msg as any).card, cost: (msg as any).cost }, { force: true });
+} else if ("card" in msg && msg.card && typeof msg.cost === "number") {
+  const { card, cost } = msg as { card: Card; cost: number } & { sourceId?: string | null };
+  const sourceId =
+    "sourceId" in msg ? ((msg as any).sourceId as string | null | undefined) ?? null : undefined;
+
+  if (applyShopPurchaseFn) {
+    // Prefer new signature: (side, card, cost, { force, sourceId })
+    try {
+      (applyShopPurchaseFn as any)(msg.side, card, cost, { force: true, sourceId });
+    } catch {
+      // Fallback to legacy signature: (side, { card, cost, sourceId? }, { force })
+      (applyShopPurchaseFn as any)(msg.side, { card, cost, sourceId }, { force: true });
+    }
+  }
+}
+
           }
           break;
         }
@@ -2462,9 +2472,287 @@ function computeReserveSum(hand: (Card | null | undefined)[], excludeIds?: Set<s
   }, 0);
 }
 
+export type LaneOutcome = {
+  steps: number;
+  targetSlice: number;
+  section: Section;
+  winner: LegacySide | null;
+  tie: boolean;
+  detail: string;
+  playerValue: number;
+  enemyValue: number;
+};
+
+type EvaluateLaneOutcomeOptions = {
+  playerCard: Card | null;
+  enemyCard: Card | null;
+  playerReserve: number;
+  enemyReserve: number;
+  token: number;
+  sections: Section[];
+  initiative: LegacySide;
+  valueForCard?: (card: Card | null) => number;
+};
+
+export function evaluateLaneOutcome({
+  playerCard,
+  enemyCard,
+  playerReserve,
+  enemyReserve,
+  token,
+  sections,
+  initiative,
+  valueForCard = getCardPlayValue,
+}: EvaluateLaneOutcomeOptions): LaneOutcome {
+  const playerValue = valueForCard(playerCard);
+  const enemyValue = valueForCard(enemyCard);
+  const steps = ((playerValue % SLICES) + (enemyValue % SLICES)) % SLICES;
+  const targetSlice = (token + steps) % SLICES;
+  const fallback: Section = {
+    id: "Strongest",
+    color: "transparent",
+    start: 0,
+    end: 0,
+  };
+  const section =
+    sections.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) || fallback;
+
+  let winner: LegacySide | null = null;
+  let tie = false;
+  let detail = "";
+
+  switch (section.id) {
+    case "Strongest":
+      if (playerValue === enemyValue) tie = true;
+      else winner = playerValue > enemyValue ? "player" : "enemy";
+      detail = `Strongest ${playerValue} vs ${enemyValue}`;
+      break;
+    case "Weakest":
+      if (playerValue === enemyValue) tie = true;
+      else winner = playerValue < enemyValue ? "player" : "enemy";
+      detail = `Weakest ${playerValue} vs ${enemyValue}`;
+      break;
+    case "ReserveSum":
+      if (playerReserve === enemyReserve) tie = true;
+      else winner = playerReserve > enemyReserve ? "player" : "enemy";
+      detail = `Reserve ${playerReserve} vs ${enemyReserve}`;
+      break;
+    case "ClosestToTarget": {
+      const target = targetSlice === 0 ? section.target ?? 0 : targetSlice;
+      const playerDistance = Math.abs(playerValue - target);
+      const enemyDistance = Math.abs(enemyValue - target);
+      if (playerDistance === enemyDistance) tie = true;
+      else winner = playerDistance < enemyDistance ? "player" : "enemy";
+      detail = `Closest to ${target}: ${playerValue} vs ${enemyValue}`;
+      break;
+    }
+    case "Initiative":
+      winner = initiative;
+      detail = `Initiative -> ${winner}`;
+      break;
+    default:
+      tie = true;
+      detail = "Slice 0: no section";
+      break;
+  }
+
+  return {
+    steps,
+    targetSlice,
+    section,
+    winner,
+    tie,
+    detail,
+    playerValue,
+    enemyValue,
+  };
+}
+
+type ChooseEnemyAssignmentsOptions = {
+  enemyHand: Card[];
+  currentEnemyAssign: (Card | null)[];
+  playerAssign: (Card | null)[];
+  playerHand: Card[];
+  wheelSections: Section[][];
+  tokens: number[];
+  initiative: LegacySide;
+  valueForCard?: (card: Card | null) => number;
+};
+
+type CandidateScore = {
+  picks: (Card | null)[];
+  score: number;
+  wins: number;
+  reserveAdv: number;
+  preference: number;
+};
+
+export function chooseEnemyAssignments({
+  enemyHand,
+  currentEnemyAssign,
+  playerAssign,
+  playerHand,
+  wheelSections,
+  tokens,
+  initiative,
+  valueForCard = getCardPlayValue,
+}: ChooseEnemyAssignmentsOptions): (Card | null)[] {
+  const baseAssign = [...currentEnemyAssign];
+  const lockedIds = new Set(
+    baseAssign
+      .map((card) => card?.id)
+      .filter((id): id is string => typeof id === "string"),
+  );
+  const availableCards = enemyHand.filter((card) => !lockedIds.has(card.id));
+  const unfilled = baseAssign.reduce<number[]>((lanes, card, idx) => {
+    if (!card) lanes.push(idx);
+    return lanes;
+  }, []);
+
+  if (unfilled.length === 0) {
+    return baseAssign;
+  }
+
+  const playerAssignedIds = new Set(
+    playerAssign
+      .map((card) => card?.id)
+      .filter((id): id is string => typeof id === "string"),
+  );
+  const playerReserve = computeReserveSum(playerHand, playerAssignedIds);
+
+  let best: CandidateScore = {
+    picks: baseAssign,
+    score: Number.NEGATIVE_INFINITY,
+    wins: Number.NEGATIVE_INFINITY,
+    reserveAdv: Number.NEGATIVE_INFINITY,
+    preference: Number.POSITIVE_INFINITY,
+  };
+  let bestPicks = baseAssign;
+
+  const used = new Set<string>();
+  const selections = new Map<number, Card | null>();
+
+  const evaluate = () => {
+    const candidate = [...baseAssign];
+    const assignedIds = new Set(lockedIds);
+    for (const lane of unfilled) {
+      const pick = selections.get(lane) ?? null;
+      candidate[lane] = pick;
+      if (pick) assignedIds.add(pick.id);
+    }
+
+    const enemyReserve = computeReserveSum(enemyHand, assignedIds);
+    const reserveAdv = enemyReserve - playerReserve;
+
+    let heuristic = 0;
+    let totalWins = 0;
+    let preferenceScore = 0;
+
+    for (let lane = 0; lane < 3; lane += 1) {
+      const outcome = evaluateLaneOutcome({
+        playerCard: playerAssign[lane] ?? null,
+        enemyCard: candidate[lane] ?? null,
+        playerReserve,
+        enemyReserve,
+        token: tokens[lane] ?? 0,
+        sections: wheelSections[lane] ?? [],
+        initiative,
+        valueForCard,
+      });
+
+      if (outcome.winner === "enemy") totalWins += 1;
+      else if (outcome.winner === "player") totalWins -= 1;
+
+      const diff = outcome.enemyValue - outcome.playerValue;
+      switch (outcome.section.id) {
+        case "ReserveSum":
+          heuristic += reserveAdv;
+          break;
+        case "Weakest":
+          heuristic += outcome.playerValue - outcome.enemyValue;
+          preferenceScore += outcome.enemyValue * 2;
+          break;
+        case "Initiative":
+          heuristic += -outcome.enemyValue;
+          preferenceScore += outcome.enemyValue;
+          break;
+        default:
+          heuristic += diff;
+          break;
+      }
+    }
+
+    const candidateScore = heuristic;
+    const candidateWins = totalWins;
+    const candidateReserve = reserveAdv;
+    const candidatePreference = preferenceScore;
+
+    const replace = () => {
+      best = {
+        picks: candidate,
+        score: candidateScore,
+        wins: candidateWins,
+        reserveAdv: candidateReserve,
+        preference: candidatePreference,
+      };
+      bestPicks = candidate;
+    };
+
+    if (candidateScore > best.score) {
+      replace();
+    } else if (candidateScore === best.score) {
+      if (candidateWins > best.wins) {
+        replace();
+      } else if (candidateWins === best.wins) {
+        if (candidateReserve > best.reserveAdv) {
+          replace();
+        } else if (candidateReserve === best.reserveAdv) {
+          if (candidatePreference < best.preference) {
+            replace();
+          }
+        }
+      }
+    }
+  };
+
+  const search = (index: number) => {
+    if (index >= unfilled.length) {
+      evaluate();
+      return;
+    }
+
+    const lane = unfilled[index];
+
+    for (const card of availableCards) {
+      if (used.has(card.id)) continue;
+      used.add(card.id);
+      selections.set(lane, card);
+      search(index + 1);
+      selections.delete(lane);
+      used.delete(card.id);
+    }
+
+    const remainingLanes = unfilled.length - (index + 1);
+    const remainingCards = availableCards.length - used.size;
+    if (remainingCards < remainingLanes) {
+      selections.set(lane, null);
+      search(index + 1);
+      selections.delete(lane);
+    }
+  };
+
+  search(0);
+
+  return bestPicks;
+}
+
 function stackPurchasesOnDeck(fighter: Fighter, purchases: Card[]): Fighter {
+  
   if (purchases.length === 0) return fighter;
-  return purchases.reduce((next, card) => addPurchasedCardToFighter(next, card), fighter);
+  return purchases.reduce(
+    (next, purchase) => addPurchasedCardToFighter(next, purchase.card),
+    fighter,
+  );
 }
 
 function discardHand(fighter: Fighter): Fighter {

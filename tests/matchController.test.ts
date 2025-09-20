@@ -1,8 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import type { Card, Fighter } from "../src/game/types.js";
-import { settleFighterAfterRound } from "../src/game/match/useMatchController.js";
+import type { Card, Fighter, Section } from "../src/game/types.js";
+import {
+  chooseEnemyAssignments,
+  settleFighterAfterRound,
+} from "../src/game/match/useMatchController.js";
 
 const makeCard = (id: string): Card => ({
   id,
@@ -12,11 +15,97 @@ const makeCard = (id: string): Card => ({
   tags: [],
 });
 
+const makeValuedCard = (
+  id: string,
+  value: number,
+  reserveValue = 0,
+): Card => ({
+  id,
+  name: id,
+  type: "normal",
+  number: value,
+  reserve:
+    reserveValue > 0
+      ? ({ type: "fixed", value: reserveValue } as Card["reserve"])
+      : undefined,
+  tags: [],
+});
+
+const makeSection = (id: Section["id"]): Section => ({
+  id,
+  color: "",
+  start: 1,
+  end: 15,
+});
+
 const makeFighter = (deck: Card[], hand: Card[], discard: Card[] = []): Fighter => ({
   name: "Testy",
   deck: [...deck],
   hand: [...hand],
   discard: [...discard],
+});
+
+test("enemy picker preserves high reserve cards on ReserveSum", () => {
+  const reserveSection = [makeSection("ReserveSum")];
+  const strongSection = [makeSection("Strongest")];
+  const playerCard = makeValuedCard("player-strong", 2, 0);
+  const playerHand = [playerCard, makeValuedCard("player-reserve", 0, 5)];
+
+  const highReserve = makeValuedCard("enemy-keep", 4, 8);
+  const lowReserve = makeValuedCard("enemy-play", 4, 1);
+  const enemyHand = [highReserve, lowReserve];
+
+  const picks = chooseEnemyAssignments({
+    enemyHand,
+    currentEnemyAssign: [null, null, null],
+    playerAssign: [playerCard, null, null],
+    playerHand,
+    wheelSections: [reserveSection, strongSection, strongSection],
+    tokens: [1, 1, 1],
+    initiative: "enemy",
+  });
+
+  const playedIds = new Set(picks.filter((card): card is Card => !!card).map((c) => c.id));
+  assert.equal(
+    playedIds.has(highReserve.id),
+    false,
+    "enemy should retain the highest reserve card in hand when ReserveSum is active",
+  );
+});
+
+test("enemy picker favors low-value plays on Weakest and Initiative lanes", () => {
+  const strongSection = [makeSection("Strongest")];
+  const weakSection = [makeSection("Weakest")];
+  const initiativeSection = [makeSection("Initiative")];
+
+  const playerAssign: (Card | null)[] = [
+    makeValuedCard("player-strong", 2, 0),
+    makeValuedCard("player-weak", 4, 0),
+    makeValuedCard("player-init", 5, 0),
+  ];
+  const playerHand = playerAssign.filter((card): card is Card => !!card);
+
+  const high = makeValuedCard("enemy-high", 6, 0);
+  const mid = makeValuedCard("enemy-mid", 3, 0);
+  const low = makeValuedCard("enemy-low", 1, 0);
+
+  const picks = chooseEnemyAssignments({
+    enemyHand: [high, mid, low],
+    currentEnemyAssign: [null, null, null],
+    playerAssign,
+    playerHand,
+    wheelSections: [strongSection, weakSection, initiativeSection],
+    tokens: [1, 1, 1],
+    initiative: "enemy",
+  });
+
+  assert.equal(picks[0]?.id, high.id, "strongest lane should use the highest value card");
+  assert.equal(picks[1]?.id, low.id, "weakest lane should use the lowest value card");
+  assert.equal(
+    picks[2]?.id,
+    mid.id,
+    "initiative lane should spend a smaller card, preserving higher values elsewhere",
+  );
 });
 
 test("settleFighterAfterRound discards the entire hand before refilling", () => {
