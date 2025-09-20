@@ -127,6 +127,16 @@ const instantiateCard = (blueprint: CardBlueprint): Card => ({
   effectSummary: blueprint.effectSummary,
 });
 
+export function cloneCardForGauntlet(card: Card): Card {
+  return {
+    ...card,
+    split: card.split ? cloneSplit(card.split) : undefined,
+    activation: card.activation ? card.activation.map(cloneActivation) : undefined,
+    reserve: card.reserve ? { ...card.reserve } : undefined,
+    tags: Array.isArray(card.tags) ? [...card.tags] : [],
+  };
+}
+
 const ABILITIES = {
   feintBoost: {
     id: "feint_boost",
@@ -1028,6 +1038,14 @@ export function freshFive(f: Fighter): Fighter {
   const hand = pool.slice(0, 5);
   const deck = pool.slice(5);
   return { name: f.name, hand, deck, discard: [] };
+}
+
+export function addPurchasedCardToFighter(fighter: Fighter, card: Card): Fighter {
+  const purchased = cloneCardForGauntlet(card);
+  return {
+    ...fighter,
+    deck: [purchased, ...fighter.deck],
+  };
 }
 
 /** Make a fighter using the ACTIVE profile deck (draw 5 to start). */

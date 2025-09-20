@@ -25,6 +25,8 @@ import {
   drawOne,
   refillTo,
   freshFive,
+  cloneCardForGauntlet,
+  addPurchasedCardToFighter,
   recordMatchResult,
   rollStoreOfferings,
   type MatchResultSummary,
@@ -2230,7 +2232,6 @@ function createInitialGauntletState(): GauntletState {
     handleRemoteIntent,
   };
 }
-
 
 function cloneCardForGauntlet(card: Card): Card {
   return {
