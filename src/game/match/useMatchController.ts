@@ -1403,20 +1403,6 @@ const purchaseFromShop = useCallback(
       enemy: purchases.enemy.map((purchase) => ({ ...purchase })),
     };
 
-    const purchases = takeShopPurchases();
-    const localPending = nextRoundPurchases[localLegacySide];
-    for (const purchase of localPending) {
-      if (!purchase.sourceId) continue;
-      try {
-        applyGauntletPurchase({
-          add: [{ cardId: purchase.sourceId, qty: 1 }],
-          cost: purchase.cost,
-        });
-      } catch (error) {
-        console.error("Failed to record gauntlet purchase", error);
-      }
-    }
-
     nextRoundCore({ force: true, purchases: nextRoundPurchases });
 
   }, [
