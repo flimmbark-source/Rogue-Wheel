@@ -160,3 +160,61 @@ test("resumeAfterShop stacks purchases before advancing to the next round", () =
     "nextRoundCore should immediately draw the purchased card into hand",
   );
 });
+
+test("shop purchases remain available for immediate resume processing", () => {
+  const startingDeck = ["d1", "d2", "d3", "d4", "d5", "d6"].map(makeCard);
+  const startingHand = ["h1", "h2", "h3", "h4", "h5"].map(makeCard);
+  const fighter = makeFighter(startingDeck, startingHand);
+
+  const purchase: PendingShopPurchase = {
+    card: makeCard("shop-card"),
+    cost: 3,
+    sourceId: "offer-1",
+  };
+
+  type Queue = Record<"player" | "enemy", PendingShopPurchase[]>;
+  const queueRef: { current: Queue } = { current: { player: [], enemy: [] } };
+
+  const enqueuePurchase = (prev: Queue): Queue => {
+    const next: Queue = {
+      player: [...prev.player, purchase],
+      enemy: prev.enemy,
+    };
+    queueRef.current = next;
+    return next;
+  };
+
+  const queued = enqueuePurchase(queueRef.current);
+
+  assert.equal(
+    queueRef.current.player.length,
+    1,
+    "shopPurchasesRef should reflect the enqueued purchase immediately",
+  );
+  assert.equal(
+    queued.player[0]?.card.id,
+    purchase.card.id,
+    "purchase should be added to the player's queue",
+  );
+
+  const stacked = stackPurchasesOnDeck(fighter, queueRef.current.player);
+  assert.equal(
+    stacked.deck[0]?.id,
+    purchase.card.id,
+    "resumeAfterShop should stack the purchase on top of the deck",
+  );
+
+  const afterNextRound = settleFighterAfterRound(stacked, []);
+  assert.equal(
+    afterNextRound.hand[0]?.id,
+    purchase.card.id,
+    "the purchased card should be drawn into hand when the round resumes",
+  );
+
+  queueRef.current = { player: [], enemy: [] };
+  assert.equal(
+    queueRef.current.player.length,
+    0,
+    "shopPurchasesRef should be cleared after processing completes",
+  );
+});
