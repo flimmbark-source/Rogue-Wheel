@@ -3,6 +3,7 @@ import type { PointerEvent, DragEvent, MutableRefObject } from "react";
 import { motion } from "framer-motion";
 import StSCard, { getCardEffectSummary } from "../StSCard";
 import type { Card, Fighter } from "../../game/types";
+import { isSplit } from "../../game/values";
 import type { LegacySide } from "./MatchBoard";
 
 interface HandDockProps {
@@ -68,7 +69,13 @@ export default function HandDock({
       <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
         {localFighter.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
-          const abilitySummary = card.behavior
+          const shouldDescribeAbility = Boolean(
+            card.behavior ||
+              (card.activation?.length ?? 0) > 0 ||
+              card.reserve?.summary ||
+              isSplit(card),
+          );
+          const abilitySummary = shouldDescribeAbility
             ? getCardEffectSummary(card) ?? undefined
             : undefined;
 
