@@ -1104,18 +1104,6 @@ function createInitialGauntletState(): GauntletState {
         `${namesByLegacy[side]} purchases ${card.name} for ${resolvedCost} gold.`,
       );
 
-      if (side === localLegacySide) {
-        const sourceId = resolvedOffering?.id ?? resolvedOfferingId ?? getCardSourceId(card);
-        if (sourceId) {
-          try {
-            applyGauntletPurchase({ add: [{ cardId: sourceId, qty: 1 }], cost: resolvedCost });
-          } catch (error) {
-            console.error("Failed to record gauntlet purchase", error);
-          }
-        }
-      }
-
-
       return true;
     },
     [
