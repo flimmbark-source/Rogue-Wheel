@@ -29,6 +29,7 @@ import {
   addPurchasedCardToFighter,
   recordMatchResult,
   rollStoreOfferings,
+  buildGauntletDeckAsCards,
   type MatchResultSummary,
   type LevelProgress,
 } from "../../player/profileStore";
@@ -247,7 +248,9 @@ useEffect(() => {
     return id;
   }, []);
 
-  const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
+  const [player, setPlayer] = useState<Fighter>(() =>
+    isGauntletMode ? makeFighter("Wanderer", { deck: buildGauntletDeckAsCards() }) : makeFighter("Wanderer"),
+  );
   const [enemy, setEnemy] = useState<Fighter>(() => makeFighter("Shade Bandit"));
   const playerRef = useLatestRef(player);
   const enemyRef = useLatestRef(enemy);
@@ -1909,7 +1912,9 @@ function createInitialGauntletState(): GauntletState {
     setFreezeLayout(false);
     setLockedWheelSize(null);
 
-    setPlayer(() => makeFighter("Wanderer"));
+    setPlayer(() =>
+      isGauntletMode ? makeFighter("Wanderer", { deck: buildGauntletDeckAsCards() }) : makeFighter("Wanderer"),
+    );
     setEnemy(() => makeFighter("Shade Bandit"));
 
     setInitiative(hostId ? hostLegacySide : localLegacySide);
@@ -1956,6 +1961,7 @@ function createInitialGauntletState(): GauntletState {
     clearRematchVotes,
     clearResolveVotes,
     generateWheelSet,
+    isGauntletMode,
     hostId,
     hostLegacySide,
     localLegacySide,
