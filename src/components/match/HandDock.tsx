@@ -68,7 +68,6 @@ export default function HandDock({
       <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
         {localFighter.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
-
           const abilitySummary = card.behavior
             ? getCardEffectSummary(card) ?? undefined
             : undefined;
@@ -86,6 +85,7 @@ export default function HandDock({
 
             const lane =
               localLegacySide === "player" ? assign.player : assign.enemy;
+
             const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
             if (slotIdx !== -1) {
               onAssignToWheel(slotIdx, card);
@@ -128,6 +128,8 @@ export default function HandDock({
                   showReserve={false}
                   variant="minimal"
                   showAbilityHint
+                  frameAppearance="hand"
+
                   onPick={handlePick}
                   draggable
                   onDragStart={(event: DragEvent<HTMLButtonElement>) => {
@@ -177,6 +179,7 @@ export default function HandDock({
               showReserve={false}
               variant="minimal"
               showAbilityHint
+              frameAppearance="hand"
             />
           </div>
         </div>

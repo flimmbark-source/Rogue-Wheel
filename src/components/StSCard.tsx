@@ -9,6 +9,8 @@ import {
   getSplitFaces,
   isSplit,
 } from "../game/values";
+import cardFrameUrl from "../../assets/card-frame.png";
+import negativeCardFrameUrl from "../../assets/negative-card-frame.png";
 
 type Kind = "normal" | "negative" | "split";
 
@@ -88,6 +90,8 @@ export default memo(function StSCard({
   title,
   ariaLabel,
   ariaPressed,
+  frameAppearance = "default",
+
 
 }: {
   card: Card;
@@ -110,6 +114,8 @@ export default memo(function StSCard({
   title?: string;
   ariaLabel?: string;
   ariaPressed?: boolean;
+  frameAppearance?: "default" | "hand";
+
 
 }) {
   // ---------- Dimensions ----------
@@ -245,6 +251,21 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
           return summary ? `, ${summary}` : "";
         })()}`;
 
+  const useWoodFrame = frameAppearance === "hand";
+  const buttonBackgroundClass = useWoodFrame ? "bg-transparent" : cardBackground;
+  const buttonStyle: React.CSSProperties = {
+    width: dims.w,
+    height: dims.h,
+    ...(useWoodFrame
+      ? {
+          backgroundImage: `url(${cardKind === "negative" ? negativeCardFrameUrl : cardFrameUrl})`,
+          backgroundSize: "cover",
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "center",
+        }
+      : {}),
+  };
+
   return (
     <button
       onClick={(e) => {
@@ -256,8 +277,9 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
         ${disabled ? "opacity-60" : "hover:scale-[1.02]"}
         transition will-change-transform
         ${selected ? "ring-2 ring-amber-400" : ""}
-        ${cardBackground}
+        ${buttonBackgroundClass}
       `}
+      style={buttonStyle}
       style={{ width: dims.w, height: dims.h }}
       aria-label={computedAriaLabel}
       aria-describedby={ariaDescribedBy}
@@ -271,10 +293,11 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
       title={title}
       aria-pressed={ariaPressed}
     >
-      {/* Border-only frame; bg is transparent so it never masks the button background */}
-      <div
-        className={`pointer-events-none absolute inset-0 rounded-xl border ${frameBorder} bg-transparent`}
-      />
+      {!useWoodFrame && (
+        <div
+          className={`pointer-events-none absolute inset-0 rounded-xl border ${frameBorder} bg-transparent`}
+        />
+      )}
 
       {(adjustment?.status || debugKind) && (
         <div className="pointer-events-none absolute right-1 top-1 flex flex-col items-end gap-1">
