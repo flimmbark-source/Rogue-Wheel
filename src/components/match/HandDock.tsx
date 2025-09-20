@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent, DragEvent, MutableRefObject } from "react";
 import { motion } from "framer-motion";
-import StSCard from "../StSCard";
+import StSCard, { getCardEffectSummary } from "../StSCard";
 import type { Card, Fighter } from "../../game/types";
 import type { LegacySide } from "./MatchBoard";
 
@@ -68,6 +68,9 @@ export default function HandDock({
       <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
         {localFighter.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
+          const abilityTooltip = card.behavior
+            ? getCardEffectSummary(card) ?? undefined
+            : undefined;
           return (
             <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
               <motion.div
@@ -122,7 +125,8 @@ export default function HandDock({
                   onDragEnd={() => onDragCardChange(null)}
                   onPointerDown={(event: PointerEvent<HTMLButtonElement>) => startPointerDrag(card, event)}
                   aria-pressed={isSelected}
-                  aria-label={`Select ${card.name}`}
+                  aria-label={`Select ${card.name}${abilityTooltip ? `, ${abilityTooltip}` : ""}`}
+                  title={abilityTooltip}
                 >
                   <StSCard
                     card={card}
