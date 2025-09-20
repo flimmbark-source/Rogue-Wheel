@@ -72,6 +72,7 @@ export default function HandDock({
           const abilitySummary = card.behavior
             ? getCardEffectSummary(card) ?? undefined
             : undefined;
+
           const handlePick = () => {
             if (!selectedCardId) {
               onSelectCard(card.id);
@@ -83,7 +84,8 @@ export default function HandDock({
               return;
             }
 
-            const lane = localLegacySide === "player" ? assign.player : assign.enemy;
+            const lane =
+              localLegacySide === "player" ? assign.player : assign.enemy;
             const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
             if (slotIdx !== -1) {
               onAssignToWheel(slotIdx, card);
@@ -92,14 +94,17 @@ export default function HandDock({
 
             onSelectCard(card.id);
           };
-          const ariaLabel = `Select ${card.name}${abilitySummary ? `, ${abilitySummary}` : ""}`;
 
-          const abilityTooltip = card.behavior
-            ? getCardEffectSummary(card) ?? undefined
-            : undefined;
+          const ariaLabel = `Select ${card.name}${
+            abilitySummary ? `, ${abilitySummary}` : ""
+          }`;
 
           return (
-            <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
+            <div
+              key={card.id}
+              className="group relative pointer-events-auto"
+              style={{ zIndex: 10 + idx }}
+            >
               <motion.div
                 data-hand-card
                 initial={false}
@@ -114,7 +119,9 @@ export default function HandDock({
                   scale: 1.04,
                 }}
                 transition={{ type: "spring", stiffness: 320, damping: 22 }}
-                className={`drop-shadow-xl ${isSelected ? "ring-2 ring-amber-300" : ""}`}
+                className={`drop-shadow-xl ${
+                  isSelected ? "ring-2 ring-amber-300" : ""
+                }`}
               >
                 <StSCard
                   card={card}
@@ -131,29 +138,14 @@ export default function HandDock({
                     event.dataTransfer.effectAllowed = "move";
                   }}
                   onDragEnd={() => onDragCardChange(null)}
-                  
-                  onPointerDown={(event: PointerEvent<HTMLButtonElement>) =>
-                    startPointerDrag(card, event)
-                  }
+                  onPointerDown={(
+                    event: PointerEvent<HTMLButtonElement>,
+                  ) => startPointerDrag(card, event)}
                   ariaLabel={ariaLabel}
                   title={abilitySummary}
                   ariaPressed={isSelected}
                   selected={isSelected}
                 />
-
-                  onPointerDown={(event: PointerEvent<HTMLButtonElement>) => startPointerDrag(card, event)}
-                  aria-pressed={isSelected}
-                  aria-label={`Select ${card.name}${abilityTooltip ? `, ${abilityTooltip}` : ""}`}
-                  title={abilityTooltip}
-                >
-                  <StSCard
-                    card={card}
-                    showReserve={false}
-                    variant="minimal"
-                    showAbilityHint
-                  />
-                </button>
-
               </motion.div>
             </div>
           );
@@ -166,13 +158,20 @@ export default function HandDock({
             position: "fixed",
             left: 0,
             top: 0,
-            transform: `translate(${pointerPosition.current.x - 48}px, ${pointerPosition.current.y - 64}px)`,
+            transform: `translate(${pointerPosition.current.x - 48}px, ${
+              pointerPosition.current.y - 64
+            }px)`,
             pointerEvents: "none",
             zIndex: 9999,
           }}
           aria-hidden
         >
-          <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
+          <div
+            style={{
+              transform: "scale(0.9)",
+              filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))",
+            }}
+          >
             <StSCard
               card={pointerDragCard}
               showReserve={false}
