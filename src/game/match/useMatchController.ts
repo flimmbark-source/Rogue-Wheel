@@ -79,6 +79,12 @@ export type GauntletShopState = {
   purchases: GauntletShopPurchase[];
 };
 
+export type PendingShopPurchase = {
+  card: Card;
+  sourceId: string | null;
+  cost: number;
+};
+
 export type GauntletActivationState = {
   selection: string | null;
   passed: boolean;
@@ -114,7 +120,8 @@ export type MPIntent =
   | ({ type: "shopRoll"; side: LegacySide } & GauntletShopRollPayload)
   | { type: "shopReady"; side: LegacySide }
   | ({ type: "shopPurchase"; side: LegacySide } & (
-      { cardId: string; round: number } | { card: Card; cost: number }
+      | { cardId: string; round: number }
+      | { card: Card; cost: number; sourceId?: string | null }
     ))
   | ({ type: "gold"; side: LegacySide } & GauntletGoldPayload)
   | { type: "activationSelect"; side: LegacySide; activationId: string }
@@ -132,8 +139,8 @@ type ShopReadyIntent =
 // Back-compat: support both legacy (cardId+round) and new (card+cost)
 type ShopPurchaseIntent =
   ({ type: "shopPurchase"; side: LegacySide } & (
-    | { cardId: string; round: number }   // legacy shape
-    | { card: Card; cost: number }        // new shape
+    | { cardId: string; round: number }           // legacy shape
+    | { card: Card; cost: number; sourceId?: string | null } // new shape
   ));
 
 type GoldIntent =
@@ -283,7 +290,9 @@ useEffect(() => {
     player: [],
     enemy: [],
   });
-  const [shopPurchases, setShopPurchases] = useState<Record<LegacySide, Card[]>>({
+  const [shopPurchases, setShopPurchases] = useState<
+    Record<LegacySide, PendingShopPurchase[]>
+  >({
     player: [],
     enemy: [],
   });
@@ -987,9 +996,16 @@ function createInitialGauntletState(): GauntletState {
   );
 
   const applyShopPurchase = useCallback(
-    (side: LegacySide, card: Card, cost: number, opts?: { force?: boolean }) => {
+    (
+      side: LegacySide,
+      card: Card,
+      cost: number,
+      opts?: { force?: boolean; sourceId?: string | null },
+    ) => {
       if (!isGauntletMode) return false;
-      const alreadyPurchased = shopPurchases[side].some((c) => c.id === card.id);
+      const alreadyPurchased = shopPurchases[side].some(
+        (purchase) => purchase.card.id === card.id,
+      );
       if (alreadyPurchased) {
         return false;
       }
@@ -1007,26 +1023,20 @@ function createInitialGauntletState(): GauntletState {
         return false;
       }
 
+      const purchaseSourceId =
+        opts && "sourceId" in opts ? opts.sourceId ?? null : getCardSourceId(card);
       setShopPurchases((prev) => ({
         ...prev,
-        [side]: [...prev[side], cloneCardForGauntlet(card)],
+        [side]: [
+          ...prev[side],
+          { card: cloneCardForGauntlet(card), sourceId: purchaseSourceId ?? null, cost },
+        ],
       }));
       setShopReady((prev) => ({ ...prev, [side]: false }));
 
       appendLog(
         `${namesByLegacy[side]} purchases ${card.name} for ${cost} gold.`,
       );
-
-      if (side === localLegacySide) {
-        const sourceId = getCardSourceId(card);
-        if (sourceId) {
-          try {
-            applyGauntletPurchase({ add: [{ cardId: sourceId, qty: 1 }], cost });
-          } catch (error) {
-            console.error("Failed to record gauntlet purchase", error);
-          }
-        }
-      }
       return true;
     },
     [
@@ -1034,7 +1044,6 @@ function createInitialGauntletState(): GauntletState {
       isGauntletMode,
       namesByLegacy,
       shopPurchases,
-      localLegacySide,
     ],
   );
 
@@ -1042,10 +1051,14 @@ function createInitialGauntletState(): GauntletState {
     (side: LegacySide, card: Card, cost = 10) => {
       if (!isGauntletMode) return false;
       if (phase !== "shop") return false;
-      const success = applyShopPurchase(side, card, cost, { force: false });
+      const sourceId = getCardSourceId(card);
+      const success = applyShopPurchase(side, card, cost, {
+        force: false,
+        sourceId,
+      });
       if (!success) return false;
       if (isMultiplayer) {
-        emitIntent({ type: "shopPurchase", side, card, cost });
+        emitIntent({ type: "shopPurchase", side, card, cost, sourceId });
       }
       return true;
     },
@@ -1481,13 +1494,31 @@ function createInitialGauntletState(): GauntletState {
       setEnemy((prev) => stackPurchasesOnDeck(prev, pending.enemy));
     }
 
+    const localPending = pending[localLegacySide];
+    for (const purchase of localPending) {
+      if (!purchase.sourceId) continue;
+      try {
+        applyGauntletPurchase({
+          add: [{ cardId: purchase.sourceId, qty: 1 }],
+          cost: purchase.cost,
+        });
+      } catch (error) {
+        console.error("Failed to record gauntlet purchase", error);
+      }
+    }
+
+    setShopPurchases({ player: [], enemy: [] });
+
     nextRoundCore({ force: true });
   }, [
+    applyGauntletPurchase,
     isGauntletMode,
+    localLegacySide,
     nextRoundCore,
     setEnemy,
     setPlayer,
     shopPurchasesRef,
+    setShopPurchases,
   ]);
 
   const completeShopForSide = useCallback(
@@ -2051,8 +2082,14 @@ function createInitialGauntletState(): GauntletState {
           if (msg.side === localLegacySide) break;
           if ("cardId" in msg && typeof msg.cardId === "string" && typeof msg.round === "number") {
             applyGauntletPurchaseFn?.(msg.side, { cardId: msg.cardId, round: msg.round });
-          } else if ("card" in msg && msg.card && typeof (msg as any).cost === "number") {
-            applyShopPurchaseFn?.(msg.side, (msg as any).card, (msg as any).cost, { force: true });
+          } else if ("card" in msg && msg.card && typeof msg.cost === "number") {
+            const { card, cost } = msg as Extract<ShopPurchaseIntent, { card: Card }>;
+            const sourceId =
+              "sourceId" in msg ? (msg.sourceId as string | null | undefined) ?? null : undefined;
+            applyShopPurchaseFn?.(msg.side, card, cost, {
+              force: true,
+              sourceId,
+            });
           }
           break;
         }
@@ -2554,8 +2591,12 @@ export function chooseEnemyAssignments({
 }
 
 function stackPurchasesOnDeck(fighter: Fighter, purchases: Card[]): Fighter {
+  
   if (purchases.length === 0) return fighter;
-  return purchases.reduce((next, card) => addPurchasedCardToFighter(next, card), fighter);
+  return purchases.reduce(
+    (next, purchase) => addPurchasedCardToFighter(next, purchase.card),
+    fighter,
+  );
 }
 
 function discardHand(fighter: Fighter): Fighter {
