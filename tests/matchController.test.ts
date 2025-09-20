@@ -218,3 +218,47 @@ test("shop purchases remain available for immediate resume processing", () => {
     "shopPurchasesRef should be cleared after processing completes",
   );
 });
+
+test("purchased cards stack even when the queue is cleared before state updates", () => {
+  const startingDeck = ["d1", "d2", "d3", "d4", "d5", "d6"].map(makeCard);
+  const startingHand = ["h1", "h2", "h3", "h4", "h5"].map(makeCard);
+  const fighter = makeFighter(startingDeck, startingHand);
+
+  const purchase: PendingShopPurchase = {
+    card: makeCard("shop-card"),
+    cost: 4,
+    sourceId: "offer-2",
+  };
+
+  type Queue = Record<"player" | "enemy", PendingShopPurchase[]>;
+  const queueRef: { current: Queue } = { current: { player: [], enemy: [] } };
+
+  const enqueuePurchase = (prev: Queue): Queue => {
+    const next: Queue = {
+      player: [...prev.player, purchase],
+      enemy: [...prev.enemy],
+    };
+    queueRef.current = next;
+    return next;
+  };
+
+  const queued = enqueuePurchase(queueRef.current);
+
+  // Simulate the queue being drained synchronously before any React state setters run.
+  const drained = queued;
+  queueRef.current = { player: [], enemy: [] };
+
+  const afterShop = stackPurchasesOnDeck(fighter, drained.player);
+  assert.equal(
+    afterShop.deck[0]?.id,
+    purchase.card.id,
+    "resumeAfterShop should stack the purchased card on top of the deck",
+  );
+
+  const afterAdvance = settleFighterAfterRound(afterShop, []);
+  assert.equal(
+    afterAdvance.hand[0]?.id,
+    purchase.card.id,
+    "nextRoundCore should draw the purchased card into hand even when the queue cleared early",
+  );
+});
