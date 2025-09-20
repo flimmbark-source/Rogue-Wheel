@@ -1022,7 +1022,7 @@ function createInitialGauntletState(): GauntletState {
         | { offeringId: string; cost?: number }
         | string
         | { card: Card; cost: number; sourceId?: string | null },
-      opts?: { force?: boolean },
+      opts?: { force?: boolean; sourceId?: string | null },
     ) => {
       if (!isGauntletMode) return false;
 
@@ -1060,7 +1060,7 @@ function createInitialGauntletState(): GauntletState {
       }
 
       const alreadyPurchased = shopPurchases[side].some(
-        (purchase) => purchase.id === card.id,
+        (purchase) => purchase.card.id === card.id,
       );
 
       if (alreadyPurchased) {
@@ -1084,12 +1084,19 @@ function createInitialGauntletState(): GauntletState {
       }
 
       const purchaseSourceId =
-        opts && "sourceId" in opts ? opts.sourceId ?? null : getCardSourceId(card);
+        opts?.sourceId ??
+        resolvedOffering?.id ??
+        resolvedOfferingId ??
+        getCardSourceId(card);
       setShopPurchases((prev) => ({
         ...prev,
         [side]: [
           ...prev[side],
-          { card: cloneCardForGauntlet(card), sourceId: purchaseSourceId ?? null, cost },
+          {
+            card: cloneCardForGauntlet(card),
+            sourceId: purchaseSourceId ?? null,
+            cost: resolvedCost,
+          },
         ],
       }));
       setShopReady((prev) => ({ ...prev, [side]: false }));
@@ -1171,17 +1178,25 @@ const purchaseFromShop = useCallback(
     if (!card) return false;
 
     // Already purchased this round?
-    const alreadyPurchased = shopPurchases[side].some((c) => c.id === card.id);
+    const alreadyPurchased = shopPurchases[side].some(
+      (purchase) => purchase.card.id === card.id,
+    );
     if (alreadyPurchased) return false;
 
     const costToUse = (resolvedOffering?.cost ?? fallbackCost ?? 1);
     const sourceId = (resolvedOfferingId ?? getCardSourceId(card)) ?? null;
 
     // Apply purchase
-    const ok = applyShopPurchase(side, card, costToUse, {
-      force: false,
-      sourceId,
-    });
+    const purchaseTarget =
+      resolvedOffering ?? { card, cost: costToUse, sourceId: sourceId ?? undefined };
+    const ok = applyShopPurchase(
+      side,
+      purchaseTarget,
+      {
+        force: false,
+        sourceId,
+      },
+    );
     if (!ok) return false;
 
     // Emit MP intent
@@ -2245,10 +2260,15 @@ case "shopPurchase": {
     // Otherwise resolve it to a card first, then call applyShopPurchase(...).
     const offering = findOfferingForSide(msg.side, offeringId);
     if (offering) {
-      applyShopPurchase(msg.side, offering.card, offering.cost ?? (cost ?? 1), {
-        force: true,
-        sourceId: offeringId,
-      });
+      const resolvedCost = offering.cost ?? (cost ?? 1);
+      applyShopPurchase(
+        msg.side,
+        { card: offering.card, cost: resolvedCost, sourceId: offeringId },
+        {
+          force: true,
+          sourceId: offeringId,
+        },
+      );
     }
     break;
   }
@@ -2262,8 +2282,13 @@ case "shopPurchase": {
   // new/legacy card shape: { card, cost, sourceId? }
   if ("card" in msg && (msg as any).card && typeof (msg as any).cost === "number") {
     const { card, cost } = msg as { card: Card; cost: number } & { sourceId?: string | null };
-    const sourceId = "sourceId" in msg ? ((msg as any).sourceId as string | null | undefined) ?? null : undefined;
-    applyShopPurchase(msg.side, card, cost, { force: true, sourceId });
+    const sourceId =
+      "sourceId" in msg ? ((msg as any).sourceId as string | null | undefined) ?? null : undefined;
+    applyShopPurchase(
+      msg.side,
+      { card, cost, sourceId: sourceId ?? undefined },
+      { force: true, sourceId },
+    );
     break;
   }
 
@@ -2805,8 +2830,11 @@ export function chooseEnemyAssignments({
   return bestPicks;
 }
 
-function stackPurchasesOnDeck(fighter: Fighter, purchases: Card[]): Fighter {
-  
+function stackPurchasesOnDeck(
+  fighter: Fighter,
+  purchases: PendingShopPurchase[],
+): Fighter {
+
   if (purchases.length === 0) return fighter;
   return purchases.reduce(
     (next, purchase) => addPurchasedCardToFighter(next, purchase.card),
