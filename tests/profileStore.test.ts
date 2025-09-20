@@ -7,6 +7,8 @@ import {
   refillTo,
   freshFive,
   addPurchasedCardToFighter,
+  rollStoreOfferings,
+
 } from "../src/player/profileStore.js";
 
 const makeCard = (id: string, value = 0): Card => ({
@@ -81,5 +83,32 @@ test("freshFive rebuilds the fighter state with a new shuffled hand", () => {
     fresh.deck.length,
     cards.length - fresh.hand.length,
     "remaining cards should stay in the deck",
+  );
+});
+
+test("rollStoreOfferings reserves the top row for ability cards", () => {
+  const offers = rollStoreOfferings(6, () => 0);
+
+  assert.equal(offers.length, 6, "shop should roll six cards");
+
+  offers.slice(0, 3).forEach((offer, index) => {
+    assert.ok(
+      offer.card.behavior,
+      `slot ${index + 1} should contain an ability behavior card`,
+    );
+  });
+
+  const bottomRow = offers.slice(3);
+  bottomRow.forEach((offer, index) => {
+    assert.equal(
+      offer.card.behavior,
+      undefined,
+      `slot ${index + 4} should draw from the standard weighted pool`,
+    );
+  });
+
+  assert.ok(
+    bottomRow.some((offer) => typeof offer.card.number === "number" && offer.card.number < 0),
+    "at least one of the weighted slots should surface a negative card",
   );
 });

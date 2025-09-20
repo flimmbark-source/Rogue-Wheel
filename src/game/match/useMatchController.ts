@@ -280,6 +280,7 @@ useEffect(() => {
     player: [],
     enemy: [],
   });
+  const shopPurchasesRef = useLatestRef(shopPurchases);
   const [shopReady, setShopReady] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
@@ -993,12 +994,6 @@ function createInitialGauntletState(): GauntletState {
       }));
       setShopReady((prev) => ({ ...prev, [side]: false }));
 
-      if (side === "player") {
-        setPlayer((prev) => addPurchasedCardToFighter(prev, card));
-      } else {
-        setEnemy((prev) => addPurchasedCardToFighter(prev, card));
-      }
-
       appendLog(
         `${namesByLegacy[side]} purchases ${card.name} for ${cost} gold.`,
       );
@@ -1008,8 +1003,6 @@ function createInitialGauntletState(): GauntletState {
       appendLog,
       isGauntletMode,
       namesByLegacy,
-      setEnemy,
-      setPlayer,
       shopPurchases,
     ],
   );
@@ -1495,8 +1488,23 @@ function createInitialGauntletState(): GauntletState {
 
   const resumeAfterShop = useCallback(() => {
     if (!isGauntletMode) return;
+
+    const pending = shopPurchasesRef.current;
+    if (pending.player.length > 0) {
+      setPlayer((prev) => stackPurchasesOnDeck(prev, pending.player));
+    }
+    if (pending.enemy.length > 0) {
+      setEnemy((prev) => stackPurchasesOnDeck(prev, pending.enemy));
+    }
+
     nextRoundCore({ force: true });
-  }, [isGauntletMode, nextRoundCore]);
+  }, [
+    isGauntletMode,
+    nextRoundCore,
+    setEnemy,
+    setPlayer,
+    shopPurchasesRef,
+  ]);
 
   const completeShopForSide = useCallback(
     (side: LegacySide, opts?: { emit?: boolean }) => {
@@ -2288,6 +2296,11 @@ function computeReserveSum(side: LegacySide, played: (Card | null)[]) {
 
   const reserve = played.filter(Boolean) as Card[];
   return reserve.reduce((total, card) => total + getCardReserveValue(card), 0);
+}
+
+function stackPurchasesOnDeck(fighter: Fighter, purchases: Card[]): Fighter {
+  if (purchases.length === 0) return fighter;
+  return purchases.reduce((next, card) => addPurchasedCardToFighter(next, card), fighter);
 }
 
 function discardHand(fighter: Fighter): Fighter {
