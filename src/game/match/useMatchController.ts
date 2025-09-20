@@ -300,7 +300,6 @@ useEffect(() => {
     player: [],
     enemy: [],
   });
-  const shopPurchasesRef = useLatestRef(shopPurchases);
   const [shopReady, setShopReady] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
@@ -1656,15 +1655,14 @@ const purchaseFromShop = useCallback(
   const resumeAfterShop = useCallback(() => {
     if (!isGauntletMode) return;
 
-    const pending = shopPurchasesRef.current;
-    if (pending.player.length > 0) {
-      setPlayer((prev) => stackPurchasesOnDeck(prev, pending.player));
+    if (shopPurchases.player.length > 0) {
+      setPlayer((prev) => stackPurchasesOnDeck(prev, shopPurchases.player));
     }
-    if (pending.enemy.length > 0) {
-      setEnemy((prev) => stackPurchasesOnDeck(prev, pending.enemy));
+    if (shopPurchases.enemy.length > 0) {
+      setEnemy((prev) => stackPurchasesOnDeck(prev, shopPurchases.enemy));
     }
 
-    const localPending = pending[localLegacySide];
+    const localPending = shopPurchases[localLegacySide];
     for (const purchase of localPending) {
       if (!purchase.sourceId) continue;
       try {
@@ -1677,7 +1675,11 @@ const purchaseFromShop = useCallback(
       }
     }
 
-    setShopPurchases({ player: [], enemy: [] });
+    setShopPurchases((prev) =>
+      prev.player.length === 0 && prev.enemy.length === 0
+        ? prev
+        : { player: [], enemy: [] },
+    );
 
     nextRoundCore({ force: true });
   }, [
@@ -1687,8 +1689,8 @@ const purchaseFromShop = useCallback(
     nextRoundCore,
     setEnemy,
     setPlayer,
-    shopPurchasesRef,
     setShopPurchases,
+    shopPurchases,
   ]);
 
   const completeShopForSide = useCallback(
@@ -2830,7 +2832,7 @@ export function chooseEnemyAssignments({
   return bestPicks;
 }
 
-function stackPurchasesOnDeck(
+export function stackPurchasesOnDeck(
   fighter: Fighter,
   purchases: PendingShopPurchase[],
 ): Fighter {

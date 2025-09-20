@@ -2,9 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import type { Card, Fighter, Section } from "../src/game/types.js";
+import type { PendingShopPurchase } from "../src/game/match/useMatchController.js";
 import {
   chooseEnemyAssignments,
   settleFighterAfterRound,
+  stackPurchasesOnDeck,
 } from "../src/game/match/useMatchController.js";
 
 const makeCard = (id: string): Card => ({
@@ -131,5 +133,30 @@ test("settleFighterAfterRound discards the entire hand before refilling", () => 
     result.hand.map((card) => card.id),
     expectedNewHand,
     "hand should draw fresh cards from the top of the deck",
+  );
+});
+
+test("resumeAfterShop stacks purchases before advancing to the next round", () => {
+  const startingDeck = ["d1", "d2", "d3", "d4", "d5", "d6"].map(makeCard);
+  const startingHand = ["h1", "h2", "h3", "h4", "h5"].map(makeCard);
+  const fighter = makeFighter(startingDeck, startingHand);
+
+  const purchasedCard = makeCard("shop-card");
+  const purchases: PendingShopPurchase[] = [
+    { card: purchasedCard, cost: 3, sourceId: "offer-1" },
+  ];
+
+  const afterShop = stackPurchasesOnDeck(fighter, purchases);
+  assert.equal(
+    afterShop.deck[0]?.id,
+    purchasedCard.id,
+    "resumeAfterShop should place the purchased card on top of the deck",
+  );
+
+  const afterNextRound = settleFighterAfterRound(afterShop, []);
+  assert.equal(
+    afterNextRound.hand[0]?.id,
+    purchasedCard.id,
+    "nextRoundCore should immediately draw the purchased card into hand",
   );
 });
