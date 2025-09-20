@@ -17,15 +17,22 @@ export type GauntletPhasePanelProps = {
   remoteLegacySide: LegacySide;
   namesByLegacy: Record<LegacySide, string>;
   gold: Record<LegacySide, number>;
-  shopInventory: Record<LegacySide, Card[]>;
-  shopPurchases: Record<LegacySide, Card[]>;
+  shopInventory: Record<LegacySide, StoreOffering[]>;
+  shopPurchases: Record<LegacySide, PendingShopPurchase[]>;
   shopReady: { player: boolean; enemy: boolean };
   gauntletState: GauntletState;
   gauntletRollShop: (inventory: StoreOffering[], round: number, roll?: number) => void;
   configureShopInventory: (
     inventory: Partial<Record<LegacySide, StoreOffering[]>>,
   ) => void;
-  purchaseFromShop: (side: LegacySide, offering: StoreOffering | string) => boolean;
+  purchaseFromShop: (
+    side: LegacySide,
+    offering:
+      | StoreOffering
+      | { offeringId: string; cost?: number }
+      | string
+      | { card: Card; cost: number; sourceId?: string | null },
+  ) => boolean;
   markShopComplete: (side: LegacySide) => boolean;
 };
 
