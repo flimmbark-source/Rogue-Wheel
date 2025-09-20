@@ -3,11 +3,7 @@ import assert from "node:assert/strict";
 
 import type { Card, Fighter, Section } from "../src/game/types.js";
 import type { PendingShopPurchase } from "../src/game/match/useMatchController.js";
-import {
-  chooseEnemyAssignments,
-  settleFighterAfterRound,
-  stackPurchasesOnDeck,
-} from "../src/game/match/useMatchController.js";
+import { chooseEnemyAssignments, settleFighterAfterRound } from "../src/game/match/useMatchController.js";
 
 const makeCard = (id: string): Card => ({
   id,
@@ -136,28 +132,27 @@ test("settleFighterAfterRound discards the entire hand before refilling", () => 
   );
 });
 
-test("resumeAfterShop stacks purchases before advancing to the next round", () => {
+test("settleFighterAfterRound places shop purchases into hand before refilling", () => {
   const startingDeck = ["d1", "d2", "d3", "d4", "d5", "d6"].map(makeCard);
-  const startingHand = ["h1", "h2", "h3", "h4", "h5"].map(makeCard);
-  const fighter = makeFighter(startingDeck, startingHand);
+  const fighter = makeFighter(startingDeck, []);
 
   const purchasedCard = makeCard("shop-card");
   const purchases: PendingShopPurchase[] = [
     { card: purchasedCard, cost: 3, sourceId: "offer-1" },
   ];
 
-  const afterShop = stackPurchasesOnDeck(fighter, purchases);
-  assert.equal(
-    afterShop.deck[0]?.id,
-    purchasedCard.id,
-    "resumeAfterShop should place the purchased card on top of the deck",
-  );
-
-  const afterNextRound = settleFighterAfterRound(afterShop, []);
+  const afterNextRound = settleFighterAfterRound(fighter, [], purchases);
   assert.equal(
     afterNextRound.hand[0]?.id,
     purchasedCard.id,
-    "nextRoundCore should immediately draw the purchased card into hand",
+    "shop purchases should be added to the front of the new hand",
+  );
+
+  const expectedFollowUps = startingDeck.slice(0, 4).map((card) => card.id);
+  assert.deepEqual(
+    afterNextRound.hand.slice(1).map((card) => card.id),
+    expectedFollowUps,
+    "the remainder of the hand should draw from the top of the deck",
   );
 });
 
@@ -197,18 +192,11 @@ test("shop purchases remain available for immediate resume processing", () => {
     "purchase should be added to the player's queue",
   );
 
-  const stacked = stackPurchasesOnDeck(fighter, queueRef.current.player);
+  const afterNextRound = settleFighterAfterRound(fighter, [], queueRef.current.player);
   assert.equal(
-    stacked.deck[0]?.id,
-    purchase.card.id,
-    "resumeAfterShop should stack the purchase on top of the deck",
-  );
-
-  const afterNextRound = settleFighterAfterRound(stacked, []);
-  assert.equal(
-    afterNextRound.hand[0]?.id,
-    purchase.card.id,
-    "the purchased card should be drawn into hand when the round resumes",
+    afterNextRound.hand.some((card) => card.id === purchase.card.id),
+    true,
+    "the purchased card should be present in hand when the round resumes",
   );
 
   queueRef.current = { player: [], enemy: [] };

@@ -19,7 +19,6 @@ import {
   refillTo,
   freshFive,
   cloneCardForGauntlet,
-  addPurchasedCardToFighter,
   getCardSourceId,
   recordMatchResult,
   rollStoreOfferings,
@@ -259,7 +258,7 @@ useEffect(() => {
     enemy: [],
   });
   const shopPurchasesRef = useRef(shopPurchases);
-  const syncShopPurchases = useCallback(
+  const commitShopPurchases = useCallback(
     (next: Record<LegacySide, PendingShopPurchase[]>) => {
       shopPurchasesRef.current = next;
       setShopPurchases(next);
@@ -267,8 +266,8 @@ useEffect(() => {
     [setShopPurchases],
   );
   const clearShopPurchases = useCallback(() => {
-    syncShopPurchases({ player: [], enemy: [] });
-  }, [syncShopPurchases]);
+    commitShopPurchases({ player: [], enemy: [] });
+  }, [commitShopPurchases]);
   const [shopReady, setShopReady] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
@@ -845,7 +844,7 @@ useEffect(() => {
         ...prevPurchases,
         [side]: updatedPurchasesForSide,
       };
-      syncShopPurchases(next);
+      commitShopPurchases(next);
       setShopReady((prev) => ({ ...prev, [side]: false }));
 
       appendLog(
@@ -856,11 +855,11 @@ useEffect(() => {
     },
     [
       appendLog,
+      commitShopPurchases,
       findOfferingForSide,
       isGauntletMode,
       namesByLegacy,
       shopPurchasesRef,
-      syncShopPurchases,
     ],
   );
 
@@ -987,12 +986,6 @@ const purchaseFromShop = useCallback(
     setPhase("shop");
     return true;
   }, [isGauntletMode, isMultiplayer, phase, remoteLegacySide, round]);
-
-  useEffect(() => {
-    if (!shouldOpenShopThisRound) return;
-    if (phase !== "roundEnd") return;
-    openShopPhase();
-  }, [openShopPhase, phase, shouldOpenShopThisRound]);
 
   useEffect(() => {
     if (!isGauntletMode) return;
@@ -1317,7 +1310,10 @@ const purchaseFromShop = useCallback(
   activationCompleteRef.current = resolveRound;
 
   const nextRoundCore = useCallback(
-    (opts?: { force?: boolean }) => {
+    (opts?: {
+      force?: boolean;
+      purchases?: Record<LegacySide, PendingShopPurchase[]>;
+    }) => {
       const allow = opts?.force || phase === "roundEnd";
       if (!allow) return false;
 
@@ -1328,13 +1324,16 @@ const purchaseFromShop = useCallback(
       const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
       const enemyPlayed = currentAssign.enemy.filter((c): c is Card => !!c);
 
+      const playerPurchases = opts?.purchases?.player ?? [];
+      const enemyPurchases = opts?.purchases?.enemy ?? [];
+
       wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
 
       setFreezeLayout(false);
       setLockedWheelSize(null);
 
-      setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
-      setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
+      setPlayer((p) => settleFighterAfterRound(p, playerPlayed, playerPurchases));
+      setEnemy((e) => settleFighterAfterRound(e, enemyPlayed, enemyPurchases));
 
       setWheelSections(generateWheelSet());
       setAssign({ player: [null, null, null], enemy: [null, null, null] });
@@ -1386,15 +1385,12 @@ const purchaseFromShop = useCallback(
     if (!isGauntletMode) return;
 
     const purchases = shopPurchasesRef.current;
+    const nextRoundPurchases: Record<LegacySide, PendingShopPurchase[]> = {
+      player: purchases.player.map((purchase) => ({ ...purchase })),
+      enemy: purchases.enemy.map((purchase) => ({ ...purchase })),
+    };
 
-    if (purchases.player.length > 0) {
-      setPlayer((prev) => stackPurchasesOnDeck(prev, purchases.player));
-    }
-    if (purchases.enemy.length > 0) {
-      setEnemy((prev) => stackPurchasesOnDeck(prev, purchases.enemy));
-    }
-
-    const localPending = purchases[localLegacySide];
+    const localPending = nextRoundPurchases[localLegacySide];
     for (const purchase of localPending) {
       if (!purchase.sourceId) continue;
       try {
@@ -1407,17 +1403,13 @@ const purchaseFromShop = useCallback(
       }
     }
 
-    clearShopPurchases();
-
-    nextRoundCore({ force: true });
+    nextRoundCore({ force: true, purchases: nextRoundPurchases });
   }, [
     applyGauntletPurchase,
     isGauntletMode,
     localLegacySide,
     nextRoundCore,
-    setEnemy,
-    setPlayer,
-    clearShopPurchases,
+    shopPurchasesRef,
   ]);
 
   const completeShopForSide = useCallback(
@@ -2208,18 +2200,6 @@ export function chooseEnemyAssignments({
   return bestPicks;
 }
 
-export function stackPurchasesOnDeck(
-  fighter: Fighter,
-  purchases: PendingShopPurchase[],
-): Fighter {
-
-  if (purchases.length === 0) return fighter;
-  return purchases.reduce(
-    (next, purchase) => addPurchasedCardToFighter(next, purchase.card),
-    fighter,
-  );
-}
-
 function isStoreOffering(value: unknown): value is StoreOffering {
   return (
     typeof value === "object" &&
@@ -2251,7 +2231,11 @@ function discardHand(fighter: Fighter): Fighter {
   };
 }
 
-export function settleFighterAfterRound(fighter: Fighter, played: Card[]) {
+export function settleFighterAfterRound(
+  fighter: Fighter,
+  played: Card[],
+  purchases: PendingShopPurchase[] = [],
+) {
   const TARGET_HAND_SIZE = 5;
   const playedIds = new Set(played.map((card) => card.id));
   const remainingHand = fighter.hand.filter((card) => !playedIds.has(card.id));
@@ -2262,10 +2246,29 @@ export function settleFighterAfterRound(fighter: Fighter, played: Card[]) {
     discard: [...fighter.discard, ...played],
   });
 
+  const purchasedCards = purchases.map((purchase) => cloneCardForGauntlet(purchase.card));
+
+  const ensurePurchasesInHand = (value: Fighter): Fighter => {
+    if (purchasedCards.length === 0) return value;
+    const purchaseIds = new Set(purchasedCards.map((card) => card.id));
+    return {
+      ...value,
+      hand: [
+        ...purchasedCards,
+        ...value.hand.filter((card) => !purchaseIds.has(card.id)),
+      ],
+      deck: value.deck.filter((card) => !purchaseIds.has(card.id)),
+      discard: value.discard.filter((card) => !purchaseIds.has(card.id)),
+    };
+  };
+
+  next = ensurePurchasesInHand(next);
+
   next = refillTo(next, TARGET_HAND_SIZE);
 
   if (next.hand.length < TARGET_HAND_SIZE) {
     next = freshFive(next);
+    next = ensurePurchasesInHand(next);
     next = refillTo(next, TARGET_HAND_SIZE);
 
   }
