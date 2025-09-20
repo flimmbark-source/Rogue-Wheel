@@ -1196,8 +1196,10 @@ function createInitialGauntletState(): GauntletState {
       return value;
     };
 
-    const localFighter = localLegacySide === "player" ? player : enemy;
-    const remoteFighter = remoteLegacySide === "player" ? player : enemy;
+    const localFighter =
+      localLegacySide === "player" ? playerRef.current : enemyRef.current;
+    const remoteFighter =
+      remoteLegacySide === "player" ? playerRef.current : enemyRef.current;
 
     const localReserve = computeReserveSum(localFighter.hand);
     let remoteReserve: number;
