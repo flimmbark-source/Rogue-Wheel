@@ -34,6 +34,7 @@ import {
   applyGauntletPurchase,
   type MatchResultSummary,
   type LevelProgress,
+  type StoreOffering,
 } from "../../player/profileStore";
 import { getCardPlayValue, getCardReserveValue } from "../values";
 import { MAX_WHEEL, calcWheelSize } from "./wheelSizing";
@@ -73,7 +74,7 @@ export type MatchMode = "classic" | "gauntlet";
 export type GauntletShopPurchase = { cardId: string; round: number };
 
 export type GauntletShopState = {
-  inventory: Card[];
+  inventory: StoreOffering[];
   roll: number;
   round: number;
   purchases: GauntletShopPurchase[];
@@ -100,7 +101,7 @@ export type GauntletSideState = {
 export type GauntletState = Record<LegacySide, GauntletSideState>;
 
 export type GauntletShopRollPayload = {
-  inventory: Card[];
+  inventory: StoreOffering[];
   round: number;
   roll: number;
 };
@@ -120,8 +121,10 @@ export type MPIntent =
   | ({ type: "shopRoll"; side: LegacySide } & GauntletShopRollPayload)
   | { type: "shopReady"; side: LegacySide }
   | ({ type: "shopPurchase"; side: LegacySide } & (
-      | { cardId: string; round: number }
-      | { card: Card; cost: number; sourceId?: string | null }
+  { offeringId: string; cost: number }
+  | { cardId: string; round: number }
+  | { card: Card; cost: number; sourceId?: string | null }
+
     ))
   | ({ type: "gold"; side: LegacySide } & GauntletGoldPayload)
   | { type: "activationSelect"; side: LegacySide; activationId: string }
@@ -139,7 +142,8 @@ type ShopReadyIntent =
 // Back-compat: support both legacy (cardId+round) and new (card+cost)
 type ShopPurchaseIntent =
   ({ type: "shopPurchase"; side: LegacySide } & (
-    | { cardId: string; round: number }           // legacy shape
+    | { offeringId: string; cost: number }                  // current shape
+    | { cardId: string; round: number }                     // legacy shape
     | { card: Card; cost: number; sourceId?: string | null } // new shape
   ));
 
@@ -286,7 +290,7 @@ useEffect(() => {
     player: 0,
     enemy: 0,
   });
-  const [shopInventory, setShopInventory] = useState<Record<LegacySide, Card[]>>({
+  const [shopInventory, setShopInventory] = useState<Record<LegacySide, StoreOffering[]>>({
     player: [],
     enemy: [],
   });
@@ -432,8 +436,8 @@ useEffect(() => {
     (side: LegacySide, payload: GauntletShopRollPayload) => {
       updateGauntletState((prev) => {
         const base = prev[side];
-        const nextInventory = payload.inventory.map(cloneCardForGauntlet);
-        const sameInventory = inventoriesEqual(base.shop.inventory, nextInventory);
+        const nextInventory = payload.inventory.map(cloneStoreOffering);
+        const sameInventory = offeringsEqual(base.shop.inventory, nextInventory);
         const sameRoll = base.shop.roll === payload.roll;
         const sameRound = base.shop.round === payload.round;
         if (sameInventory && sameRoll && sameRound && base.shop.purchases.length === 0) {
@@ -544,13 +548,13 @@ function createInitialGauntletState(): GauntletState {
   );
 
   const gauntletRollShop = useCallback(
-    (inventory: Card[], round: number, roll?: number) => {
-      const sanitizedInventory = inventory.map(cloneCardForGauntlet);
+    (inventory: StoreOffering[], round: number, roll?: number) => {
+      const sanitizedInventory = inventory.map(cloneStoreOffering);
       const current = gauntletStateRef.current[localLegacySide];
       const resolvedRoll =
         typeof roll === "number" && Number.isFinite(roll) ? roll : current.shop.roll + 1;
       if (
-        inventoriesEqual(current.shop.inventory, sanitizedInventory) &&
+        offeringsEqual(current.shop.inventory, sanitizedInventory) &&
         current.shop.round === round &&
         current.shop.roll === resolvedRoll &&
         current.shop.purchases.length === 0
@@ -579,7 +583,7 @@ function createInitialGauntletState(): GauntletState {
       const alreadyRecorded = current.shop.purchases.some(
         (p) => p.cardId === cardId && p.round === round,
       );
-      const hasCard = current.shop.inventory.some((card) => card.id === cardId);
+      const hasCard = current.shop.inventory.some((offering) => offering.id === cardId);
       if (!hasCard && alreadyRecorded) {
         return;
       }
@@ -985,39 +989,95 @@ function createInitialGauntletState(): GauntletState {
   );
 
   const configureShopInventory = useCallback(
-    (inventory: Partial<Record<LegacySide, Card[]>>) => {
+    (inventory: Partial<Record<LegacySide, StoreOffering[]>>) => {
       if (!isGauntletMode) return;
       setShopInventory((prev) => ({
-        player: inventory.player ? [...inventory.player] : prev.player,
-        enemy: inventory.enemy ? [...inventory.enemy] : prev.enemy,
+        player: inventory.player
+          ? inventory.player.map(cloneStoreOffering)
+          : prev.player,
+        enemy: inventory.enemy
+          ? inventory.enemy.map(cloneStoreOffering)
+          : prev.enemy,
       }));
     },
     [isGauntletMode],
   );
 
+  const findOfferingForSide = useCallback(
+    (side: LegacySide, offeringId: string): StoreOffering | undefined => {
+      const inventory = shopInventory[side] ?? [];
+      const match = inventory.find((offer) => offer.id === offeringId);
+      if (match) return match;
+      const stored = gauntletStateRef.current[side]?.shop.inventory ?? [];
+      return stored.find((offer) => offer.id === offeringId);
+    },
+    [shopInventory],
+  );
+
   const applyShopPurchase = useCallback(
     (
       side: LegacySide,
-      card: Card,
-      cost: number,
-      opts?: { force?: boolean; sourceId?: string | null },
+      target:
+        | StoreOffering
+        | { offeringId: string; cost?: number }
+        | string
+        | { card: Card; cost: number; sourceId?: string | null },
+      opts?: { force?: boolean },
     ) => {
       if (!isGauntletMode) return false;
+
+      let resolvedOffering: StoreOffering | undefined;
+      let fallbackCard: Card | undefined;
+      let fallbackCost: number | undefined;
+      let resolvedOfferingId: string | undefined;
+
+      if (typeof target === "string") {
+        resolvedOfferingId = target;
+        resolvedOffering = findOfferingForSide(side, target);
+      } else if (
+        typeof target === "object" &&
+        target !== null &&
+        "offeringId" in target
+      ) {
+        const payload = target as { offeringId: string; cost?: number };
+        resolvedOfferingId = payload.offeringId;
+        resolvedOffering = findOfferingForSide(side, payload.offeringId);
+        fallbackCost = payload.cost;
+      } else if (isStoreOffering(target)) {
+        resolvedOffering = target;
+        resolvedOfferingId = target.id;
+      } else if (isLegacyShopCardPayload(target)) {
+        fallbackCard = target.card;
+        fallbackCost = target.cost;
+        resolvedOfferingId = target.sourceId ?? getCardSourceId(target.card);
+      } else {
+        return false;
+      }
+
+      const card = resolvedOffering?.card ?? fallbackCard;
+      if (!card) {
+        return false;
+      }
+
       const alreadyPurchased = shopPurchases[side].some(
-        (purchase) => purchase.card.id === card.id,
+        (purchase) => purchase.id === card.id,
       );
+
       if (alreadyPurchased) {
         return false;
       }
 
+      const cost = resolvedOffering?.cost ?? fallbackCost ?? 0;
+      const resolvedCost = Number.isFinite(cost) ? Math.max(0, Math.trunc(cost)) : 0;
+
       let allowed = false;
       setGold((prev) => {
         const current = prev[side];
-        if (!opts?.force && current < cost) {
+        if (!opts?.force && current < resolvedCost) {
           return prev;
         }
         allowed = true;
-        return { ...prev, [side]: Math.max(0, current - cost) };
+        return { ...prev, [side]: Math.max(0, current - resolvedCost) };
       });
       if (!allowed) {
         return false;
@@ -1035,35 +1095,130 @@ function createInitialGauntletState(): GauntletState {
       setShopReady((prev) => ({ ...prev, [side]: false }));
 
       appendLog(
-        `${namesByLegacy[side]} purchases ${card.name} for ${cost} gold.`,
+        `${namesByLegacy[side]} purchases ${card.name} for ${resolvedCost} gold.`,
       );
+
+      if (side === localLegacySide) {
+        const sourceId = resolvedOffering?.id ?? resolvedOfferingId ?? getCardSourceId(card);
+        if (sourceId) {
+          try {
+            applyGauntletPurchase({ add: [{ cardId: sourceId, qty: 1 }], cost: resolvedCost });
+          } catch (error) {
+            console.error("Failed to record gauntlet purchase", error);
+          }
+        }
+      }
+
+
       return true;
     },
     [
       appendLog,
+      findOfferingForSide,
       isGauntletMode,
       namesByLegacy,
       shopPurchases,
     ],
   );
 
-  const purchaseFromShop = useCallback(
-    (side: LegacySide, card: Card, cost = 10) => {
-      if (!isGauntletMode) return false;
-      if (phase !== "shop") return false;
-      const sourceId = getCardSourceId(card);
-      const success = applyShopPurchase(side, card, cost, {
-        force: false,
-        sourceId,
-      });
-      if (!success) return false;
-      if (isMultiplayer) {
-        emitIntent({ type: "shopPurchase", side, card, cost, sourceId });
+// Purchase from shop (merged: offering-based + card-based, supports sourceId)
+const purchaseFromShop = useCallback(
+  (
+    side: LegacySide,
+    target:
+      | StoreOffering
+      | { offeringId: string; cost?: number }
+      | string
+      | { card: Card; cost: number; sourceId?: string | null },
+  ): boolean => {
+    if (!isGauntletMode) return false;
+    if (phase !== "shop") return false;
+
+    // Resolve offering/card/cost/source
+    let resolvedOffering: StoreOffering | undefined;
+    let resolvedOfferingId: string | undefined;
+    let fallbackCard: Card | undefined;
+    let fallbackCost: number | undefined;
+
+    if (typeof target === "string") {
+      // offering id
+      resolvedOfferingId = target;
+      resolvedOffering = findOfferingForSide(side, target);
+    } else if (
+      typeof target === "object" &&
+      target !== null &&
+      "offeringId" in target
+    ) {
+      // { offeringId, cost? }
+      const payload = target as { offeringId: string; cost?: number };
+      resolvedOfferingId = payload.offeringId;
+      resolvedOffering = findOfferingForSide(side, payload.offeringId);
+      fallbackCost = payload.cost;
+    } else if (isStoreOffering(target)) {
+      // StoreOffering
+      resolvedOffering = target;
+      resolvedOfferingId = target.id;
+    } else if (isLegacyShopCardPayload(target)) {
+      // { card, cost, sourceId? }
+      fallbackCard = target.card;
+      fallbackCost = target.cost;
+      resolvedOfferingId = target.sourceId ?? getCardSourceId(target.card);
+    } else {
+      return false;
+    }
+
+    const card = resolvedOffering?.card ?? fallbackCard;
+    if (!card) return false;
+
+    // Already purchased this round?
+    const alreadyPurchased = shopPurchases[side].some((c) => c.id === card.id);
+    if (alreadyPurchased) return false;
+
+    const costToUse = (resolvedOffering?.cost ?? fallbackCost ?? 1);
+    const sourceId = (resolvedOfferingId ?? getCardSourceId(card)) ?? null;
+
+    // Apply purchase
+    const ok = applyShopPurchase(side, card, costToUse, {
+      force: false,
+      sourceId,
+    });
+    if (!ok) return false;
+
+    // Emit MP intent
+    if (isMultiplayer) {
+      if (resolvedOfferingId && resolvedOffering) {
+        // offering-based payload
+        emitIntent({
+          type: "shopPurchase",
+          side,
+          offeringId: resolvedOfferingId,
+          cost: costToUse,
+        });
+      } else {
+        // card-based payload (new/legacy)
+        emitIntent({
+          type: "shopPurchase",
+          side,
+          card,
+          cost: costToUse,
+          sourceId,
+        });
       }
-      return true;
-    },
-    [applyShopPurchase, emitIntent, isGauntletMode, isMultiplayer, phase],
-  );
+    }
+
+    return true;
+  },
+  [
+    isGauntletMode,
+    phase,
+    shopPurchases,
+    applyShopPurchase,
+    isMultiplayer,
+    emitIntent,
+    findOfferingForSide,
+  ],
+);
+
 
   const openShopPhase = useCallback(() => {
     if (!isGauntletMode) return false;
@@ -1098,7 +1253,7 @@ function createInitialGauntletState(): GauntletState {
     if (offerings.length === 0) return;
     setShopInventory((prev) => ({
       ...prev,
-      [localLegacySide]: offerings.map((offer) => offer.card),
+      [localLegacySide]: offerings.map(cloneStoreOffering),
     }));
   }, [
     hostLegacySide,
@@ -2073,41 +2228,65 @@ function createInitialGauntletState(): GauntletState {
           });
           setShopInventory((prev) => ({
             ...prev,
-            [msg.side]: msg.inventory.map(cloneCardForGauntlet),
+            [msg.side]: msg.inventory.map(cloneStoreOffering),
           }));
           break;
         }
 
-        case "shopPurchase": {
-          if (msg.side === localLegacySide) break;
-          if ("cardId" in msg && typeof msg.cardId === "string" && typeof msg.round === "number") {
-            applyGauntletPurchaseFn?.(msg.side, { cardId: msg.cardId, round: msg.round });
-          } else if ("card" in msg && msg.card && typeof msg.cost === "number") {
-            const { card, cost } = msg as Extract<ShopPurchaseIntent, { card: Card }>;
-            const sourceId =
-              "sourceId" in msg ? (msg.sourceId as string | null | undefined) ?? null : undefined;
-            applyShopPurchaseFn?.(msg.side, card, cost, {
-              force: true,
-              sourceId,
-            });
-          }
-          break;
-        }
-        case "shopReady": {
-          if (msg.side === localLegacySide) break;
-          completeShop?.(msg.side, { emit: false });
-          break;
-        }
+// ---- Shop (offering + legacy + new) ----
+case "shopPurchase": {
+  if (msg.side === localLegacySide) break;
 
-        case "gold": {
-          if (msg.side === localLegacySide) break;
-          const payload: GauntletGoldPayload = { gold: msg.gold };
-          if (typeof msg.delta === "number" && Number.isFinite(msg.delta)) {
-            payload.delta = msg.delta;
-          }
-          applyGauntletGoldFn?.(msg.side, payload);
-          break;
-        }
+  // current shape: { offeringId, cost }
+  if ("offeringId" in msg && typeof (msg as any).offeringId === "string") {
+    const offeringId = (msg as any).offeringId as string;
+    const cost = typeof (msg as any).cost === "number" ? (msg as any).cost : undefined;
+    // If you have a helper to purchase by offeringId, call it here.
+    // Otherwise resolve it to a card first, then call applyShopPurchase(...).
+    const offering = findOfferingForSide(msg.side, offeringId);
+    if (offering) {
+      applyShopPurchase(msg.side, offering.card, offering.cost ?? (cost ?? 1), {
+        force: true,
+        sourceId: offeringId,
+      });
+    }
+    break;
+  }
+
+  // legacy shape: { cardId, round }
+  if ("cardId" in msg && typeof (msg as any).cardId === "string" && typeof (msg as any).round === "number") {
+    applyGauntletPurchaseFor(msg.side, { cardId: (msg as any).cardId, round: (msg as any).round });
+    break;
+  }
+
+  // new/legacy card shape: { card, cost, sourceId? }
+  if ("card" in msg && (msg as any).card && typeof (msg as any).cost === "number") {
+    const { card, cost } = msg as { card: Card; cost: number } & { sourceId?: string | null };
+    const sourceId = "sourceId" in msg ? ((msg as any).sourceId as string | null | undefined) ?? null : undefined;
+    applyShopPurchase(msg.side, card, cost, { force: true, sourceId });
+    break;
+  }
+
+  // unknown shape: ignore safely
+  break;
+}
+
+case "shopReady": {
+  if (msg.side === localLegacySide) break;
+  completeShopForSide(msg.side, { emit: false });
+  break;
+}
+
+case "gold": {
+  if (msg.side === localLegacySide) break;
+  const payload: GauntletGoldPayload = { gold: (msg as any).gold };
+  if (typeof (msg as any).delta === "number" && Number.isFinite((msg as any).delta)) {
+    payload.delta = (msg as any).delta;
+  }
+  applyGauntletGoldFor(msg.side, payload);
+  break;
+}
+
 
         case "activationSelect": {
           if (msg.side === localLegacySide) break;
@@ -2290,10 +2469,46 @@ function cardsEqual(a: Card, b: Card): boolean {
   return true;
 }
 
-function inventoriesEqual(a: Card[], b: Card[]): boolean {
+function isStoreOffering(value: unknown): value is StoreOffering {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    "card" in value &&
+    "summary" in value
+  );
+}
+
+function isLegacyShopCardPayload(
+  value: unknown,
+): value is { card: Card; cost: number } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "card" in value &&
+    "cost" in value &&
+    !("id" in value)
+  );
+}
+
+function cloneStoreOffering(offering: StoreOffering): StoreOffering {
+  return {
+    ...offering,
+    card: cloneCardForGauntlet(offering.card),
+  };
+}
+
+function offeringsEqual(a: StoreOffering[], b: StoreOffering[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) {
-    if (!cardsEqual(a[i], b[i])) return false;
+    const offerA = a[i];
+    const offerB = b[i];
+    if (!offerA || !offerB) return false;
+    if (offerA.id !== offerB.id) return false;
+    if (offerA.cost !== offerB.cost) return false;
+    if (offerA.rarity !== offerB.rarity) return false;
+    if (offerA.summary !== offerB.summary) return false;
+    if (!cardsEqual(offerA.card, offerB.card)) return false;
   }
   return true;
 }

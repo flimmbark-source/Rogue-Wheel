@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import type { Card } from "../../types";
+import type { StoreOffering } from "../../../player/profileStore";
 import type {
   GauntletState,
   LegacySide,
@@ -17,14 +18,14 @@ export type GauntletPhasePanelProps = {
   namesByLegacy: Record<LegacySide, string>;
   gold: Record<LegacySide, number>;
   shopInventory: Record<LegacySide, Card[]>;
-  shopPurchases: Record<LegacySide, PendingShopPurchase[]>;
+  shopPurchases: Record<LegacySide, Card[]>;
   shopReady: { player: boolean; enemy: boolean };
   gauntletState: GauntletState;
-  gauntletRollShop: (inventory: Card[], round: number, roll?: number) => void;
+  gauntletRollShop: (inventory: StoreOffering[], round: number, roll?: number) => void;
   configureShopInventory: (
-    inventory: Partial<Record<LegacySide, Card[]>>,
+    inventory: Partial<Record<LegacySide, StoreOffering[]>>,
   ) => void;
-  purchaseFromShop: (side: LegacySide, card: Card, cost?: number) => boolean;
+  purchaseFromShop: (side: LegacySide, offering: StoreOffering | string) => boolean;
   markShopComplete: (side: LegacySide) => boolean;
 };
 
@@ -158,17 +159,20 @@ export default function GauntletPhasePanel({
               </div>
             ) : (
               <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {localInventory.map((card) => {
+                {localInventory.map((offering) => {
+                  const card = offering.card;
                   const cost =
-                    typeof card.cost === "number" && card.cost > 0
+                    typeof offering.cost === "number" && offering.cost > 0
+                      ? offering.cost
+                      : typeof card.cost === "number" && card.cost > 0
                       ? card.cost
                       : 10;
 
                   const isPurchased = purchasedIds.has(card.id);
                   const canAfford = localGold >= cost;
                   const canBuy = canAfford && !isPurchased;
-                  const label = card.name ?? "Card";
-                  const summary = (card.effectSummary ?? label)
+                  const label = card.name ?? offering.summary ?? "Card";
+                  const summary = (offering.summary ?? card.effectSummary ?? label)
                     .replace(/\s+/g, " ")
                     .trim();
                   const hoverText = isPurchased
@@ -193,7 +197,7 @@ export default function GauntletPhasePanel({
                           disabled={!canBuy}
                           onPick={
                             canBuy
-                              ? () => purchaseFromShop(localLegacySide, card, cost)
+                              ? () => purchaseFromShop(localLegacySide, offering)
                               : undefined
                           }
                         />
@@ -214,9 +218,7 @@ export default function GauntletPhasePanel({
                       <button
                         type="button"
                         onClick={() =>
-                          canBuy
-                            ? purchaseFromShop(localLegacySide, card, cost)
-                            : undefined
+                          canBuy ? purchaseFromShop(localLegacySide, offering) : undefined
                         }
                         disabled={!canBuy}
                         className={`inline-flex w-full items-center justify-center rounded px-3 py-1 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
