@@ -92,6 +92,7 @@ export default memo(function StSCard({
   ariaPressed,
   frameAppearance = "default",
 
+
 }: {
   card: Card;
   disabled?: boolean;
@@ -114,6 +115,7 @@ export default memo(function StSCard({
   ariaLabel?: string;
   ariaPressed?: boolean;
   frameAppearance?: "default" | "hand";
+
 
 }) {
   // ---------- Dimensions ----------
@@ -278,6 +280,7 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
         ${buttonBackgroundClass}
       `}
       style={buttonStyle}
+      style={{ width: dims.w, height: dims.h }}
       aria-label={computedAriaLabel}
       aria-describedby={ariaDescribedBy}
       draggable={draggable}
