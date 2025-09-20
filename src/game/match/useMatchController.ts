@@ -27,9 +27,11 @@ import {
   freshFive,
   cloneCardForGauntlet,
   addPurchasedCardToFighter,
+  getCardSourceId,
   recordMatchResult,
   rollStoreOfferings,
   buildGauntletDeckAsCards,
+  applyGauntletPurchase,
   type MatchResultSummary,
   type LevelProgress,
 } from "../../player/profileStore";
@@ -1009,6 +1011,17 @@ function createInitialGauntletState(): GauntletState {
       appendLog(
         `${namesByLegacy[side]} purchases ${card.name} for ${cost} gold.`,
       );
+
+      if (side === localLegacySide) {
+        const sourceId = getCardSourceId(card);
+        if (sourceId) {
+          try {
+            applyGauntletPurchase({ add: [{ cardId: sourceId, qty: 1 }], cost });
+          } catch (error) {
+            console.error("Failed to record gauntlet purchase", error);
+          }
+        }
+      }
       return true;
     },
     [
@@ -1016,6 +1029,7 @@ function createInitialGauntletState(): GauntletState {
       isGauntletMode,
       namesByLegacy,
       shopPurchases,
+      localLegacySide,
     ],
   );
 
