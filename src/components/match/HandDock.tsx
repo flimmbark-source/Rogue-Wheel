@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent, DragEvent, MutableRefObject } from "react";
 import { motion } from "framer-motion";
-import StSCard from "../StSCard";
+import StSCard, { getCardEffectSummary } from "../StSCard";
 import type { Card, Fighter } from "../../game/types";
 import type { LegacySide } from "./MatchBoard";
 
@@ -68,6 +68,30 @@ export default function HandDock({
       <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
         {localFighter.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
+          const abilitySummary = card.behavior
+            ? getCardEffectSummary(card) ?? undefined
+            : undefined;
+          const handlePick = () => {
+            if (!selectedCardId) {
+              onSelectCard(card.id);
+              return;
+            }
+
+            if (selectedCardId === card.id) {
+              onSelectCard(null);
+              return;
+            }
+
+            const lane = localLegacySide === "player" ? assign.player : assign.enemy;
+            const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
+            if (slotIdx !== -1) {
+              onAssignToWheel(slotIdx, card);
+              return;
+            }
+
+            onSelectCard(card.id);
+          };
+          const ariaLabel = `Select ${card.name}${abilitySummary ? `, ${abilitySummary}` : ""}`;
           return (
             <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
               <motion.div
@@ -86,31 +110,13 @@ export default function HandDock({
                 transition={{ type: "spring", stiffness: 320, damping: 22 }}
                 className={`drop-shadow-xl ${isSelected ? "ring-2 ring-amber-300" : ""}`}
               >
-                <button
-                  data-hand-card
-                  className="pointer-events-auto"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (!selectedCardId) {
-                      onSelectCard(card.id);
-                      return;
-                    }
-
-                    if (selectedCardId === card.id) {
-                      onSelectCard(null);
-                      return;
-                    }
-
-                    const lane =
-                      localLegacySide === "player" ? assign.player : assign.enemy;
-                    const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
-                    if (slotIdx !== -1) {
-                      onAssignToWheel(slotIdx, card);
-                      return;
-                    }
-
-                    onSelectCard(card.id);
-                  }}
+                <StSCard
+                  card={card}
+                  showReserve={false}
+                  variant="minimal"
+                  showAbilityHint
+                  frameAppearance="hand"
+                  onPick={handlePick}
                   draggable
                   onDragStart={(event: DragEvent<HTMLButtonElement>) => {
                     onDragCardChange(card.id);
@@ -120,17 +126,14 @@ export default function HandDock({
                     event.dataTransfer.effectAllowed = "move";
                   }}
                   onDragEnd={() => onDragCardChange(null)}
-                  onPointerDown={(event: PointerEvent<HTMLButtonElement>) => startPointerDrag(card, event)}
-                  aria-pressed={isSelected}
-                  aria-label={`Select ${card.name}`}
-                >
-                  <StSCard
-                    card={card}
-                    showReserve={false}
-                    variant="minimal"
-                    showAbilityHint
-                  />
-                </button>
+                  onPointerDown={(event: PointerEvent<HTMLButtonElement>) =>
+                    startPointerDrag(card, event)
+                  }
+                  ariaLabel={ariaLabel}
+                  title={abilitySummary}
+                  ariaPressed={isSelected}
+                  selected={isSelected}
+                />
               </motion.div>
             </div>
           );
@@ -155,6 +158,7 @@ export default function HandDock({
               showReserve={false}
               variant="minimal"
               showAbilityHint
+              frameAppearance="hand"
             />
           </div>
         </div>
