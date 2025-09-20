@@ -259,6 +259,16 @@ useEffect(() => {
     enemy: [],
   });
   const shopPurchasesRef = useRef(shopPurchases);
+  const syncShopPurchases = useCallback(
+    (next: Record<LegacySide, PendingShopPurchase[]>) => {
+      shopPurchasesRef.current = next;
+      setShopPurchases(next);
+    },
+    [setShopPurchases],
+  );
+  const clearShopPurchases = useCallback(() => {
+    syncShopPurchases({ player: [], enemy: [] });
+  }, [syncShopPurchases]);
   const [shopReady, setShopReady] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
@@ -793,7 +803,7 @@ useEffect(() => {
         return false;
       }
 
-      const alreadyPurchased = shopPurchases[side].some(
+      const alreadyPurchased = shopPurchasesRef.current[side].some(
         (purchase) => purchase.card.id === card.id,
       );
 
@@ -822,21 +832,20 @@ useEffect(() => {
         resolvedOffering?.id ??
         resolvedOfferingId ??
         getCardSourceId(card);
-      setShopPurchases((prev) => {
-        const next = {
-          ...prev,
-          [side]: [
-            ...prev[side],
-            {
-              card: cloneCardForGauntlet(card),
-              sourceId: purchaseSourceId ?? null,
-              cost: resolvedCost,
-            },
-          ],
-        };
-        shopPurchasesRef.current = next;
-        return next;
-      });
+      const prevPurchases = shopPurchasesRef.current;
+      const updatedPurchasesForSide: PendingShopPurchase[] = [
+        ...prevPurchases[side],
+        {
+          card: cloneCardForGauntlet(card),
+          sourceId: purchaseSourceId ?? null,
+          cost: resolvedCost,
+        },
+      ];
+      const next: Record<LegacySide, PendingShopPurchase[]> = {
+        ...prevPurchases,
+        [side]: updatedPurchasesForSide,
+      };
+      syncShopPurchases(next);
       setShopReady((prev) => ({ ...prev, [side]: false }));
 
       appendLog(
@@ -850,7 +859,8 @@ useEffect(() => {
       findOfferingForSide,
       isGauntletMode,
       namesByLegacy,
-      shopPurchases,
+      shopPurchasesRef,
+      syncShopPurchases,
     ],
   );
 
@@ -904,7 +914,7 @@ const purchaseFromShop = useCallback(
     if (!card) return false;
 
     // Already purchased this round?
-    const alreadyPurchased = shopPurchases[side].some(
+    const alreadyPurchased = shopPurchasesRef.current[side].some(
       (purchase) => purchase.card.id === card.id,
     );
     if (alreadyPurchased) return false;
@@ -952,7 +962,7 @@ const purchaseFromShop = useCallback(
   [
     isGauntletMode,
     phase,
-    shopPurchases,
+    shopPurchasesRef,
     applyShopPurchase,
     isMultiplayer,
     emitIntent,
@@ -1270,11 +1280,7 @@ const purchaseFromShop = useCallback(
             prev.player + roundWinsCount.player + playerReserveGold,
           enemy: prev.enemy + roundWinsCount.enemy + enemyReserveGold,
         }));
-        setShopPurchases(() => {
-          const cleared = { player: [], enemy: [] };
-          shopPurchasesRef.current = cleared;
-          return cleared;
-        });
+        clearShopPurchases();
         setShopReady(() => {
           const base = { player: false, enemy: false };
           if (isMultiplayer) {
@@ -1344,11 +1350,7 @@ const purchaseFromShop = useCallback(
       resetActivationPhase();
       if (isGauntletMode) {
         setShopInventory({ player: [], enemy: [] });
-        setShopPurchases(() => {
-          const cleared = { player: [], enemy: [] };
-          shopPurchasesRef.current = cleared;
-          return cleared;
-        });
+        clearShopPurchases();
         setShopReady({ player: false, enemy: false });
         resetGauntletShops();
       }
@@ -1364,6 +1366,7 @@ const purchaseFromShop = useCallback(
       phase,
       resetGauntletShops,
       resetActivationPhase,
+      clearShopPurchases,
       setAssign,
       setEnemy,
       setFreezeLayout,
@@ -1404,11 +1407,7 @@ const purchaseFromShop = useCallback(
       }
     }
 
-    setShopPurchases(() => {
-      const cleared = { player: [], enemy: [] };
-      shopPurchasesRef.current = cleared;
-      return cleared;
-    });
+    clearShopPurchases();
 
     nextRoundCore({ force: true });
   }, [
@@ -1418,8 +1417,7 @@ const purchaseFromShop = useCallback(
     nextRoundCore,
     setEnemy,
     setPlayer,
-    setShopPurchases,
-    shopPurchasesRef,
+    clearShopPurchases,
   ]);
 
   const completeShopForSide = useCallback(
@@ -1568,11 +1566,7 @@ const purchaseFromShop = useCallback(
     setPhase("choose");
     setGold({ player: 0, enemy: 0 });
     setShopInventory({ player: [], enemy: [] });
-    setShopPurchases(() => {
-      const cleared = { player: [], enemy: [] };
-      shopPurchasesRef.current = cleared;
-      return cleared;
-    });
+    clearShopPurchases();
     setShopReady({ player: false, enemy: false });
     resetActivationPhase();
 
@@ -1606,6 +1600,7 @@ const purchaseFromShop = useCallback(
     hostLegacySide,
     localLegacySide,
     seed,
+    clearShopPurchases,
     setAssign,
     setEnemy,
     setFreezeLayout,
