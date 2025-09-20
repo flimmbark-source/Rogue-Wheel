@@ -249,6 +249,8 @@ export function useMatchController({
     enemy: [],
   });
   const shopPurchasesRef = useRef(shopPurchases);
+  type QueuedShopPurchase = { side: LegacySide; card: Card; round: number };
+  const shopPurchaseQueueRef = useRef<QueuedShopPurchase[]>([]);
   useEffect(() => {
     shopPurchasesRef.current = shopPurchases;
   }, [shopPurchases]);
@@ -825,11 +827,12 @@ export function useMatchController({
         resolvedOffering?.id ??
         resolvedOfferingId ??
         getCardSourceId(card);
+      const clonedCard = cloneCardForGauntlet(card);
       const prevPurchases = shopPurchasesRef.current;
       const updatedPurchasesForSide: PendingShopPurchase[] = [
         ...prevPurchases[side],
         {
-          card: cloneCardForGauntlet(card),
+          card: clonedCard,
           sourceId: purchaseSourceId ?? null,
           cost: resolvedCost,
         },
@@ -839,6 +842,14 @@ export function useMatchController({
         [side]: updatedPurchasesForSide,
       };
       commitShopPurchases(next);
+
+      if (isGauntletMode) {
+        const currentRound = gauntletStateRef.current[side]?.shop.round ?? round;
+        shopPurchaseQueueRef.current = [
+          ...shopPurchaseQueueRef.current,
+          { side, card: clonedCard, round: currentRound },
+        ];
+      }
       setShopReady((prev) => ({ ...prev, [side]: false }));
 
       appendLog(
@@ -851,8 +862,11 @@ export function useMatchController({
       appendLog,
       commitShopPurchases,
       findOfferingForSide,
+      gauntletStateRef,
       isGauntletMode,
       namesByLegacy,
+      round,
+      shopPurchaseQueueRef,
       shopPurchasesRef,
     ],
   );
@@ -1306,6 +1320,7 @@ const purchaseFromShop = useCallback(
   const nextRoundCore = useCallback(
     (opts?: {
       force?: boolean;
+      purchases?: QueuedShopPurchase[];
     }) => {
       const allow = opts?.force || phase === "roundEnd";
       if (!allow) return false;
@@ -1317,8 +1332,19 @@ const purchaseFromShop = useCallback(
       const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
       const enemyPlayed = currentAssign.enemy.filter((c): c is Card => !!c);
 
-      const playerShopPurchases = shopPurchases.player.map((purchase) => purchase.card);
-      const enemyShopPurchases = shopPurchases.enemy.map((purchase) => purchase.card);
+      const queuedPurchases = opts?.purchases ?? [];
+      const playerShopPurchases =
+        queuedPurchases.length > 0
+          ? queuedPurchases
+              .filter((purchase) => purchase.side === "player")
+              .map((purchase) => purchase.card)
+          : shopPurchases.player.map((purchase) => purchase.card);
+      const enemyShopPurchases =
+        queuedPurchases.length > 0
+          ? queuedPurchases
+              .filter((purchase) => purchase.side === "enemy")
+              .map((purchase) => purchase.card)
+          : shopPurchases.enemy.map((purchase) => purchase.card);
 
       wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
 
@@ -1392,13 +1418,17 @@ const purchaseFromShop = useCallback(
       }
     }
 
-    nextRoundCore({ force: true });
+    const queuedPurchases = shopPurchaseQueueRef.current;
+    shopPurchaseQueueRef.current = [];
+
+    nextRoundCore({ force: true, purchases: queuedPurchases });
 
   }, [
     applyGauntletPurchase,
     isGauntletMode,
     localLegacySide,
     nextRoundCore,
+    shopPurchaseQueueRef,
     shopPurchasesRef,
   ]);
 
