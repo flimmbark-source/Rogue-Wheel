@@ -435,10 +435,15 @@ export type StoreOffering = {
 };
 
 export function rollStoreOfferings(
-  count = 4,
+  count = 6,
   rng: () => number = Math.random,
 ): StoreOffering[] {
-  const pool = [...CARD_BLUEPRINTS];
+  const abilityPool = CARD_BLUEPRINTS.filter((entry) => !!entry.behavior);
+  const abilitySlots = Math.max(0, Math.min(3, count, abilityPool.length));
+  const normalSlots = Math.max(0, count - abilitySlots);
+
+  const standardPool = CARD_BLUEPRINTS.filter((entry) => !entry.behavior);
+
   const offers: StoreOffering[] = [];
 
   const makeOffer = (blueprint: CardBlueprint) => ({
@@ -449,13 +454,22 @@ export function rollStoreOfferings(
     card: instantiateCard(blueprint),
   });
 
-  if (count > 0) {
-    const negativePool = pool.filter((entry) => NEGATIVE_BLUEPRINT_IDS.has(entry.id));
+  for (let i = 0; i < abilitySlots && abilityPool.length; i += 1) {
+    const index = pickWeightedIndex(abilityPool, rng);
+    const blueprint = abilityPool.splice(index, 1)[0];
+    if (!blueprint) break;
+    offers.push(makeOffer(blueprint));
+  }
+
+  if (normalSlots > 0) {
+    const negativePool = standardPool.filter((entry) =>
+      NEGATIVE_BLUEPRINT_IDS.has(entry.id),
+    );
     if (negativePool.length > 0) {
       const forced = negativePool[pickWeightedIndex(negativePool, rng)];
       if (forced) {
-        const forcedIndex = pool.findIndex((entry) => entry.id === forced.id);
-        const [blueprint] = forcedIndex >= 0 ? pool.splice(forcedIndex, 1) : [forced];
+        const forcedIndex = standardPool.findIndex((entry) => entry.id === forced.id);
+        const [blueprint] = forcedIndex >= 0 ? standardPool.splice(forcedIndex, 1) : [forced];
         if (blueprint) {
           offers.push(makeOffer(blueprint));
         }
@@ -463,9 +477,9 @@ export function rollStoreOfferings(
     }
   }
 
-  while (offers.length < count && pool.length) {
-    const index = pickWeightedIndex(pool, rng);
-    const blueprint = pool.splice(index, 1)[0];
+  while (offers.length < abilitySlots + normalSlots && standardPool.length) {
+    const index = pickWeightedIndex(standardPool, rng);
+    const blueprint = standardPool.splice(index, 1)[0];
     if (!blueprint) break;
     offers.push(makeOffer(blueprint));
   }
