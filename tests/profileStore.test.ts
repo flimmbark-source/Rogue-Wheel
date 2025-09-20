@@ -8,7 +8,6 @@ import {
   freshFive,
   addPurchasedCardToFighter,
   rollStoreOfferings,
-
 } from "../src/player/profileStore.js";
 
 const makeCard = (id: string, value = 0): Card => ({

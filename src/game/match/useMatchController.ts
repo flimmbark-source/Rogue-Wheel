@@ -249,6 +249,8 @@ useEffect(() => {
 
   const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
   const [enemy, setEnemy] = useState<Fighter>(() => makeFighter("Shade Bandit"));
+  const playerRef = useLatestRef(player);
+  const enemyRef = useLatestRef(enemy);
 
   const [initiative, setInitiative] = useState<LegacySide>(() =>
     hostId ? hostLegacySide : localLegacySide,
@@ -780,14 +782,21 @@ function createInitialGauntletState(): GauntletState {
   );
 
   const broadcastLocalReserve = useCallback(() => {
-    const lane =
-      localLegacySide === "player" ? assignRef.current.player : assignRef.current.enemy;
-    const reserve = computeReserveSum(localLegacySide, lane);
+    const fighter = localLegacySide === "player" ? playerRef.current : enemyRef.current;
+    const reserve = computeReserveSum(fighter.hand);
     const updated = storeReserveReport(localLegacySide, reserve, round);
     if (isMultiplayer && updated) {
       emitIntent({ type: "reserve", side: localLegacySide, reserve, round });
     }
-  }, [emitIntent, isMultiplayer, localLegacySide, round, storeReserveReport]);
+  }, [
+    emitIntent,
+    enemyRef,
+    isMultiplayer,
+    localLegacySide,
+    playerRef,
+    round,
+    storeReserveReport,
+  ]);
 
   const [dragCardId, setDragCardId] = useState<string | null>(null);
   const [dragOverWheelInternal, setDragOverWheelInternal] = useState<number | null>(null);
@@ -1184,28 +1193,22 @@ function createInitialGauntletState(): GauntletState {
       return value;
     };
 
-    const localPlayed =
-      localLegacySide === "player"
-        ? played.map((pe) => pe.p)
-        : played.map((pe) => pe.e);
-    const remotePlayed =
-      remoteLegacySide === "player"
-        ? played.map((pe) => pe.p)
-        : played.map((pe) => pe.e);
+    const localFighter = localLegacySide === "player" ? player : enemy;
+    const remoteFighter = remoteLegacySide === "player" ? player : enemy;
 
-    const localReserve = computeReserveSum(localLegacySide, localPlayed);
+    const localReserve = computeReserveSum(localFighter.hand);
     let remoteReserve: number;
     let usedRemoteReport = false;
 
     if (!isMultiplayer) {
-      remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+      remoteReserve = computeReserveSum(remoteFighter.hand);
     } else {
       const report = reserveReportsRef.current[remoteLegacySide];
       if (report && report.round === round) {
         remoteReserve = report.reserve;
         usedRemoteReport = true;
       } else {
-        remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+        remoteReserve = computeReserveSum(remoteFighter.hand);
       }
     }
 
@@ -2292,9 +2295,8 @@ function createInitialGauntletSideState(): GauntletSideState {
 }
 
 
-function computeReserveSum(side: LegacySide, played: (Card | null)[]) {
-
-  const reserve = played.filter(Boolean) as Card[];
+function computeReserveSum(hand: (Card | null | undefined)[]) {
+  const reserve = hand.filter(Boolean) as Card[];
   return reserve.reduce((total, card) => total + getCardReserveValue(card), 0);
 }
 
