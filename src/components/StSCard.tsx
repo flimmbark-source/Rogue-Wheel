@@ -204,9 +204,19 @@ const framesByKind: Record<Kind, string> = {
 const cardBackground = backgroundsByKind[cardKind];
 const frameBorder = framesByKind[cardKind];
 
+const splitFaces = getSplitFaces(card);
+
 const behavior = getCardBehavior(card);
 const behaviorIcon =
   behavior === "split" ? "✂️" : behavior === "boost" ? "⚡" : behavior === "swap" ? "🔄" : null;
+
+const hasAbilityMetadata = Boolean(
+  (card.activation?.length ?? 0) > 0 ||
+    splitFaces.some((face) => (face.activation?.length ?? 0) > 0) ||
+    card.reserve?.summary,
+);
+
+const abilityBadgeIcon = behaviorIcon ?? (hasAbilityMetadata ? "✨" : null);
 
 const displayValue =
   typeof adjustment?.value === "number" ? adjustment.value : playVal;
@@ -223,7 +233,7 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
   const reserveValue = getCardReserveValue(card);
   const activationSummaries = [
     ...(card.activation ?? []).map((ability) => ability.summary),
-    ...getSplitFaces(card).flatMap((face) =>
+    ...splitFaces.flatMap((face) =>
       (face.activation ?? []).map((ability) =>
         `${face.label ?? (face.id === "left" ? "Left" : "Right")}: ${ability.summary}`,
       ),
@@ -315,9 +325,9 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
         </div>
       )}
 
-      {behaviorIcon && (
+      {abilityBadgeIcon && (
         <div className="pointer-events-none absolute left-1 top-1 text-lg leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.65)]">
-          {behaviorIcon}
+          {abilityBadgeIcon}
         </div>
       )}
 
@@ -340,7 +350,7 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
         <div className="flex-1 flex items-center justify-center text-center">
           {isSplit(card) ? (
             <div className="grid grid-cols-2 gap-x-2 text-center text-white/90">
-              {getSplitFaces(card).map((face) => (
+              {splitFaces.map((face) => (
                 <div key={face.id} className="leading-tight">
                   <div className="text-[10px] uppercase text-slate-300">
                     {face.label ?? (face.id === "left" ? "Left" : "Right")}
