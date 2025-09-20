@@ -258,7 +258,11 @@ useEffect(() => {
     enemy: [],
   });
   const shopPurchasesRef = useRef(shopPurchases);
-  const writeShopPurchases = useCallback(
+  useEffect(() => {
+    shopPurchasesRef.current = shopPurchases;
+  }, [shopPurchases]);
+  const commitShopPurchases = useCallback(
+
     (next: Record<LegacySide, PendingShopPurchase[]>) => {
       shopPurchasesRef.current = next;
       setShopPurchases(next);
@@ -266,13 +270,13 @@ useEffect(() => {
     [setShopPurchases],
   );
   const clearShopPurchases = useCallback(() => {
-    writeShopPurchases({ player: [], enemy: [] });
-  }, [writeShopPurchases]);
+    commitShopPurchases({ player: [], enemy: [] });
+  }, [commitShopPurchases]);
   const takeShopPurchases = useCallback(() => {
     const current = shopPurchasesRef.current;
-    writeShopPurchases({ player: [], enemy: [] });
     return current;
-  }, [writeShopPurchases]);
+  },);
+
   const [shopReady, setShopReady] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
@@ -849,11 +853,7 @@ useEffect(() => {
         ...prevPurchases,
         [side]: updatedPurchasesForSide,
       };
-
       commitShopPurchases(next);
-
-      writeShopPurchases(next);
-
       setShopReady((prev) => ({ ...prev, [side]: false }));
 
       appendLog(
@@ -869,8 +869,6 @@ useEffect(() => {
       isGauntletMode,
       namesByLegacy,
       shopPurchasesRef,
-      writeShopPurchases,
-
     ],
   );
 
@@ -1403,10 +1401,27 @@ const purchaseFromShop = useCallback(
       enemy: purchases.enemy.map((purchase) => ({ ...purchase })),
     };
 
+
+    clearShopPurchases();
+
+    const localPending = nextRoundPurchases[localLegacySide];
+    for (const purchase of localPending) {
+      if (!purchase.sourceId) continue;
+      try {
+        applyGauntletPurchase({
+          add: [{ cardId: purchase.sourceId, qty: 1 }],
+          cost: purchase.cost,
+        });
+      } catch (error) {
+        console.error("Failed to record gauntlet purchase", error);
+      }
+    }
+
     nextRoundCore({ force: true, purchases: nextRoundPurchases });
 
   }, [
     applyGauntletPurchase,
+    clearShopPurchases,
     isGauntletMode,
     localLegacySide,
     nextRoundCore,
