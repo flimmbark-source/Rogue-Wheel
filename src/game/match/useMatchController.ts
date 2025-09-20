@@ -259,7 +259,7 @@ useEffect(() => {
     enemy: [],
   });
   const shopPurchasesRef = useRef(shopPurchases);
-  const syncShopPurchases = useCallback(
+  const commitShopPurchases = useCallback(
     (next: Record<LegacySide, PendingShopPurchase[]>) => {
       shopPurchasesRef.current = next;
       setShopPurchases(next);
@@ -267,8 +267,8 @@ useEffect(() => {
     [setShopPurchases],
   );
   const clearShopPurchases = useCallback(() => {
-    syncShopPurchases({ player: [], enemy: [] });
-  }, [syncShopPurchases]);
+    commitShopPurchases({ player: [], enemy: [] });
+  }, [commitShopPurchases]);
   const [shopReady, setShopReady] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
@@ -845,7 +845,7 @@ useEffect(() => {
         ...prevPurchases,
         [side]: updatedPurchasesForSide,
       };
-      syncShopPurchases(next);
+      commitShopPurchases(next);
       setShopReady((prev) => ({ ...prev, [side]: false }));
 
       appendLog(
@@ -856,11 +856,11 @@ useEffect(() => {
     },
     [
       appendLog,
+      commitShopPurchases,
       findOfferingForSide,
       isGauntletMode,
       namesByLegacy,
       shopPurchasesRef,
-      syncShopPurchases,
     ],
   );
 
