@@ -259,7 +259,7 @@ useEffect(() => {
     enemy: [],
   });
   const shopPurchasesRef = useRef(shopPurchases);
-  const commitShopPurchases = useCallback(
+  const writeShopPurchases = useCallback(
     (next: Record<LegacySide, PendingShopPurchase[]>) => {
       shopPurchasesRef.current = next;
       setShopPurchases(next);
@@ -267,8 +267,13 @@ useEffect(() => {
     [setShopPurchases],
   );
   const clearShopPurchases = useCallback(() => {
-    commitShopPurchases({ player: [], enemy: [] });
-  }, [commitShopPurchases]);
+    writeShopPurchases({ player: [], enemy: [] });
+  }, [writeShopPurchases]);
+  const takeShopPurchases = useCallback(() => {
+    const current = shopPurchasesRef.current;
+    writeShopPurchases({ player: [], enemy: [] });
+    return current;
+  }, [writeShopPurchases]);
   const [shopReady, setShopReady] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
@@ -845,7 +850,7 @@ useEffect(() => {
         ...prevPurchases,
         [side]: updatedPurchasesForSide,
       };
-      commitShopPurchases(next);
+      writeShopPurchases(next);
       setShopReady((prev) => ({ ...prev, [side]: false }));
 
       appendLog(
@@ -856,11 +861,11 @@ useEffect(() => {
     },
     [
       appendLog,
-      commitShopPurchases,
       findOfferingForSide,
       isGauntletMode,
       namesByLegacy,
       shopPurchasesRef,
+      writeShopPurchases,
     ],
   );
 
@@ -1321,6 +1326,10 @@ const purchaseFromShop = useCallback(
       const allow = opts?.force || phase === "roundEnd";
       if (!allow) return false;
 
+      if (isGauntletMode) {
+        clearShopPurchases();
+      }
+
       clearResolveVotes();
       clearAdvanceVotes();
 
@@ -1350,7 +1359,6 @@ const purchaseFromShop = useCallback(
       resetActivationPhase();
       if (isGauntletMode) {
         setShopInventory({ player: [], enemy: [] });
-        clearShopPurchases();
         setShopReady({ player: false, enemy: false });
         resetGauntletShops();
       }
@@ -1385,7 +1393,7 @@ const purchaseFromShop = useCallback(
   const resumeAfterShop = useCallback(() => {
     if (!isGauntletMode) return;
 
-    const purchases = shopPurchasesRef.current;
+    const purchases = takeShopPurchases();
 
     if (purchases.player.length > 0) {
       setPlayer((prev) => stackPurchasesOnDeck(prev, purchases.player));
@@ -1407,8 +1415,6 @@ const purchaseFromShop = useCallback(
       }
     }
 
-    clearShopPurchases();
-
     nextRoundCore({ force: true });
   }, [
     applyGauntletPurchase,
@@ -1417,7 +1423,7 @@ const purchaseFromShop = useCallback(
     nextRoundCore,
     setEnemy,
     setPlayer,
-    clearShopPurchases,
+    takeShopPurchases,
   ]);
 
   const completeShopForSide = useCallback(
@@ -1549,6 +1555,8 @@ const purchaseFromShop = useCallback(
 
     resetGauntletState();
 
+    clearShopPurchases();
+
     wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
 
     setFreezeLayout(false);
@@ -1566,7 +1574,6 @@ const purchaseFromShop = useCallback(
     setPhase("choose");
     setGold({ player: 0, enemy: 0 });
     setShopInventory({ player: [], enemy: [] });
-    clearShopPurchases();
     setShopReady({ player: false, enemy: false });
     resetActivationPhase();
 
