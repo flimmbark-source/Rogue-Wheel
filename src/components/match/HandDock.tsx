@@ -68,6 +68,7 @@ export default function HandDock({
       <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
         {localFighter.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
+
           const abilitySummary = card.behavior
             ? getCardEffectSummary(card) ?? undefined
             : undefined;
@@ -92,6 +93,11 @@ export default function HandDock({
             onSelectCard(card.id);
           };
           const ariaLabel = `Select ${card.name}${abilitySummary ? `, ${abilitySummary}` : ""}`;
+
+          const abilityTooltip = card.behavior
+            ? getCardEffectSummary(card) ?? undefined
+            : undefined;
+
           return (
             <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
               <motion.div
@@ -125,6 +131,7 @@ export default function HandDock({
                     event.dataTransfer.effectAllowed = "move";
                   }}
                   onDragEnd={() => onDragCardChange(null)}
+                  
                   onPointerDown={(event: PointerEvent<HTMLButtonElement>) =>
                     startPointerDrag(card, event)
                   }
@@ -133,6 +140,20 @@ export default function HandDock({
                   ariaPressed={isSelected}
                   selected={isSelected}
                 />
+
+                  onPointerDown={(event: PointerEvent<HTMLButtonElement>) => startPointerDrag(card, event)}
+                  aria-pressed={isSelected}
+                  aria-label={`Select ${card.name}${abilityTooltip ? `, ${abilityTooltip}` : ""}`}
+                  title={abilityTooltip}
+                >
+                  <StSCard
+                    card={card}
+                    showReserve={false}
+                    variant="minimal"
+                    showAbilityHint
+                  />
+                </button>
+
               </motion.div>
             </div>
           );
