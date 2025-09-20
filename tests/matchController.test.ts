@@ -137,9 +137,7 @@ test("settleFighterAfterRound places shop purchases into hand before refilling",
   const fighter = makeFighter(startingDeck, []);
 
   const purchasedCard = makeCard("shop-card");
-  const purchases: PendingShopPurchase[] = [
-    { card: purchasedCard, cost: 3, sourceId: "offer-1" },
-  ];
+  const purchases: Card[] = [purchasedCard];
 
   const afterNextRound = settleFighterAfterRound(fighter, [], purchases);
   assert.equal(
@@ -192,7 +190,11 @@ test("shop purchases remain available for immediate resume processing", () => {
     "purchase should be added to the player's queue",
   );
 
-  const afterNextRound = settleFighterAfterRound(fighter, [], queueRef.current.player);
+  const afterNextRound = settleFighterAfterRound(
+    fighter,
+    [],
+    queueRef.current.player.map((purchase) => purchase.card),
+  );
   assert.equal(
     afterNextRound.hand.some((card) => card.id === purchase.card.id),
     true,
@@ -207,7 +209,7 @@ test("shop purchases remain available for immediate resume processing", () => {
   );
 });
 
-test("purchased cards stack even when the queue is cleared before state updates", () => {
+test("purchased cards are drawn even when the queue is cleared before state updates", () => {
   const startingDeck = ["d1", "d2", "d3", "d4", "d5", "d6"].map(makeCard);
   const startingHand = ["h1", "h2", "h3", "h4", "h5"].map(makeCard);
   const fighter = makeFighter(startingDeck, startingHand);
@@ -236,17 +238,17 @@ test("purchased cards stack even when the queue is cleared before state updates"
   const drained = queued;
   queueRef.current = { player: [], enemy: [] };
 
-  const afterShop = stackPurchasesOnDeck(fighter, drained.player);
-  assert.equal(
-    afterShop.deck[0]?.id,
-    purchase.card.id,
-    "resumeAfterShop should stack the purchased card on top of the deck",
-  );
-
-  const afterAdvance = settleFighterAfterRound(afterShop, []);
+  const purchasesForNextRound = drained.player.map((item) => item.card);
+  const afterAdvance = settleFighterAfterRound(fighter, [], purchasesForNextRound);
   assert.equal(
     afterAdvance.hand[0]?.id,
     purchase.card.id,
     "nextRoundCore should draw the purchased card into hand even when the queue cleared early",
+  );
+
+  assert.equal(
+    afterAdvance.deck.some((card) => card.id === purchase.card.id),
+    false,
+    "purchased cards should not remain in the deck after being added to hand",
   );
 });
