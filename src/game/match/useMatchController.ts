@@ -2241,6 +2241,20 @@ function createInitialGauntletState(): GauntletState {
   };
 }
 
+function cloneCardForGauntlet(card: Card): Card {
+  return {
+    ...card,
+    tags: Array.isArray(card.tags) ? [...card.tags] : [],
+  };
+}
+
+function addPurchasedCardToFighter(fighter: Fighter, card: Card): Fighter {
+  const purchased = cloneCardForGauntlet(card);
+  return {
+    ...fighter,
+    discard: [purchased, ...fighter.discard],
+  };
+}
 
 function cardsEqual(a: Card, b: Card): boolean {
   if (a.id !== b.id) return false;
