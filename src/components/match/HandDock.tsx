@@ -68,11 +68,43 @@ export default function HandDock({
       <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
         {localFighter.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
-          const abilityTooltip = card.behavior
+
+          const abilitySummary = card.behavior
             ? getCardEffectSummary(card) ?? undefined
             : undefined;
+
+          const handlePick = () => {
+            if (!selectedCardId) {
+              onSelectCard(card.id);
+              return;
+            }
+
+            if (selectedCardId === card.id) {
+              onSelectCard(null);
+              return;
+            }
+
+            const lane =
+              localLegacySide === "player" ? assign.player : assign.enemy;
+            const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
+            if (slotIdx !== -1) {
+              onAssignToWheel(slotIdx, card);
+              return;
+            }
+
+            onSelectCard(card.id);
+          };
+
+          const ariaLabel = `Select ${card.name}${
+            abilitySummary ? `, ${abilitySummary}` : ""
+          }`;
+
           return (
-            <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
+            <div
+              key={card.id}
+              className="group relative pointer-events-auto"
+              style={{ zIndex: 10 + idx }}
+            >
               <motion.div
                 data-hand-card
                 initial={false}
@@ -87,33 +119,16 @@ export default function HandDock({
                   scale: 1.04,
                 }}
                 transition={{ type: "spring", stiffness: 320, damping: 22 }}
-                className={`drop-shadow-xl ${isSelected ? "ring-2 ring-amber-300" : ""}`}
+                className={`drop-shadow-xl ${
+                  isSelected ? "ring-2 ring-amber-300" : ""
+                }`}
               >
-                <button
-                  data-hand-card
-                  className="pointer-events-auto"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    if (!selectedCardId) {
-                      onSelectCard(card.id);
-                      return;
-                    }
-
-                    if (selectedCardId === card.id) {
-                      onSelectCard(null);
-                      return;
-                    }
-
-                    const lane =
-                      localLegacySide === "player" ? assign.player : assign.enemy;
-                    const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
-                    if (slotIdx !== -1) {
-                      onAssignToWheel(slotIdx, card);
-                      return;
-                    }
-
-                    onSelectCard(card.id);
-                  }}
+                <StSCard
+                  card={card}
+                  showReserve={false}
+                  variant="minimal"
+                  showAbilityHint
+                  onPick={handlePick}
                   draggable
                   onDragStart={(event: DragEvent<HTMLButtonElement>) => {
                     onDragCardChange(card.id);
@@ -123,18 +138,14 @@ export default function HandDock({
                     event.dataTransfer.effectAllowed = "move";
                   }}
                   onDragEnd={() => onDragCardChange(null)}
-                  onPointerDown={(event: PointerEvent<HTMLButtonElement>) => startPointerDrag(card, event)}
-                  aria-pressed={isSelected}
-                  aria-label={`Select ${card.name}${abilityTooltip ? `, ${abilityTooltip}` : ""}`}
-                  title={abilityTooltip}
-                >
-                  <StSCard
-                    card={card}
-                    showReserve={false}
-                    variant="minimal"
-                    showAbilityHint
-                  />
-                </button>
+                  onPointerDown={(
+                    event: PointerEvent<HTMLButtonElement>,
+                  ) => startPointerDrag(card, event)}
+                  ariaLabel={ariaLabel}
+                  title={abilitySummary}
+                  ariaPressed={isSelected}
+                  selected={isSelected}
+                />
               </motion.div>
             </div>
           );
@@ -147,13 +158,20 @@ export default function HandDock({
             position: "fixed",
             left: 0,
             top: 0,
-            transform: `translate(${pointerPosition.current.x - 48}px, ${pointerPosition.current.y - 64}px)`,
+            transform: `translate(${pointerPosition.current.x - 48}px, ${
+              pointerPosition.current.y - 64
+            }px)`,
             pointerEvents: "none",
             zIndex: 9999,
           }}
           aria-hidden
         >
-          <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
+          <div
+            style={{
+              transform: "scale(0.9)",
+              filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))",
+            }}
+          >
             <StSCard
               card={pointerDragCard}
               showReserve={false}

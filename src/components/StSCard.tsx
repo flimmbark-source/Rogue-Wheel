@@ -85,7 +85,10 @@ export default memo(function StSCard({
   /** Optional: show a condensed reserve/ability hint when in minimal mode */
   showAbilityHint = false,
   adjustment,
-  
+  title,
+  ariaLabel,
+  ariaPressed,
+
 }: {
   card: Card;
   disabled?: boolean;
@@ -104,6 +107,9 @@ export default memo(function StSCard({
   ariaDescribedBy?: string;
   showAbilityHint?: boolean;
   adjustment?: CardAdjustmentDescriptor;
+  title?: string;
+  ariaLabel?: string;
+  ariaPressed?: boolean;
 
 }) {
   // ---------- Dimensions ----------
@@ -231,6 +237,14 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
   const shouldShowAbilityHint =
     variant === "minimal" && showAbilityHint && abilityHintText.length > 0;
 
+  const computedAriaLabel =
+    typeof ariaLabel === "string"
+      ? ariaLabel
+      : `Card ${card?.name ?? ""}${(() => {
+          const summary = getCardEffectSummary(card);
+          return summary ? `, ${summary}` : "";
+        })()}`;
+
   return (
     <button
       onClick={(e) => {
@@ -245,10 +259,7 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
         ${cardBackground}
       `}
       style={{ width: dims.w, height: dims.h }}
-      aria-label={`Card ${card?.name ?? ""}${(() => {
-        const summary = getCardEffectSummary(card);
-        return summary ? `, ${summary}` : "";
-      })()}`}
+      aria-label={computedAriaLabel}
       aria-describedby={ariaDescribedBy}
       draggable={draggable}
       onDragStart={onDragStart}
@@ -257,6 +268,8 @@ const statusTone: CardAdjustmentStatusTone = adjustment?.status?.tone ?? "info";
       data-card-kind={cardKind}
       data-play-val={playVal}
       data-card-id={id}
+      title={title}
+      aria-pressed={ariaPressed}
     >
       {/* Border-only frame; bg is transparent so it never masks the button background */}
       <div
