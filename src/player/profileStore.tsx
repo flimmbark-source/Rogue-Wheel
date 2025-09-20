@@ -112,29 +112,49 @@ const cloneSplit = (split: CardSplit): CardSplit => ({
   },
 });
 
-const instantiateCard = (blueprint: CardBlueprint): Card => ({
-  id: nextCardId(),
-  name: blueprint.name,
-  type: blueprint.type ?? "normal",
-  number: blueprint.number,
-  split: blueprint.split ? cloneSplit(blueprint.split) : undefined,
-  activation: blueprint.activation ? blueprint.activation.map(cloneActivation) : undefined,
-  behavior: blueprint.behavior,
-  reserve: blueprint.reserve ? { ...blueprint.reserve } : undefined,
-  tags: blueprint.tags ? [...blueprint.tags] : [],
-  cost: blueprint.cost,
-  rarity: blueprint.rarity,
-  effectSummary: blueprint.effectSummary,
-});
+type CardWithSource = Card & { sourceId?: string };
+
+const setCardSourceId = <T extends Card>(card: T, sourceId?: string): T => {
+  if (sourceId) {
+    (card as CardWithSource).sourceId = sourceId;
+  }
+  return card;
+};
+
+export function getCardSourceId(card: Card): string | undefined {
+  return (card as CardWithSource).sourceId;
+}
+
+const instantiateCard = (blueprint: CardBlueprint): CardWithSource =>
+  setCardSourceId(
+    {
+      id: nextCardId(),
+      name: blueprint.name,
+      type: blueprint.type ?? "normal",
+      number: blueprint.number,
+      split: blueprint.split ? cloneSplit(blueprint.split) : undefined,
+      activation: blueprint.activation ? blueprint.activation.map(cloneActivation) : undefined,
+      behavior: blueprint.behavior,
+      reserve: blueprint.reserve ? { ...blueprint.reserve } : undefined,
+      tags: blueprint.tags ? [...blueprint.tags] : [],
+      cost: blueprint.cost,
+      rarity: blueprint.rarity,
+      effectSummary: blueprint.effectSummary,
+    },
+    blueprint.id,
+  );
 
 export function cloneCardForGauntlet(card: Card): Card {
-  return {
-    ...card,
-    split: card.split ? cloneSplit(card.split) : undefined,
-    activation: card.activation ? card.activation.map(cloneActivation) : undefined,
-    reserve: card.reserve ? { ...card.reserve } : undefined,
-    tags: Array.isArray(card.tags) ? [...card.tags] : [],
-  };
+  return setCardSourceId(
+    {
+      ...card,
+      split: card.split ? cloneSplit(card.split) : undefined,
+      activation: card.activation ? card.activation.map(cloneActivation) : undefined,
+      reserve: card.reserve ? { ...card.reserve } : undefined,
+      tags: Array.isArray(card.tags) ? [...card.tags] : [],
+    },
+    getCardSourceId(card),
+  );
 }
 
 const ABILITIES = {
@@ -982,28 +1002,43 @@ function cardFromId(cardId: string): Card {
     CARD_BLUEPRINT_MAP.get(cardId) ?? numberBlueprintFromId(cardId) ?? CARD_BLUEPRINT_MAP.get("basic_0");
 
   if (!blueprint) {
-    return {
-      id: nextCardId(),
-      name: "0",
-      type: "normal",
-      number: 0,
-      tags: [],
-    };
+    return setCardSourceId(
+      {
+        id: nextCardId(),
+        name: "0",
+        type: "normal",
+        number: 0,
+        tags: [],
+      },
+      cardId,
+    );
   }
 
   return instantiateCard(blueprint);
 }
 
 // ====== Build a runtime deck (Card[]) from the ACTIVE profile deck ======
-export function buildActiveDeckAsCards(): Card[] {
-  const { active } = getProfileBundle();
-  if (!active || !active.cards?.length) return starterDeck(); // fallback
+function buildDeckEntriesAsCards(entries: DeckCard[] | undefined): Card[] {
+  if (!entries?.length) return starterDeck();
 
   const pool: Card[] = [];
-  for (const entry of active.cards) {
-    for (let i = 0; i < entry.qty; i++) pool.push(cardFromId(entry.cardId));
+  for (const entry of entries) {
+    for (let i = 0; i < entry.qty; i += 1) {
+      pool.push(cardFromId(entry.cardId));
+    }
   }
   return shuffle(pool);
+}
+
+export function buildActiveDeckAsCards(): Card[] {
+  const { active } = getProfileBundle();
+  return buildDeckEntriesAsCards(active?.cards);
+}
+
+export function buildGauntletDeckAsCards(): Card[] {
+  const run = getGauntletRun();
+  if (!run) return buildActiveDeckAsCards();
+  return buildDeckEntriesAsCards(run.deck);
 }
 
 // ====== Runtime helpers (folded from your src/game/decks.ts) ======
@@ -1049,7 +1084,11 @@ export function addPurchasedCardToFighter(fighter: Fighter, card: Card): Fighter
 }
 
 /** Make a fighter using the ACTIVE profile deck (draw 5 to start). */
-export function makeFighter(name: string): Fighter {
-  const deck = buildActiveDeckAsCards();
-  return refillTo({ name, deck, hand: [], discard: [] }, 5);
+export type MakeFighterOptions = {
+  deck?: Card[];
+};
+
+export function makeFighter(name: string, options: MakeFighterOptions = {}): Fighter {
+  const sourceDeck = options.deck ? [...options.deck] : buildActiveDeckAsCards();
+  return refillTo({ name, deck: sourceDeck, hand: [], discard: [] }, 5);
 }

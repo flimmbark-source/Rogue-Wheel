@@ -27,8 +27,11 @@ import {
   freshFive,
   cloneCardForGauntlet,
   addPurchasedCardToFighter,
+  getCardSourceId,
   recordMatchResult,
   rollStoreOfferings,
+  buildGauntletDeckAsCards,
+  applyGauntletPurchase,
   type MatchResultSummary,
   type LevelProgress,
 } from "../../player/profileStore";
@@ -247,7 +250,9 @@ useEffect(() => {
     return id;
   }, []);
 
-  const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
+  const [player, setPlayer] = useState<Fighter>(() =>
+    isGauntletMode ? makeFighter("Wanderer", { deck: buildGauntletDeckAsCards() }) : makeFighter("Wanderer"),
+  );
   const [enemy, setEnemy] = useState<Fighter>(() => makeFighter("Shade Bandit"));
   const playerRef = useLatestRef(player);
   const enemyRef = useLatestRef(enemy);
@@ -1006,6 +1011,17 @@ function createInitialGauntletState(): GauntletState {
       appendLog(
         `${namesByLegacy[side]} purchases ${card.name} for ${cost} gold.`,
       );
+
+      if (side === localLegacySide) {
+        const sourceId = getCardSourceId(card);
+        if (sourceId) {
+          try {
+            applyGauntletPurchase({ add: [{ cardId: sourceId, qty: 1 }], cost });
+          } catch (error) {
+            console.error("Failed to record gauntlet purchase", error);
+          }
+        }
+      }
       return true;
     },
     [
@@ -1013,6 +1029,7 @@ function createInitialGauntletState(): GauntletState {
       isGauntletMode,
       namesByLegacy,
       shopPurchases,
+      localLegacySide,
     ],
   );
 
@@ -1909,7 +1926,9 @@ function createInitialGauntletState(): GauntletState {
     setFreezeLayout(false);
     setLockedWheelSize(null);
 
-    setPlayer(() => makeFighter("Wanderer"));
+    setPlayer(() =>
+      isGauntletMode ? makeFighter("Wanderer", { deck: buildGauntletDeckAsCards() }) : makeFighter("Wanderer"),
+    );
     setEnemy(() => makeFighter("Shade Bandit"));
 
     setInitiative(hostId ? hostLegacySide : localLegacySide);
@@ -1956,6 +1975,7 @@ function createInitialGauntletState(): GauntletState {
     clearRematchVotes,
     clearResolveVotes,
     generateWheelSet,
+    isGauntletMode,
     hostId,
     hostLegacySide,
     localLegacySide,
