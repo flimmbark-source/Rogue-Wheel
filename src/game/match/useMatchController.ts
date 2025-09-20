@@ -2233,47 +2233,60 @@ const purchaseFromShop = useCallback(
           break;
         }
 
-        case "shopPurchase": {
-          if (msg.side === localLegacySide) break;
-          if ("offeringId" in msg && typeof msg.offeringId === "string") {
-            const cost = typeof msg.cost === "number" ? msg.cost : undefined;
-            applyShopPurchaseFn?.(msg.side, { offeringId: msg.offeringId, cost }, { force: true });
-          } else if ("cardId" in msg && typeof msg.cardId === "string" && typeof msg.round === "number") {
-            applyGauntletPurchaseFn?.(msg.side, { cardId: msg.cardId, round: msg.round });
-} else if ("card" in msg && msg.card && typeof msg.cost === "number") {
-  const { card, cost } = msg as { card: Card; cost: number } & { sourceId?: string | null };
-  const sourceId =
-    "sourceId" in msg ? ((msg as any).sourceId as string | null | undefined) ?? null : undefined;
+// ---- Shop (offering + legacy + new) ----
+case "shopPurchase": {
+  if (msg.side === localLegacySide) break;
 
-  if (applyShopPurchaseFn) {
-    // Prefer new signature: (side, card, cost, { force, sourceId })
-    try {
-      (applyShopPurchaseFn as any)(msg.side, card, cost, { force: true, sourceId });
-    } catch {
-      // Fallback to legacy signature: (side, { card, cost, sourceId? }, { force })
-      (applyShopPurchaseFn as any)(msg.side, { card, cost, sourceId }, { force: true });
+  // current shape: { offeringId, cost }
+  if ("offeringId" in msg && typeof (msg as any).offeringId === "string") {
+    const offeringId = (msg as any).offeringId as string;
+    const cost = typeof (msg as any).cost === "number" ? (msg as any).cost : undefined;
+    // If you have a helper to purchase by offeringId, call it here.
+    // Otherwise resolve it to a card first, then call applyShopPurchase(...).
+    const offering = findOfferingForSide(msg.side, offeringId);
+    if (offering) {
+      applyShopPurchase(msg.side, offering.card, offering.cost ?? (cost ?? 1), {
+        force: true,
+        sourceId: offeringId,
+      });
     }
+    break;
   }
+
+  // legacy shape: { cardId, round }
+  if ("cardId" in msg && typeof (msg as any).cardId === "string" && typeof (msg as any).round === "number") {
+    applyGauntletPurchaseFor(msg.side, { cardId: (msg as any).cardId, round: (msg as any).round });
+    break;
+  }
+
+  // new/legacy card shape: { card, cost, sourceId? }
+  if ("card" in msg && (msg as any).card && typeof (msg as any).cost === "number") {
+    const { card, cost } = msg as { card: Card; cost: number } & { sourceId?: string | null };
+    const sourceId = "sourceId" in msg ? ((msg as any).sourceId as string | null | undefined) ?? null : undefined;
+    applyShopPurchase(msg.side, card, cost, { force: true, sourceId });
+    break;
+  }
+
+  // unknown shape: ignore safely
+  break;
 }
 
-          }
-          break;
-        }
-        case "shopReady": {
-          if (msg.side === localLegacySide) break;
-          completeShop?.(msg.side, { emit: false });
-          break;
-        }
+case "shopReady": {
+  if (msg.side === localLegacySide) break;
+  completeShopForSide(msg.side, { emit: false });
+  break;
+}
 
-        case "gold": {
-          if (msg.side === localLegacySide) break;
-          const payload: GauntletGoldPayload = { gold: msg.gold };
-          if (typeof msg.delta === "number" && Number.isFinite(msg.delta)) {
-            payload.delta = msg.delta;
-          }
-          applyGauntletGoldFn?.(msg.side, payload);
-          break;
-        }
+case "gold": {
+  if (msg.side === localLegacySide) break;
+  const payload: GauntletGoldPayload = { gold: (msg as any).gold };
+  if (typeof (msg as any).delta === "number" && Number.isFinite((msg as any).delta)) {
+    payload.delta = (msg as any).delta;
+  }
+  applyGauntletGoldFor(msg.side, payload);
+  break;
+}
+
 
         case "activationSelect": {
           if (msg.side === localLegacySide) break;
