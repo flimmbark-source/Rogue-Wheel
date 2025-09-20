@@ -2292,20 +2292,20 @@ function createInitialGauntletState(): GauntletState {
   };
 }
 
-function cloneCardForGauntlet(card: Card): Card {
-  return {
-    ...card,
-    tags: Array.isArray(card.tags) ? [...card.tags] : [],
-  };
-}
+type LegacyCard = Card & {
+  leftValue?: number | null;
+  rightValue?: number | null;
+};
 
 function cardsEqual(a: Card, b: Card): boolean {
+  const legacyA = a as LegacyCard;
+  const legacyB = b as LegacyCard;
   if (a.id !== b.id) return false;
   if (a.name !== b.name) return false;
   if ((a.type ?? "normal") !== (b.type ?? "normal")) return false;
   if ((a.number ?? null) !== (b.number ?? null)) return false;
-  if ((a.leftValue ?? null) !== (b.leftValue ?? null)) return false;
-  if ((a.rightValue ?? null) !== (b.rightValue ?? null)) return false;
+  if ((legacyA.leftValue ?? null) !== (legacyB.leftValue ?? null)) return false;
+  if ((legacyA.rightValue ?? null) !== (legacyB.rightValue ?? null)) return false;
   if ((a.behavior ?? null) !== (b.behavior ?? null)) return false;
   if ((a.cost ?? null) !== (b.cost ?? null)) return false;
   if ((a.rarity ?? null) !== (b.rarity ?? null)) return false;
@@ -2357,14 +2357,16 @@ function discardHand(fighter: Fighter): Fighter {
   };
 }
 
-function settleFighterAfterRound(fighter: Fighter, played: Card[]) {
+export function settleFighterAfterRound(fighter: Fighter, played: Card[]) {
   const TARGET_HAND_SIZE = 5;
-  let next: Fighter = {
-    ...fighter,
-    hand: fighter.hand.filter((card) => !played.some((p) => p.id === card.id)),
-    discard: [...fighter.discard, ...played],
-  };
+  const playedIds = new Set(played.map((card) => card.id));
+  const remainingHand = fighter.hand.filter((card) => !playedIds.has(card.id));
 
+  let next: Fighter = discardHand({
+    ...fighter,
+    hand: remainingHand,
+    discard: [...fighter.discard, ...played],
+  });
 
   next = refillTo(next, TARGET_HAND_SIZE);
 
