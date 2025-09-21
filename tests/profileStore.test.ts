@@ -38,10 +38,16 @@ test("addPurchasedCardToFighter places a cloned card on top of the deck", () => 
   const withPurchase = addPurchasedCardToFighter(fighter, purchased);
 
   assert.equal(withPurchase.deck.length, 2, "purchased card should extend the deck");
+  const clonedPurchase = withPurchase.deck[0];
   assert.equal(
-    withPurchase.deck[0]?.id,
-    purchased.id,
+    clonedPurchase?.name,
+    purchased.name,
     "purchased card should be the next card drawn",
+  );
+  assert.notEqual(
+    clonedPurchase?.id,
+    purchased.id,
+    "purchased cards should be assigned new runtime ids",
   );
   assert.notEqual(
     withPurchase.deck[0],
@@ -51,7 +57,16 @@ test("addPurchasedCardToFighter places a cloned card on top of the deck", () => 
 
   const afterDraw = drawOne(withPurchase);
   const lastDrawn = afterDraw.hand.at(-1);
-  assert.equal(lastDrawn?.id, purchased.id, "purchased card should enter the hand on the next draw");
+  assert.equal(
+    lastDrawn?.name,
+    purchased.name,
+    "purchased card should enter the hand on the next draw",
+  );
+  assert.notEqual(
+    lastDrawn?.id,
+    purchased.id,
+    "drawn cards should not reuse the shop offering id",
+  );
 });
 
 test("drawOne pulls from the discard pile when the deck is empty", () => {

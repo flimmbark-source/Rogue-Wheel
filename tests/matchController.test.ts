@@ -140,10 +140,16 @@ test("settleFighterAfterRound places shop purchases into hand before refilling",
   const purchases: Card[] = [purchasedCard];
 
   const afterNextRound = settleFighterAfterRound(fighter, [], purchases);
+  const drawnPurchase = afterNextRound.hand[0];
   assert.equal(
-    afterNextRound.hand[0]?.id,
-    purchasedCard.id,
+    drawnPurchase?.name,
+    purchasedCard.name,
     "shop purchases should be added to the front of the new hand",
+  );
+  assert.notEqual(
+    drawnPurchase?.id,
+    purchasedCard.id,
+    "purchased cards should receive new runtime ids when cloned",
   );
 
   const expectedFollowUps = startingDeck.slice(0, 4).map((card) => card.id);
@@ -195,10 +201,16 @@ test("shop purchases remain available for immediate resume processing", () => {
     [],
     queueRef.current.player.map((purchase) => purchase.card),
   );
+  const resumedCard = afterNextRound.hand.find((card) => card.name === purchase.card.name);
   assert.equal(
-    afterNextRound.hand.some((card) => card.id === purchase.card.id),
+    resumedCard !== undefined,
     true,
     "the purchased card should be present in hand when the round resumes",
+  );
+  assert.notEqual(
+    resumedCard?.id,
+    purchase.card.id,
+    "purchased cards should not reuse the shop offering id",
   );
 
   queueRef.current = { player: [], enemy: [] };
@@ -240,14 +252,20 @@ test("purchased cards are drawn even when the queue is cleared before state upda
 
   const purchasesForNextRound = drained.player.map((item) => item.card);
   const afterAdvance = settleFighterAfterRound(fighter, [], purchasesForNextRound);
+  const advancedCard = afterAdvance.hand[0];
   assert.equal(
-    afterAdvance.hand[0]?.id,
-    purchase.card.id,
+    advancedCard?.name,
+    purchase.card.name,
     "nextRoundCore should draw the purchased card into hand even when the queue cleared early",
+  );
+  assert.notEqual(
+    advancedCard?.id,
+    purchase.card.id,
+    "purchased cards drawn into hand should be assigned a new runtime id",
   );
 
   assert.equal(
-    afterAdvance.deck.some((card) => card.id === purchase.card.id),
+    afterAdvance.deck.some((card) => card.name === purchase.card.name),
     false,
     "purchased cards should not remain in the deck after being added to hand",
   );
