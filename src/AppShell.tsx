@@ -19,7 +19,7 @@ type View =
   | { key: "soloMenu" }
   | { key: "mp" }
   | { key: "profile" }
-  | { key: "game"; mode: "classic" | "gauntlet" | "tactics" }
+  | { key: "game"; mode: "classic" | "gauntlet" | "arena" | "tactics" }
   | { key: "game"; mode: "mp"; mpPayload?: MPStartPayload };
 
 export default function AppShell() {
@@ -32,6 +32,7 @@ export default function AppShell() {
   const goToProfile = useCallback(() => setView({ key: "profile" }), [setView]);
   const startClassic = useCallback(() => setView({ key: "game", mode: "classic" }), [setView]);
   const startGauntlet = useCallback(() => setView({ key: "game", mode: "gauntlet" }), [setView]);
+  const startArena = useCallback(() => setView({ key: "game", mode: "arena" }), [setView]);
   const startTactics = useCallback(() => setView({ key: "game", mode: "tactics" }), [setView]);
 
   useEffect(() => {
@@ -60,6 +61,7 @@ export default function AppShell() {
           onBack={goToHub}
           onSelectClassic={startClassic}
           onSelectGauntlet={startGauntlet}
+          onSelectArena={startArena}
           onSelectTactics={startTactics}
         />
       </Suspense>
@@ -131,9 +133,11 @@ export default function AppShell() {
   const appMode =
     view.mode === "gauntlet"
       ? "gauntlet"
-      : view.mode === "tactics"
-        ? "tactics"
-        : "classic";
+      : view.mode === "arena"
+        ? "arena"
+        : view.mode === "tactics"
+          ? "tactics"
+          : "classic";
 
   return (
     <Suspense fallback={<LoadingScreen />}>

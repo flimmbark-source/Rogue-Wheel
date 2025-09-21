@@ -56,7 +56,7 @@ import {
 } from "./useMatchActivationPhase";
 import { useLatestRef } from "./useLatestRef";
 
-export type MatchMode = "classic" | "gauntlet" | "tactics";
+export type MatchMode = "classic" | "gauntlet" | "tactics" | "arena";
 
 export type {
   LegacySide,
@@ -178,6 +178,8 @@ export function useMatchController({
 }: UseMatchControllerOptions) {
   const matchMode = mode;
   const isGauntletMode = matchMode === "gauntlet";
+  const isArenaMode = matchMode === "arena";
+  const isGauntletLikeMode = isGauntletMode || isArenaMode;
   const isTacticsMode = matchMode === "tactics";
 
   const sendIntentRef = useRef(sendIntent);
@@ -211,7 +213,7 @@ export function useMatchController({
     [players.left.name, players.right.name],
   );
 
-  const defaultTargetWins = isGauntletMode ? GAUNTLET_TARGET_WINS : TARGET_WINS;
+  const defaultTargetWins = isGauntletLikeMode ? GAUNTLET_TARGET_WINS : TARGET_WINS;
 
   const winGoal = useMemo(() => {
     if (typeof targetWins === "number" && Number.isFinite(targetWins)) {
@@ -249,7 +251,7 @@ export function useMatchController({
   }, []);
 
   const [player, setPlayer] = useState<Fighter>(() => {
-    if (isGauntletMode) {
+    if (isGauntletLikeMode) {
       return makeFighter("Wanderer", { deck: buildGauntletDeckAsCards() });
     }
     if (isTacticsMode) {
@@ -274,10 +276,15 @@ export function useMatchController({
     enemy: 0,
   });
   const [round, setRound] = useState(1);
-  const shouldOpenShopThisRound = useMemo(
-    () => isGauntletMode && round >= 3 && round % 3 === 0,
-    [isGauntletMode, round],
-  );
+  const shouldOpenShopThisRound = useMemo(() => {
+    if (isGauntletMode) {
+      return round >= 3 && round % 3 === 0;
+    }
+    if (isArenaMode) {
+      return round >= 2 && round % 2 === 0;
+    }
+    return false;
+  }, [isArenaMode, isGauntletMode, round]);
 
   const [freezeLayout, setFreezeLayout] = useState(false);
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
@@ -392,11 +399,11 @@ export function useMatchController({
 
   const syncLocalGauntletGold = useCallback(
     (nextGold: number | null | undefined) => {
-      if (!isGauntletMode) return;
+      if (!isGauntletLikeMode) return;
       if (nextGold === null || nextGold === undefined) return;
       gauntletUpdateGold(nextGold);
     },
-    [gauntletUpdateGold, isGauntletMode],
+    [gauntletUpdateGold, isGauntletLikeMode],
   );
 
   const markRematchVote = useCallback((side: LegacySide) => {
@@ -789,7 +796,7 @@ export function useMatchController({
 
   const configureShopInventory = useCallback(
     (inventory: Partial<Record<LegacySide, StoreOffering[]>>) => {
-      if (!isGauntletMode) return;
+      if (!isGauntletLikeMode) return;
       setShopInventory((prev) => ({
         player: inventory.player
           ? inventory.player.map(cloneStoreOffering)
@@ -799,7 +806,7 @@ export function useMatchController({
           : prev.enemy,
       }));
     },
-    [isGauntletMode],
+    [isGauntletLikeMode],
   );
 
   const findOfferingForSide = useCallback(
@@ -823,7 +830,7 @@ export function useMatchController({
         | { card: Card; cost: number; sourceId?: string | null },
       opts?: { force?: boolean; sourceId?: string | null },
     ) => {
-      if (!isGauntletMode) return false;
+      if (!isGauntletLikeMode) return false;
 
       let resolvedOffering: StoreOffering | undefined;
       let fallbackCard: Card | undefined;
@@ -918,7 +925,7 @@ export function useMatchController({
       };
       commitShopPurchases(next);
 
-      if (isGauntletMode) {
+      if (isGauntletLikeMode) {
         const currentRound = gauntletStateRef.current[side]?.shop.round ?? round;
         shopPurchaseQueueRef.current = [
           ...shopPurchaseQueueRef.current,
@@ -939,7 +946,7 @@ export function useMatchController({
       commitShopPurchases,
       findOfferingForSide,
       gauntletStateRef,
-      isGauntletMode,
+      isGauntletLikeMode,
       localLegacySide,
       namesByLegacy,
       round,
@@ -973,7 +980,7 @@ const purchaseFromShop = useCallback(
       | string
       | { card: Card; cost: number; sourceId?: string | null },
   ): boolean => {
-    if (!isGauntletMode) return false;
+    if (!isGauntletLikeMode) return false;
     if (phase !== "shop") return false;
 
     // Resolve offering/card/cost/source
@@ -1059,7 +1066,7 @@ const purchaseFromShop = useCallback(
     return true;
   },
   [
-    isGauntletMode,
+    isGauntletLikeMode,
     phase,
     shopPurchasesRef,
     applyShopPurchase,
@@ -1071,8 +1078,9 @@ const purchaseFromShop = useCallback(
 
 
   const openShopPhase = useCallback(() => {
-    if (!isGauntletMode) return false;
-    if (round < 3) return false;
+    if (!isGauntletLikeMode) return false;
+    const minimumRound = isGauntletMode ? 3 : 2;
+    if (round < minimumRound) return false;
     if (phase === "shop") return false;
     setPlayer((prev) => discardHand(prev));
     setEnemy((prev) => discardHand(prev));
@@ -1085,15 +1093,45 @@ const purchaseFromShop = useCallback(
     });
     setPhase("shop");
     return true;
-  }, [isGauntletMode, isMultiplayer, phase, remoteLegacySide, round]);
+  }, [
+    isGauntletLikeMode,
+    isGauntletMode,
+    isMultiplayer,
+    phase,
+    remoteLegacySide,
+    round,
+  ]);
 
   useEffect(() => {
-    if (!isGauntletMode) return;
+    if (!isGauntletLikeMode) return;
     if (phase !== "shop") return;
     if (isMultiplayer && localLegacySide !== hostLegacySide) return;
     const currentInventory = shopInventory[localLegacySide] ?? [];
     if (currentInventory.length > 0) return;
-    const offerings = rollStoreOfferings();
+    const ARENA_OFFER_COST = 20;
+    const offerings = (() => {
+      if (isGauntletMode) {
+        return rollStoreOfferings();
+      }
+      const deck = buildAbilityDeckAsCards();
+      const seen = new Set<string>();
+      const picks: Card[] = [];
+      for (const card of deck) {
+        if (!card.behavior) continue;
+        const key = getCardSourceId(card) ?? card.id;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        picks.push(card);
+        if (picks.length >= 3) break;
+      }
+      return picks.map((card) => ({
+        id: getCardSourceId(card) ?? card.id,
+        rarity: card.rarity ?? "rare",
+        cost: ARENA_OFFER_COST,
+        summary: card.effectSummary ?? card.name,
+        card,
+      }));
+    })();
     if (offerings.length === 0) return;
     setShopInventory((prev) => ({
       ...prev,
@@ -1101,6 +1139,7 @@ const purchaseFromShop = useCallback(
     }));
   }, [
     hostLegacySide,
+    isGauntletLikeMode,
     isGauntletMode,
     isMultiplayer,
     localLegacySide,
@@ -1364,7 +1403,7 @@ const purchaseFromShop = useCallback(
       setWheelHUD(hudColors);
       setWins({ player: pWins, enemy: eWins });
       setReserveSums({ player: pReserve, enemy: eReserve });
-      if (isGauntletMode && pWins < winGoal && eWins < winGoal) {
+      if (isGauntletLikeMode && pWins < winGoal && eWins < winGoal) {
         const playerReserveGold = Number.isFinite(pReserve) ? pReserve : 0;
         const enemyReserveGold = Number.isFinite(eReserve) ? eReserve : 0;
 
@@ -1466,7 +1505,7 @@ const purchaseFromShop = useCallback(
 
       setPhase("choose");
       resetActivationPhase();
-      if (isGauntletMode) {
+      if (isGauntletLikeMode) {
         setShopInventory({ player: [], enemy: [] });
         setShopReady({ player: false, enemy: false });
         resetGauntletShops();
@@ -1479,7 +1518,7 @@ const purchaseFromShop = useCallback(
       clearAdvanceVotes,
       clearResolveVotes,
       generateWheelSet,
-      isGauntletMode,
+      isGauntletLikeMode,
       phase,
       resetGauntletShops,
       resetActivationPhase,
@@ -1501,7 +1540,7 @@ const purchaseFromShop = useCallback(
   const nextRound = nextRoundCore;
 
   const resumeAfterShop = useCallback(() => {
-    if (!isGauntletMode) return;
+    if (!isGauntletLikeMode) return;
     const purchases = shopPurchasesRef.current;
     const localPending = purchases[localLegacySide];
     const currentGold = goldRef.current?.[localLegacySide];
@@ -1526,7 +1565,7 @@ const purchaseFromShop = useCallback(
   }, [
     applyGauntletPurchase,
     goldRef,
-    isGauntletMode,
+    isGauntletLikeMode,
     localLegacySide,
     nextRoundCore,
     shopPurchaseQueueRef,
@@ -1536,7 +1575,7 @@ const purchaseFromShop = useCallback(
 
   const completeShopForSide = useCallback(
     (side: LegacySide, opts?: { emit?: boolean }) => {
-      if (!isGauntletMode) return false;
+      if (!isGauntletLikeMode) return false;
       if (phase !== "shop") return false;
       let changed = false;
       let shouldAdvance = false;
@@ -1558,15 +1597,21 @@ const purchaseFromShop = useCallback(
       }
       return true;
     },
-    [resumeAfterShop, emitIntent, isGauntletMode, isMultiplayer, phase],
+    [resumeAfterShop, emitIntent, isGauntletLikeMode, isMultiplayer, phase],
   );
 
   useEffect(() => {
-    if (!isGauntletMode) return;
+    if (!isGauntletLikeMode) return;
     if (phase !== "shop") return;
     if (!shopReady.player || !shopReady.enemy) return;
     resumeAfterShop();
-  }, [isGauntletMode, phase, resumeAfterShop, shopReady.enemy, shopReady.player]);
+  }, [
+    isGauntletLikeMode,
+    phase,
+    resumeAfterShop,
+    shopReady.enemy,
+    shopReady.player,
+  ]);
 
   const markShopComplete = useCallback(
     (side: LegacySide) => completeShopForSide(side, { emit: true }),
@@ -1575,7 +1620,7 @@ const purchaseFromShop = useCallback(
 
   const grantGold = useCallback(
     (side: LegacySide, amount: number) => {
-      if (!isGauntletMode) return false;
+      if (!isGauntletLikeMode) return false;
       if (!Number.isFinite(amount)) return false;
       let localGoldAfterGrant: number | null = null;
       setGold((prev) => {
@@ -1593,7 +1638,7 @@ const purchaseFromShop = useCallback(
       }
       return true;
     },
-    [isGauntletMode, localLegacySide, syncLocalGauntletGold],
+    [isGauntletLikeMode, localLegacySide, syncLocalGauntletGold],
   );
 
 
@@ -1621,7 +1666,7 @@ const purchaseFromShop = useCallback(
   ]);
 
   const handleNextClick = useCallback(() => {
-    if (isGauntletMode) {
+    if (isGauntletLikeMode) {
       if (phase === "roundEnd" && shouldOpenShopThisRound) {
         const opened = openShopPhase();
         if (opened) {
@@ -1646,7 +1691,7 @@ const purchaseFromShop = useCallback(
   }, [
     advanceVotes,
     emitIntent,
-    isGauntletMode,
+    isGauntletLikeMode,
     isMultiplayer,
     localLegacySide,
     openShopPhase,
@@ -1659,10 +1704,10 @@ const purchaseFromShop = useCallback(
   useEffect(() => {
     if (!isMultiplayer) return;
     if (phase !== "roundEnd") return;
-    if (isGauntletMode) return;
+    if (isGauntletLikeMode) return;
     if (!advanceVotes.player || !advanceVotes.enemy) return;
     nextRound();
-  }, [advanceVotes, isGauntletMode, isMultiplayer, nextRound, phase]);
+  }, [advanceVotes, isGauntletLikeMode, isMultiplayer, nextRound, phase]);
 
   const resetMatch = useCallback(() => {
     clearResolveVotes();
@@ -1681,7 +1726,7 @@ const purchaseFromShop = useCallback(
     setLockedWheelSize(null);
 
     setPlayer(() => {
-      if (isGauntletMode) {
+      if (isGauntletLikeMode) {
         return makeFighter("Wanderer", { deck: buildGauntletDeckAsCards() });
       }
       if (isTacticsMode) {
@@ -1917,6 +1962,7 @@ const purchaseFromShop = useCallback(
   return {
     matchMode,
     isGauntletMode,
+    isArenaMode,
     localLegacySide,
     remoteLegacySide,
     hostLegacySide,

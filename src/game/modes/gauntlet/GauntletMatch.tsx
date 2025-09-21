@@ -37,6 +37,7 @@ export interface GauntletMatchProps {
   hostId?: string;
   targetWins?: number;
   onExit?: () => void;
+  mode?: "gauntlet" | "arena";
 }
 
 export default function GauntletMatch({
@@ -48,6 +49,7 @@ export default function GauntletMatch({
   hostId,
   targetWins,
   onExit,
+  mode = "gauntlet",
 }: GauntletMatchProps) {
   const isMultiplayer = Boolean(roomCode);
 
@@ -70,7 +72,7 @@ export default function GauntletMatch({
     isMultiplayer,
     sendIntent: channelSend,
     onExit,
-    mode: "gauntlet",
+    mode,
   });
 
   useEffect(() => {
@@ -283,6 +285,7 @@ export default function GauntletMatch({
       configureShopInventory={configureShopInventory}
       purchaseFromShop={purchaseFromShop}
       markShopComplete={markShopComplete}
+      mode={mode}
     />
   );
 

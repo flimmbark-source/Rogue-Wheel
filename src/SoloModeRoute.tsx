@@ -5,11 +5,12 @@ type SoloModeRouteProps = {
   onBack: () => void;
   onSelectClassic: () => void;
   onSelectGauntlet: () => void;
+  onSelectArena: () => void;
   onSelectTactics: () => void;
 };
 
 type ModeOption = {
-  key: "classic" | "gauntlet" | "tactics";
+  key: "classic" | "gauntlet" | "arena" | "tactics";
   title: string;
   subtitle: string;
   description: string;
@@ -20,6 +21,7 @@ export default function SoloModeRoute({
   onBack,
   onSelectClassic,
   onSelectGauntlet,
+  onSelectArena,
   onSelectTactics,
 }: SoloModeRouteProps) {
   const options = useMemo<ModeOption[]>(
@@ -41,6 +43,14 @@ export default function SoloModeRoute({
         onSelect: onSelectGauntlet,
       },
       {
+        key: "arena",
+        title: "Arena",
+        subtitle: "Survive 20 bouts while drafting abilities between rounds.",
+        description:
+          "Face relentless single-player matches that reward gold and let you buy new ability cards every other round. Build your hand on the fly and keep momentum through 20 victories.",
+        onSelect: onSelectArena,
+      },
+      {
         key: "tactics",
         title: "Tactics",
         subtitle: "Command an ability-only arsenal in a duel of wits.",
@@ -49,7 +59,7 @@ export default function SoloModeRoute({
         onSelect: onSelectTactics,
       },
     ],
-    [onSelectClassic, onSelectGauntlet, onSelectTactics]
+    [onSelectClassic, onSelectGauntlet, onSelectArena, onSelectTactics]
   );
 
   const [selected, setSelected] = useState(0);

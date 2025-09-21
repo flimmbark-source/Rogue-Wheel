@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 import type { Card } from "../../types";
-import type { StoreOffering } from "../../../player/profileStore";
+import { getCardSourceId, type StoreOffering } from "../../../player/profileStore";
 import type {
   GauntletState,
   LegacySide,
@@ -34,6 +34,7 @@ export type GauntletPhasePanelProps = {
       | { card: Card; cost: number; sourceId?: string | null },
   ) => boolean;
   markShopComplete: (side: LegacySide) => boolean;
+  mode?: "gauntlet" | "arena";
 };
 
 export default function GauntletPhasePanel({
@@ -51,8 +52,10 @@ export default function GauntletPhasePanel({
   configureShopInventory,
   purchaseFromShop,
   markShopComplete,
+  mode = "gauntlet",
 }: GauntletPhasePanelProps) {
   const isShopPhase = phase === "shop";
+  const isArenaMode = mode === "arena";
 
   const localName = namesByLegacy[localLegacySide];
   const remoteName = namesByLegacy[remoteLegacySide];
@@ -66,7 +69,11 @@ export default function GauntletPhasePanel({
   const previousRound = localGauntlet?.shop.round ?? 0;
   const previousInventory =
     previousRound === round ? localGauntlet?.shop.inventory ?? [] : [];
-  const purchasedIds = new Set(localPurchases.map((purchase) => purchase.card.id));
+  const purchasedIds = new Set(
+    localPurchases.map((purchase) =>
+      purchase.sourceId ?? getCardSourceId(purchase.card) ?? purchase.card.id,
+    ),
+  );
 
   const readyMessage = (() => {
     if (localReady && remoteReady) {
@@ -88,12 +95,14 @@ export default function GauntletPhasePanel({
 
   useEffect(() => {
     if (!isShopPhase) return;
+    if (isArenaMode) return;
     if (localInventory.length > 0) return;
     if (previousInventory.length === 0) return;
     if (previousRound !== round) return;
     configureShopInventory({ [localLegacySide]: previousInventory });
   }, [
     configureShopInventory,
+    isArenaMode,
     localInventory.length,
     localLegacySide,
     isShopPhase,
@@ -104,10 +113,12 @@ export default function GauntletPhasePanel({
 
   useEffect(() => {
     if (!isShopPhase) return;
+    if (isArenaMode) return;
     if (currentRoll > 0) return;
     if (!canRollInventory) return;
     gauntletRollShop(inventoryForRoll, round, currentRoll + 1);
   }, [
+    isArenaMode,
     isShopPhase,
     currentRoll,
     canRollInventory,
@@ -118,6 +129,114 @@ export default function GauntletPhasePanel({
 
   if (!isShopPhase) {
     return null;
+  }
+
+  if (isArenaMode) {
+    const arenaInventory = localInventory;
+    const hasInventory = arenaInventory.length > 0;
+    const handleBuy = (offering: StoreOffering) => {
+      purchaseFromShop(localLegacySide, offering);
+    };
+    const handleContinue = () => {
+      markShopComplete(localLegacySide);
+    };
+
+    return (
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/90 backdrop-blur-sm p-4">
+        <div className="w-full max-w-3xl space-y-6 rounded-xl border border-indigo-400/40 bg-indigo-950/70 p-6 text-indigo-100 shadow-2xl">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-indigo-200/70">
+                Arena Armory
+              </div>
+              <div className="text-2xl font-semibold text-indigo-50">
+                Choose your boost
+              </div>
+              <div className="text-xs text-indigo-200/80">Round {round}</div>
+            </div>
+            <div className="flex flex-col items-end gap-1 text-sm text-indigo-200/80">
+              <div className="flex items-center gap-2 text-base">
+                <span className="text-indigo-200/70">Gold</span>
+                <span className="flex items-center gap-1 rounded-full border border-indigo-400/50 bg-indigo-900/60 px-2 py-1 text-lg font-semibold text-indigo-50">
+                  <span aria-hidden="true">🪙</span>
+                  <span className="tabular-nums">{localGold}</span>
+                </span>
+              </div>
+              <div className="text-xs text-indigo-200/70">
+                Pick from three powerful abilities. Each costs 20 gold.
+              </div>
+            </div>
+          </div>
+
+          <div>
+            {hasInventory ? (
+              <div className="grid gap-4 sm:grid-cols-3">
+                {arenaInventory.map((offering) => {
+                  const card = offering.card;
+                  const cost = offering.cost ?? 20;
+                  const offeringKey = offering.id ?? getCardSourceId(card) ?? card.id;
+                  const isPurchased = purchasedIds.has(offeringKey);
+                  const canAfford = localGold >= cost;
+                  const summary = (offering.summary ?? card.effectSummary ?? card.name)
+                    ?.replace(/\s+/g, " ")
+                    .trim();
+
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      disabled={isPurchased || !canAfford}
+                      onClick={() => handleBuy(offering)}
+                      className={`relative flex h-full flex-col items-center gap-3 rounded-xl border border-indigo-400/40 bg-indigo-900/40 p-4 text-left transition ${
+                        isPurchased ? "opacity-60" : canAfford ? "hover:bg-indigo-900/60" : "opacity-70"
+                      }`}
+                    >
+                      <div className="relative">
+                        <StSCard card={card} small />
+                        {isPurchased ? (
+                          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/60 text-lg font-bold uppercase tracking-wider text-indigo-100">
+                            Bought
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-col items-center gap-2 text-indigo-100">
+                        <div className="text-sm font-semibold uppercase tracking-wide text-indigo-200/80">
+                          {card.name}
+                        </div>
+                        <div className="text-xs text-indigo-200/70 text-center">
+                          {summary ?? "Instant ability"}
+                        </div>
+                        <div className="flex items-center gap-1 rounded-full border border-indigo-400/60 bg-indigo-900/70 px-3 py-1 text-sm font-semibold">
+                          <span aria-hidden="true">🪙</span>
+                          <span className="tabular-nums">{cost}</span>
+                        </div>
+                        {!canAfford && !isPurchased ? (
+                          <div className="text-[11px] text-rose-200/70">Not enough gold</div>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-indigo-400/30 bg-indigo-900/40 p-4 text-sm text-indigo-100/80">
+                New abilities are being prepared. Check back after your next victory.
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleContinue}
+              className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold uppercase tracking-wide text-indigo-50 shadow hover:bg-indigo-400 disabled:opacity-60"
+            >
+              {localReady ? "Ready" : "Continue"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (shouldHideShop) {
@@ -177,7 +296,8 @@ export default function GauntletPhasePanel({
                       ? card.cost
                       : 10;
 
-                  const isPurchased = purchasedIds.has(card.id);
+                  const offeringKey = offering.id ?? getCardSourceId(card) ?? card.id;
+                  const isPurchased = purchasedIds.has(offeringKey);
                   const canAfford = localGold >= cost;
                   const canBuy = canAfford && !isPurchased;
                   const label = card.name ?? offering.summary ?? "Card";
