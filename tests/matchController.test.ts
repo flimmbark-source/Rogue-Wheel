@@ -106,29 +106,33 @@ test("enemy picker favors low-value plays on Weakest and Initiative lanes", () =
   );
 });
 
-test("settleFighterAfterRound discards the entire hand before refilling", () => {
+test("settleFighterAfterRound preserves unplayed cards and only refills the deficit", () => {
   const hand = ["h1", "h2", "h3", "h4", "h5"].map(makeCard);
   const deck = ["d1", "d2", "d3", "d4", "d5", "d6"].map(makeCard);
-  const fighter = makeFighter(deck, hand);
+  const discard = ["old1", "old2"].map(makeCard);
+  const fighter = makeFighter(deck, hand, discard);
 
   const played = hand.slice(0, 2);
   const result = settleFighterAfterRound(fighter, played);
 
   assert.equal(result.hand.length, 5, "hand should be refilled to five cards");
-  const handIds = new Set(result.hand.map((card) => card.id));
-  hand.forEach((card) => {
-    assert.equal(
-      handIds.has(card.id),
-      false,
-      `card ${card.id} should not persist in hand after the round ends`,
-    );
-  });
-
-  const expectedNewHand = deck.slice(0, 5).map((card) => card.id);
+  const expectedHandOrder = [...hand.slice(2), ...deck.slice(0, 2)].map((card) => card.id);
   assert.deepEqual(
     result.hand.map((card) => card.id),
-    expectedNewHand,
-    "hand should draw fresh cards from the top of the deck",
+    expectedHandOrder,
+    "unplayed cards should stay in hand and new draws should fill to five",
+  );
+
+  assert.deepEqual(
+    result.discard.map((card) => card.id),
+    [...discard, ...played].map((card) => card.id),
+    "played cards should be appended to the discard pile",
+  );
+
+  assert.deepEqual(
+    result.deck.map((card) => card.id),
+    deck.slice(2).map((card) => card.id),
+    "deck should lose only the cards needed to refill the hand",
   );
 });
 
@@ -151,6 +155,36 @@ test("settleFighterAfterRound places shop purchases into hand before refilling",
     afterNextRound.hand.slice(1).map((card) => card.id),
     expectedFollowUps,
     "the remainder of the hand should draw from the top of the deck",
+  );
+});
+
+test("purchased cards are added without removing surviving copies", () => {
+  const survivor = makeCard("shared-card");
+  const keep = makeCard("keep");
+  const hand = [survivor, keep, makeCard("play-1"), makeCard("play-2"), makeCard("play-3")];
+  const deck = ["d1", "d2", "d3", "d4"].map(makeCard);
+  const fighter = makeFighter(deck, hand);
+
+  const played = hand.slice(2);
+  const purchases = [makeCard("shared-card")];
+  const result = settleFighterAfterRound(fighter, played, purchases);
+
+  assert.equal(result.hand[0]?.id, purchases[0]?.id, "purchased card should be first in hand");
+  assert.equal(
+    result.hand.filter((card) => card.id === survivor.id).length,
+    2,
+    "original copy and purchased copy should both remain in hand",
+  );
+  assert.ok(result.hand.includes(survivor), "surviving card instance should still be in hand");
+  assert.equal(
+    result.deck.some((card) => card.id === survivor.id),
+    false,
+    "purchased card should be removed from the deck",
+  );
+  assert.equal(
+    result.discard.some((card) => card.id === survivor.id),
+    false,
+    "purchased card should not appear in the discard pile",
   );
 });
 
