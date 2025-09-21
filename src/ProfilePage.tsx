@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import StSCard from "./components/StSCard";
+import StSCard, { getCardEffectSummary } from "./components/StSCard";
 import {
   getProfileBundle,
   createDeck,
@@ -12,6 +12,7 @@ import {
 } from "./player/profileStore";
 import type { ProfileBundle } from "./player/profileStore";
 import type { Card, ActivationAbility, CardSplit, CardSplitFace } from "./game/types";
+import { isSplit } from "./game/values";
 
 const CARD_BLUEPRINT_LOOKUP = new Map(
   CARD_CATALOG.map((entry) => [entry.id, entry]),
@@ -259,26 +260,52 @@ export default function ProfilePage() {
             if (data.from === "deck") removeFromDeck(data.cardId, 1);
           }}
         >
-          {deckSlots.map((cardId, i) => (
-            <div
-              key={i}
-              className="relative aspect-[3/4] rounded-xl ring-1 ring-white/10 bg-white/5 p-1 grid place-items-center"
-            >
-              {cardId ? (
+          {deckSlots.map((cardId, i) => {
+            if (!cardId) {
+              return (
+                <div
+                  key={i}
+                  className="relative aspect-[3/4] rounded-xl ring-1 ring-white/10 bg-white/5 p-1 grid place-items-center"
+                >
+                  <span className="text-white/30 text-xs">empty</span>
+                </div>
+              );
+            }
+
+            const card = cardFromId(cardId);
+            const shouldDescribeAbility = Boolean(
+              card.behavior ||
+                (card.activation?.length ?? 0) > 0 ||
+                card.reserve?.summary ||
+                isSplit(card),
+            );
+            const abilitySummary = shouldDescribeAbility
+              ? getCardEffectSummary(card) ?? undefined
+              : undefined;
+            const cardName = card.name ?? card.id;
+            const ariaLabel = abilitySummary
+              ? `Card ${cardName}, ${abilitySummary}`
+              : `Card ${cardName}`;
+
+            return (
+              <div
+                key={i}
+                className="relative aspect-[3/4] rounded-xl ring-1 ring-white/10 bg-white/5 p-1 grid place-items-center"
+              >
                 <FitCard>
                   <StSCard
-                    card={cardFromId(cardId)}
+                    card={card}
                     size="md"
                     draggable
                     onDragStart={(e) => setDrag(e, { from: "deck", cardId })}
                     onPick={() => removeFromDeck(cardId, 1)}
+                    title={abilitySummary}
+                    ariaLabel={ariaLabel}
                   />
                 </FitCard>
-              ) : (
-                <span className="text-white/30 text-xs">empty</span>
-              )}
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -301,17 +328,34 @@ export default function ProfilePage() {
         >
           {inventory.map((i) => {
             const avail = invAvailable(i.cardId);
+            const card = cardFromId(i.cardId);
+            const shouldDescribeAbility = Boolean(
+              card.behavior ||
+                (card.activation?.length ?? 0) > 0 ||
+                card.reserve?.summary ||
+                isSplit(card),
+            );
+            const abilitySummary = shouldDescribeAbility
+              ? getCardEffectSummary(card) ?? undefined
+              : undefined;
+            const cardName = card.name ?? card.id;
+            const ariaLabel = abilitySummary
+              ? `Card ${cardName}, ${abilitySummary}`
+              : `Card ${cardName}`;
+
             return (
               <div key={i.cardId} className="relative grid place-items-center">
                 <div className="aspect-[3/4] w-full max-w-[180px] p-1 rounded-lg ring-1 ring-white/10 bg-white/5 grid place-items-center">
                   <FitCard>
                     <StSCard
-                      card={cardFromId(i.cardId)}
+                      card={card}
                       size="md"
                       disabled={avail <= 0}
                       draggable
                       onDragStart={(e) => setDrag(e, { from: "inv", cardId: i.cardId })}
                       onPick={() => avail > 0 && addToDeck(i.cardId, 1)}
+                      title={abilitySummary}
+                      ariaLabel={ariaLabel}
                     />
                   </FitCard>
                 </div>
