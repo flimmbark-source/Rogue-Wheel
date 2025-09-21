@@ -1682,11 +1682,38 @@ const purchaseFromShop = useCallback(
           if (msg.side !== localLegacySide) {
             if ("cardId" in msg && typeof msg.cardId === "string" && typeof msg.round === "number") {
               applyGauntletPurchaseFor(msg.side, { cardId: msg.cardId, round: msg.round });
+            } else if ("offeringId" in msg && typeof msg.offeringId === "string") {
+              const resolvedOffering = findOfferingForSide(msg.side, msg.offeringId);
+              const resolvedCost =
+                typeof msg.cost === "number" && Number.isFinite(msg.cost) ? msg.cost : undefined;
+
+              if (resolvedOffering) {
+                const sourceId = resolvedOffering.id ?? getCardSourceId(resolvedOffering.card);
+                applyShopPurchase(msg.side, resolvedOffering, { force: true, sourceId });
+              } else {
+                applyShopPurchase(
+                  msg.side,
+                  { offeringId: msg.offeringId, cost: resolvedCost },
+                  { force: true, sourceId: msg.offeringId },
+                );
+              }
             } else if ("card" in msg && msg.card && typeof (msg as any).cost === "number") {
+              const rawSourceId = (msg as any).sourceId;
+              const sourceId =
+                typeof rawSourceId === "string"
+                  ? rawSourceId
+                  : rawSourceId === null
+                    ? null
+                    : undefined;
+              const payload: { card: Card; cost: number; sourceId?: string | null } = {
+                card: msg.card as Card,
+                cost: (msg as any).cost,
+                ...(sourceId !== undefined ? { sourceId } : {}),
+              };
               applyShopPurchase(
                 msg.side,
-                { card: msg.card as Card, cost: (msg as any).cost },
-                { force: true },
+                payload,
+                sourceId !== undefined ? { force: true, sourceId } : { force: true },
               );
             }
           }
@@ -1724,6 +1751,7 @@ const purchaseFromShop = useCallback(
       localLegacySide,
       applyGauntletShopRollFor,
       applyGauntletPurchaseFor,
+      findOfferingForSide,
       applyShopPurchase,
       completeShopForSide,
       applyGauntletGoldFor,
