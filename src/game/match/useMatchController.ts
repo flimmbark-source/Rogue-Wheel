@@ -19,6 +19,7 @@ import {
   refillTo,
   freshFive,
   cloneCardForGauntlet,
+  addPurchasedCardToFighter,
   getCardSourceId,
   recordMatchResult,
   rollStoreOfferings,
@@ -847,6 +848,12 @@ export function useMatchController({
         resolvedOfferingId ??
         getCardSourceId(card);
       const clonedCard = cloneCardForGauntlet(card);
+
+      if (side === "player") {
+        setPlayer((prev) => addPurchasedCardToFighter(prev, clonedCard));
+      } else {
+        setEnemy((prev) => addPurchasedCardToFighter(prev, clonedCard));
+      }
       const prevPurchases = shopPurchasesRef.current;
       const updatedPurchasesForSide: PendingShopPurchase[] = [
         ...prevPurchases[side],
@@ -878,6 +885,7 @@ export function useMatchController({
       return true;
     },
     [
+      addPurchasedCardToFighter,
       appendLog,
       commitShopPurchases,
       findOfferingForSide,
@@ -886,6 +894,8 @@ export function useMatchController({
       localLegacySide,
       namesByLegacy,
       round,
+      setEnemy,
+      setPlayer,
       shopPurchaseQueueRef,
       shopPurchasesRef,
       syncLocalGauntletGold,
