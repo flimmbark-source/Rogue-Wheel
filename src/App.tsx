@@ -7,7 +7,7 @@ const ClassicMatch = lazy(() => import("./game/modes/classic/ClassicMatch"));
 const GauntletMatch = lazy(() => import("./game/modes/gauntlet/GauntletMatch"));
 
 export type AppProps =
-  | ({ mode: "classic" } & ClassicMatchProps)
+  | ({ mode: "classic" | "tactics" } & ClassicMatchProps)
   | ({ mode: "gauntlet" } & GauntletMatchProps);
 
 const MATCH_FALLBACK = <LoadingScreen />;
@@ -25,7 +25,7 @@ export default function App(props: AppProps) {
   const { mode: _mode, ...matchProps } = props;
   return (
     <Suspense fallback={MATCH_FALLBACK}>
-      <ClassicMatch {...matchProps} />
+      <ClassicMatch {...matchProps} mode={props.mode} />
     </Suspense>
   );
 }

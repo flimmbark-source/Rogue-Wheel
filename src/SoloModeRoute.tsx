@@ -5,10 +5,11 @@ type SoloModeRouteProps = {
   onBack: () => void;
   onSelectClassic: () => void;
   onSelectGauntlet: () => void;
+  onSelectTactics: () => void;
 };
 
 type ModeOption = {
-  key: "classic" | "gauntlet";
+  key: "classic" | "gauntlet" | "tactics";
   title: string;
   subtitle: string;
   description: string;
@@ -19,6 +20,7 @@ export default function SoloModeRoute({
   onBack,
   onSelectClassic,
   onSelectGauntlet,
+  onSelectTactics,
 }: SoloModeRouteProps) {
   const options = useMemo<ModeOption[]>(
     () => [
@@ -38,8 +40,16 @@ export default function SoloModeRoute({
           "Tackle a run of consecutive encounters where every decision matters. Manage your roster between fights and see how far you can push your luck.",
         onSelect: onSelectGauntlet,
       },
+      {
+        key: "tactics",
+        title: "Tactics",
+        subtitle: "Command an ability-only arsenal in a duel of wits.",
+        description:
+          "Both sides begin with decks made entirely of ability cards. Master activations and outmaneuver Nemesis with precise tactical plays.",
+        onSelect: onSelectTactics,
+      },
     ],
-    [onSelectClassic, onSelectGauntlet]
+    [onSelectClassic, onSelectGauntlet, onSelectTactics]
   );
 
   const [selected, setSelected] = useState(0);

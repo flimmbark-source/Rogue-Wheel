@@ -435,6 +435,22 @@ const CARD_BLUEPRINT_MAP = new Map<string, CardBlueprint>(
 
 export const CARD_CATALOG: readonly CardBlueprint[] = CARD_BLUEPRINTS;
 
+export function buildAbilityDeckAsCards(deckSize = MAX_DECK_SIZE): Card[] {
+  const abilityPool = CARD_BLUEPRINTS.filter((entry) => entry.behavior);
+  if (!abilityPool.length) {
+    return starterDeck();
+  }
+
+  const cards: Card[] = [];
+  for (let i = 0; cards.length < deckSize; i += 1) {
+    const blueprint = abilityPool[i % abilityPool.length];
+    if (!blueprint) break;
+    cards.push(instantiateCard(blueprint));
+  }
+
+  return shuffle(cards);
+}
+
 const RARITY_WEIGHTS: Record<CardRarity, number> = {
   common: 8,
   uncommon: 4,
