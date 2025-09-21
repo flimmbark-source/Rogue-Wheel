@@ -1470,18 +1470,21 @@ const purchaseFromShop = useCallback(
       const enemyPlayed = currentAssign.enemy.filter((c): c is Card => !!c);
 
       const queuedPurchases = opts?.purchases ?? [];
+      const pendingPurchases =
+        queuedPurchases.length > 0 ? null : shopPurchasesRef.current;
+
       const playerShopPurchases =
         queuedPurchases.length > 0
           ? queuedPurchases
               .filter((purchase) => purchase.side === "player")
               .map((purchase) => purchase.card)
-          : shopPurchases.player.map((purchase) => purchase.card);
+          : pendingPurchases?.player.map((purchase) => purchase.card) ?? [];
       const enemyShopPurchases =
         queuedPurchases.length > 0
           ? queuedPurchases
               .filter((purchase) => purchase.side === "enemy")
               .map((purchase) => purchase.card)
-          : shopPurchases.enemy.map((purchase) => purchase.card);
+          : pendingPurchases?.enemy.map((purchase) => purchase.card) ?? [];
 
       wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
 
@@ -1532,7 +1535,7 @@ const purchaseFromShop = useCallback(
       setTokens,
       setWheelHUD,
       setWheelSections,
-      shopPurchases,
+      shopPurchasesRef,
       wheelRefs,
     ],
   );
