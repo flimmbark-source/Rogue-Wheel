@@ -2263,15 +2263,16 @@ export function settleFighterAfterRound(
 
   const ensurePurchasesInHand = (value: Fighter): Fighter => {
     if (purchasedCards.length === 0) return value;
-    const purchaseIds = new Set(purchasedCards.map((card) => card.id));
+    const getCardKey = (card: Card) => getCardSourceId(card) ?? card.id;
+    const purchaseIds = new Set(purchasedCards.map((card) => getCardKey(card)));
     return {
       ...value,
       hand: [
         ...purchasedCards,
-        ...value.hand.filter((card) => !purchaseIds.has(card.id)),
+        ...value.hand.filter((card) => !purchaseIds.has(getCardKey(card))),
       ],
-      deck: value.deck.filter((card) => !purchaseIds.has(card.id)),
-      discard: value.discard.filter((card) => !purchaseIds.has(card.id)),
+      deck: value.deck.filter((card) => !purchaseIds.has(getCardKey(card))),
+      discard: value.discard.filter((card) => !purchaseIds.has(getCardKey(card))),
     };
   };
 
