@@ -52,9 +52,7 @@ export default function GauntletPhasePanel({
   purchaseFromShop,
   markShopComplete,
 }: GauntletPhasePanelProps) {
-  if (phase !== "shop") {
-    return null;
-  }
+  const isShopPhase = phase === "shop";
 
   const localName = namesByLegacy[localLegacySide];
   const remoteName = namesByLegacy[remoteLegacySide];
@@ -86,10 +84,10 @@ export default function GauntletPhasePanel({
   const inventoryForRoll =
     localInventory.length > 0 ? localInventory : previousInventory;
   const canRollInventory = inventoryForRoll.length > 0;
-  const shouldHideShop = localReady && remoteReady;
+  const shouldHideShop = isShopPhase && localReady && remoteReady;
 
   useEffect(() => {
-    if (phase !== "shop") return;
+    if (!isShopPhase) return;
     if (localInventory.length > 0) return;
     if (previousInventory.length === 0) return;
     if (previousRound !== round) return;
@@ -98,25 +96,29 @@ export default function GauntletPhasePanel({
     configureShopInventory,
     localInventory.length,
     localLegacySide,
-    phase,
+    isShopPhase,
     previousInventory,
     previousRound,
     round,
   ]);
 
   useEffect(() => {
-    if (phase !== "shop") return;
+    if (!isShopPhase) return;
     if (currentRoll > 0) return;
     if (!canRollInventory) return;
     gauntletRollShop(inventoryForRoll, round, currentRoll + 1);
   }, [
-    phase,
+    isShopPhase,
     currentRoll,
     canRollInventory,
     gauntletRollShop,
     inventoryForRoll,
     round,
   ]);
+
+  if (!isShopPhase) {
+    return null;
+  }
 
   if (shouldHideShop) {
     return null;
