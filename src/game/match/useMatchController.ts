@@ -982,6 +982,8 @@ const purchaseFromShop = useCallback(
     if (!isGauntletMode) return false;
     if (round < 3) return false;
     if (phase === "shop") return false;
+    setPlayer((prev) => discardHand(prev));
+    setEnemy((prev) => discardHand(prev));
     setShopReady(() => {
       const base = { player: false, enemy: false };
       if (isMultiplayer) {
@@ -2152,6 +2154,15 @@ function isLegacyShopCardPayload(
   );
 }
 
+function discardHand(fighter: Fighter): Fighter {
+  if (!fighter.hand.length) return fighter;
+  return {
+    ...fighter,
+    hand: [],
+    discard: [...fighter.discard, ...fighter.hand],
+  };
+}
+
 export function settleFighterAfterRound(
   fighter: Fighter,
   played: Card[],
@@ -2160,64 +2171,36 @@ export function settleFighterAfterRound(
   const TARGET_HAND_SIZE = 5;
   const playedIds = new Set(played.map((card) => card.id));
   const remainingHand = fighter.hand.filter((card) => !playedIds.has(card.id));
-  const survivorCounts = remainingHand.reduce<Map<string, number>>((map, card) => {
-    map.set(card.id, (map.get(card.id) ?? 0) + 1);
-    return map;
-  }, new Map());
 
-  let next: Fighter = {
+  let next: Fighter = discardHand({
     ...fighter,
-    hand: [...remainingHand],
+    hand: remainingHand,
     discard: [...fighter.discard, ...played],
-  };
+  });
 
   const purchasedCards = purchases.map((card) => cloneCardForGauntlet(card));
 
-  const ensurePurchasesInHand = (
-    value: Fighter,
-    preserveHandCounts: Map<string, number> | null,
-  ): Fighter => {
+  const ensurePurchasesInHand = (value: Fighter): Fighter => {
     if (purchasedCards.length === 0) return value;
     const purchaseIds = new Set(purchasedCards.map((card) => card.id));
-    let remainingHandCards: Card[];
-
-    if (preserveHandCounts) {
-      const allowances = new Map(preserveHandCounts);
-      remainingHandCards = [];
-      for (const card of value.hand) {
-        if (!purchaseIds.has(card.id)) {
-          remainingHandCards.push(card);
-          continue;
-        }
-
-        const allowance = allowances.get(card.id) ?? 0;
-        if (allowance > 0) {
-          remainingHandCards.push(card);
-          allowances.set(card.id, allowance - 1);
-        }
-      }
-    } else {
-      remainingHandCards = value.hand.filter((card) => !purchaseIds.has(card.id));
-    }
-
     return {
       ...value,
       hand: [
         ...purchasedCards,
-        ...remainingHandCards,
+        ...value.hand.filter((card) => !purchaseIds.has(card.id)),
       ],
       deck: value.deck.filter((card) => !purchaseIds.has(card.id)),
       discard: value.discard.filter((card) => !purchaseIds.has(card.id)),
     };
   };
 
-  next = ensurePurchasesInHand(next, survivorCounts);
+  next = ensurePurchasesInHand(next);
 
   next = refillTo(next, TARGET_HAND_SIZE);
 
   if (next.hand.length < TARGET_HAND_SIZE) {
     next = freshFive(next);
-    next = ensurePurchasesInHand(next, survivorCounts);
+    next = ensurePurchasesInHand(next);
     next = refillTo(next, TARGET_HAND_SIZE);
 
   }
