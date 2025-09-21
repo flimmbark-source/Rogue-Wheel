@@ -1,6 +1,7 @@
 import type { PointerEvent, DragEvent, RefObject } from "react";
 import CanvasWheel, { WheelHandle } from "../CanvasWheel";
 import StSCard, {
+  getCardEffectSummary,
   type CardAdjustmentDescriptor,
   type CardAdjustmentStatusTone,
 } from "../StSCard";
@@ -11,7 +12,7 @@ import {
   type ActivationAdjustmentsMap,
   type ActivationSwapPairs,
 } from "../../game/match/valueAdjustments";
-import { getCardPlayValue } from "../../game/values";
+import { getCardPlayValue, isSplit } from "../../game/values";
 
 export type LegacySide = "player" | "enemy";
 export type Phase =
@@ -168,6 +169,19 @@ export default function MatchBoard({
         ) => {
           if (!slot.card) return null;
           const card = slot.card;
+          const shouldDescribeAbility = Boolean(
+            card.behavior ||
+              (card.activation?.length ?? 0) > 0 ||
+              card.reserve?.summary ||
+              isSplit(card),
+          );
+          const abilitySummary = shouldDescribeAbility
+            ? getCardEffectSummary(card) ?? undefined
+            : undefined;
+          const ariaLabelBase = `Card ${card.name}`;
+          const ariaLabel = abilitySummary
+            ? `${ariaLabelBase}, ${abilitySummary}`
+            : ariaLabelBase;
           const isLocalSlot = slot.side === localLegacySide;
           const activationAvailableSet = activationAvailableSets[slot.side];
           const activationInitialSet = activationInitialSets[slot.side];
@@ -302,6 +316,8 @@ export default function MatchBoard({
               variant="minimal"
               showAbilityHint
               adjustment={adjustmentDescriptor}
+              ariaLabel={ariaLabel}
+              title={abilitySummary}
 
             />
           );
