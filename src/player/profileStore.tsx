@@ -148,6 +148,7 @@ export function cloneCardForGauntlet(card: Card): Card {
   return setCardSourceId(
     {
       ...card,
+      id: nextCardId(),
       split: card.split ? cloneSplit(card.split) : undefined,
       activation: card.activation ? card.activation.map(cloneActivation) : undefined,
       reserve: card.reserve ? { ...card.reserve } : undefined,
