@@ -238,6 +238,7 @@ export function useMatchController({
     player: 0,
     enemy: 0,
   });
+  const goldRef = useLatestRef(gold);
   const [shopInventory, setShopInventory] = useState<Record<LegacySide, StoreOffering[]>>({
     player: [],
     enemy: [],
@@ -338,6 +339,15 @@ export function useMatchController({
     localLegacySide,
     emitIntent,
   });
+
+  const syncLocalGauntletGold = useCallback(
+    (nextGold: number | null | undefined) => {
+      if (!isGauntletMode) return;
+      if (nextGold === null || nextGold === undefined) return;
+      gauntletUpdateGold(nextGold);
+    },
+    [gauntletUpdateGold, isGauntletMode],
+  );
 
   const markRematchVote = useCallback((side: LegacySide) => {
     setRematchVotes((prev) => {
@@ -810,16 +820,25 @@ export function useMatchController({
       const resolvedCost = Number.isFinite(cost) ? Math.max(0, Math.trunc(cost)) : 0;
 
       let allowed = false;
+      let localGoldAfterPurchase: number | null = null;
       setGold((prev) => {
         const current = prev[side];
         if (!opts?.force && current < resolvedCost) {
           return prev;
         }
         allowed = true;
-        return { ...prev, [side]: Math.max(0, current - resolvedCost) };
+        const next = { ...prev, [side]: Math.max(0, current - resolvedCost) };
+        if (side === localLegacySide) {
+          localGoldAfterPurchase = next[side];
+        }
+        return next;
       });
       if (!allowed) {
         return false;
+      }
+
+      if (side === localLegacySide) {
+        syncLocalGauntletGold(localGoldAfterPurchase);
       }
 
       const purchaseSourceId =
@@ -864,10 +883,12 @@ export function useMatchController({
       findOfferingForSide,
       gauntletStateRef,
       isGauntletMode,
+      localLegacySide,
       namesByLegacy,
       round,
       shopPurchaseQueueRef,
       shopPurchasesRef,
+      syncLocalGauntletGold,
     ],
   );
 
@@ -1276,11 +1297,17 @@ const purchaseFromShop = useCallback(
         const playerReserveGold = Number.isFinite(pReserve) ? pReserve : 0;
         const enemyReserveGold = Number.isFinite(eReserve) ? eReserve : 0;
 
-        setGold((prev) => ({
-          player:
-            prev.player + roundWinsCount.player + playerReserveGold,
-          enemy: prev.enemy + roundWinsCount.enemy + enemyReserveGold,
-        }));
+        let localGoldAfterRewards: number | null = null;
+        setGold((prev) => {
+          const next = {
+            player:
+              prev.player + roundWinsCount.player + playerReserveGold,
+            enemy: prev.enemy + roundWinsCount.enemy + enemyReserveGold,
+          };
+          localGoldAfterRewards = next[localLegacySide];
+          return next;
+        });
+        syncLocalGauntletGold(localGoldAfterRewards);
         clearShopPurchases();
         setShopReady(() => {
           const base = { player: false, enemy: false };
@@ -1406,6 +1433,8 @@ const purchaseFromShop = useCallback(
     if (!isGauntletMode) return;
     const purchases = shopPurchasesRef.current;
     const localPending = purchases[localLegacySide];
+    const currentGold = goldRef.current?.[localLegacySide];
+    syncLocalGauntletGold(currentGold);
     for (const purchase of localPending) {
       if (!purchase.sourceId) continue;
       try {
@@ -1425,11 +1454,13 @@ const purchaseFromShop = useCallback(
 
   }, [
     applyGauntletPurchase,
+    goldRef,
     isGauntletMode,
     localLegacySide,
     nextRoundCore,
     shopPurchaseQueueRef,
     shopPurchasesRef,
+    syncLocalGauntletGold,
   ]);
 
   const completeShopForSide = useCallback(
@@ -1475,13 +1506,23 @@ const purchaseFromShop = useCallback(
     (side: LegacySide, amount: number) => {
       if (!isGauntletMode) return false;
       if (!Number.isFinite(amount)) return false;
-      setGold((prev) => ({
-        ...prev,
-        [side]: Math.max(0, prev[side] + amount),
-      }));
+      let localGoldAfterGrant: number | null = null;
+      setGold((prev) => {
+        const next = {
+          ...prev,
+          [side]: Math.max(0, prev[side] + amount),
+        };
+        if (side === localLegacySide) {
+          localGoldAfterGrant = next[side];
+        }
+        return next;
+      });
+      if (side === localLegacySide) {
+        syncLocalGauntletGold(localGoldAfterGrant);
+      }
       return true;
     },
-    [isGauntletMode],
+    [isGauntletMode, localLegacySide, syncLocalGauntletGold],
   );
 
 
@@ -1579,6 +1620,7 @@ const purchaseFromShop = useCallback(
     setRound(1);
     setPhase("choose");
     setGold({ player: 0, enemy: 0 });
+    syncLocalGauntletGold(0);
     setShopInventory({ player: [], enemy: [] });
     setShopReady({ player: false, enemy: false });
     resetActivationPhase();
@@ -1630,6 +1672,7 @@ const purchaseFromShop = useCallback(
     setWins,
     resetGauntletState,
     resetActivationPhase,
+    syncLocalGauntletGold,
   ]);
 
   useEffect(() => {

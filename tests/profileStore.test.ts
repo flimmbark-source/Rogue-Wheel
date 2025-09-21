@@ -8,6 +8,11 @@ import {
   freshFive,
   addPurchasedCardToFighter,
   rollStoreOfferings,
+  startGauntletRun,
+  endGauntletRun,
+  applyGauntletPurchase,
+  buildGauntletDeckAsCards,
+  getCardSourceId,
 } from "../src/player/profileStore.js";
 
 const makeCard = (id: string, value = 0): Card => ({
@@ -110,4 +115,24 @@ test("rollStoreOfferings reserves the top row for ability cards", () => {
     bottomRow.some((offer) => typeof offer.card.number === "number" && offer.card.number < 0),
     "at least one of the weighted slots should surface a negative card",
   );
+});
+
+test("gauntlet purchases persist after rebuilding the deck", () => {
+  endGauntletRun();
+  const startingGold = 10;
+  startGauntletRun({ startingDeckCards: [], startingGold });
+
+  const purchaseCost = 3;
+  const purchasedId = "basic_0";
+  applyGauntletPurchase({ add: [{ cardId: purchasedId, qty: 1 }], cost: purchaseCost });
+
+  const rebuiltDeck = buildGauntletDeckAsCards();
+  assert.equal(rebuiltDeck.length > 0, true, "rebuilt deck should include purchased cards");
+  assert.equal(
+    rebuiltDeck.some((card) => getCardSourceId(card) === purchasedId),
+    true,
+    "purchased card should appear in the rebuilt gauntlet deck",
+  );
+
+  endGauntletRun();
 });
