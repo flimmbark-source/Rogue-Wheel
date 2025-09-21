@@ -76,6 +76,42 @@ export type PendingShopPurchase = {
   cost: number;
 };
 
+export type LegacyShopPurchaseMessage = {
+  side: LegacySide;
+  cardId: string;
+  round: number;
+};
+
+export function handleLegacyRemoteShopPurchase({
+  side,
+  cardId,
+  round,
+  applyGauntletPurchaseFor,
+  findOfferingForSide,
+  applyShopPurchase,
+}: {
+  side: LegacySide;
+  cardId: string;
+  round: number;
+  applyGauntletPurchaseFor: (side: LegacySide, purchase: GauntletShopPurchase) => void;
+  findOfferingForSide: (side: LegacySide, offeringId: string) => StoreOffering | undefined;
+  applyShopPurchase: (
+    side: LegacySide,
+    target:
+      | StoreOffering
+      | { offeringId: string; cost?: number }
+      | string
+      | { card: Card; cost: number; sourceId?: string | null },
+    opts?: { force?: boolean; sourceId?: string | null },
+  ) => boolean;
+}): void {
+  applyGauntletPurchaseFor(side, { cardId, round });
+  const resolvedOffering = findOfferingForSide(side, cardId);
+  if (!resolvedOffering) return;
+  const sourceId = resolvedOffering.id ?? getCardSourceId(resolvedOffering.card);
+  applyShopPurchase(side, resolvedOffering, { force: true, sourceId });
+}
+
 export type MPIntent =
   | { type: "assign"; lane: number; side: LegacySide; card: Card }
   | { type: "clear"; lane: number; side: LegacySide }
@@ -913,6 +949,18 @@ export function useMatchController({
       shopPurchasesRef,
       syncLocalGauntletGold,
     ],
+  );
+
+  const handleLegacyShopPurchase = useCallback(
+    (payload: { side: LegacySide; cardId: string; round: number }) => {
+      handleLegacyRemoteShopPurchase({
+        ...payload,
+        applyGauntletPurchaseFor,
+        findOfferingForSide,
+        applyShopPurchase,
+      });
+    },
+    [applyGauntletPurchaseFor, applyShopPurchase, findOfferingForSide],
   );
 
 // Purchase from shop (merged: offering-based + card-based, supports sourceId)
@@ -1759,7 +1807,7 @@ const purchaseFromShop = useCallback(
         case "shopPurchase":
           if (msg.side !== localLegacySide) {
             if ("cardId" in msg && typeof msg.cardId === "string" && typeof msg.round === "number") {
-              applyGauntletPurchaseFor(msg.side, { cardId: msg.cardId, round: msg.round });
+              handleLegacyShopPurchase({ side: msg.side, cardId: msg.cardId, round: msg.round });
             } else if ("offeringId" in msg && typeof msg.offeringId === "string") {
               const resolvedOffering = findOfferingForSide(msg.side, msg.offeringId);
               const resolvedCost =
@@ -1831,6 +1879,7 @@ const purchaseFromShop = useCallback(
       applyGauntletPurchaseFor,
       findOfferingForSide,
       applyShopPurchase,
+      handleLegacyShopPurchase,
       completeShopForSide,
       applyGauntletGoldFor,
       applyGauntletActivationSelectFor,

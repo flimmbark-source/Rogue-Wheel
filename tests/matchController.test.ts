@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 
 import type { Card, Fighter, Section } from "../src/game/types.js";
 import type { PendingShopPurchase } from "../src/game/match/useMatchController.js";
-import { chooseEnemyAssignments, settleFighterAfterRound } from "../src/game/match/useMatchController.js";
+import {
+  chooseEnemyAssignments,
+  settleFighterAfterRound,
+  handleLegacyRemoteShopPurchase,
+} from "../src/game/match/useMatchController.js";
+import { addPurchasedCardToFighter, getCardSourceId } from "../src/player/profileStore.js";
 
 const makeCard = (id: string): Card => ({
   id,
@@ -270,3 +275,84 @@ test("purchased cards are drawn even when the queue is cleared before state upda
     "purchased cards should not remain in the deck after being added to hand",
   );
 });
+
+test("remote legacy shopPurchase adds the offering card to the enemy deck", () => {
+  const offeringId = "legacy-offer";
+  const baseCard: Card = {
+    id: "template-card",
+    name: "Legacy Offer",
+    type: "normal",
+    number: 0,
+    tags: [],
+    cost: 3,
+  };
+  (baseCard as Card & { sourceId?: string }).sourceId = offeringId;
+
+  const offering = {
+    id: offeringId,
+    rarity: "common" as const,
+    cost: 3,
+    summary: "",
+    card: baseCard,
+  };
+
+  const fighters: Record<"player" | "enemy", Fighter> = {
+    player: makeFighter([], []),
+    enemy: makeFighter([], []),
+  };
+
+  const recordedPurchases: { side: "player" | "enemy"; cardId: string; round: number }[] = [];
+
+  const applyShopPurchaseStub = (
+    side: "player" | "enemy",
+    target:
+      | typeof offering
+      | { offeringId: string; cost?: number }
+      | string
+      | { card: Card; cost: number; sourceId?: string | null },
+  ) => {
+    if (typeof target === "string" || !("card" in target)) {
+      throw new Error("expected offering payload");
+    }
+    fighters[side] = addPurchasedCardToFighter(fighters[side], target.card);
+    return true;
+  };
+
+  handleLegacyRemoteShopPurchase({
+    side: "enemy",
+    cardId: offeringId,
+    round: 3,
+    applyGauntletPurchaseFor: (side, purchase) => {
+      recordedPurchases.push({ side, ...purchase });
+    },
+    findOfferingForSide: () => offering,
+    applyShopPurchase: (
+      side,
+      target,
+      opts?: { force?: boolean; sourceId?: string | null },
+    ) => {
+      expectForceOption(opts);
+      return applyShopPurchaseStub(side, target);
+    },
+  });
+
+  const enemyDeckSources = fighters.enemy.deck.map(getCardSourceId);
+
+  assert.deepEqual(recordedPurchases, [
+    { side: "enemy", cardId: offeringId, round: 3 },
+  ]);
+  assert.equal(
+    enemyDeckSources.includes(offeringId),
+    true,
+    "enemy deck should contain the purchased offering",
+  );
+  assert.equal(
+    enemyDeckSources.filter((id) => id === offeringId).length,
+    1,
+    "enemy deck should gain exactly one copy of the purchased card",
+  );
+});
+
+function expectForceOption(opts?: { force?: boolean }) {
+  assert.equal(opts?.force, true, "remote purchases should force the shop transaction");
+}
