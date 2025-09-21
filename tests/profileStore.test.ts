@@ -13,6 +13,8 @@ import {
   applyGauntletPurchase,
   buildGauntletDeckAsCards,
   getCardSourceId,
+  getProfileBundle,
+  addToInventory,
 } from "../src/player/profileStore.js";
 
 const makeCard = (id: string, value = 0): Card => ({
@@ -135,11 +137,34 @@ test("rollStoreOfferings reserves the top row for ability cards", () => {
 test("gauntlet purchases persist after rebuilding the deck", () => {
   endGauntletRun();
   const startingGold = 10;
-  startGauntletRun({ startingDeckCards: [], startingGold });
+  const initialBundle = getProfileBundle();
+  const activeDeck = initialBundle.decks.find((d) => d.isActive) ?? initialBundle.decks[0];
+  assert.ok(activeDeck, "an active deck should exist before starting the run");
+
+  addToInventory(activeDeck.cards.map((card) => ({ cardId: card.cardId, qty: card.qty })));
+  const preparedBundle = getProfileBundle();
+  const preparedDeck =
+    preparedBundle.decks.find((deck) => deck.id === activeDeck.id) ?? preparedBundle.decks[0];
+  assert.ok(preparedDeck, "prepared deck should still exist after inventory seeding");
+
+  const purchasedId = "basic_0";
+  const cardToRemove =
+    preparedDeck.cards.find((card) => card.cardId !== purchasedId)?.cardId ?? purchasedId;
+  const initialDeckQty =
+    preparedDeck.cards.find((card) => card.cardId === purchasedId)?.qty ?? 0;
+  const initialRemovedQty =
+    preparedDeck.cards.find((card) => card.cardId === cardToRemove)?.qty ?? 0;
+  const initialInventoryQty =
+    preparedBundle.inventory.find((item) => item.cardId === purchasedId)?.qty ?? 0;
+
+  startGauntletRun({ deckId: preparedDeck.id, startingGold });
 
   const purchaseCost = 3;
-  const purchasedId = "basic_0";
-  applyGauntletPurchase({ add: [{ cardId: purchasedId, qty: 1 }], cost: purchaseCost });
+  applyGauntletPurchase({
+    remove: [{ cardId: cardToRemove, qty: 1 }],
+    add: [{ cardId: purchasedId, qty: 1 }],
+    cost: purchaseCost,
+  });
 
   const rebuiltDeck = buildGauntletDeckAsCards();
   assert.equal(rebuiltDeck.length > 0, true, "rebuilt deck should include purchased cards");
@@ -147,6 +172,33 @@ test("gauntlet purchases persist after rebuilding the deck", () => {
     rebuiltDeck.some((card) => getCardSourceId(card) === purchasedId),
     true,
     "purchased card should appear in the rebuilt gauntlet deck",
+  );
+
+  const updatedBundle = getProfileBundle();
+  assert.ok(updatedBundle.gauntlet, "gauntlet run should remain active after purchase");
+
+  const savedDeck = updatedBundle.decks.find((deck) => deck.id === preparedDeck.id);
+  assert.ok(savedDeck, "backing saved deck should still exist after purchase");
+  const savedQty = savedDeck?.cards.find((card) => card.cardId === purchasedId)?.qty ?? 0;
+  assert.equal(
+    savedQty,
+    initialDeckQty + 1,
+    "purchase should add the card to the backing saved deck",
+  );
+
+  const removedQty = savedDeck?.cards.find((card) => card.cardId === cardToRemove)?.qty ?? 0;
+  assert.equal(
+    removedQty,
+    Math.max(0, initialRemovedQty - 1),
+    "purchase should remove the swapped-out card from the saved deck",
+  );
+
+  const inventoryQty =
+    updatedBundle.inventory.find((item) => item.cardId === purchasedId)?.qty ?? 0;
+  assert.equal(
+    inventoryQty,
+    initialInventoryQty + 1,
+    "purchase should increment the player's inventory for the card",
   );
 
   endGauntletRun();

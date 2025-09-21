@@ -24,6 +24,7 @@ export type DeckCard = { cardId: CardId; qty: number };
 export type Deck = { id: string; name: string; isActive: boolean; cards: DeckCard[] };
 export type GauntletRun = {
   id: string;
+  deckId: string | null;
   startedAt: number;
   round: number;
   gold: number;
@@ -635,6 +636,7 @@ function migrateState(raw: unknown): { state: LocalState; changed: boolean } {
     if (typeof run.gold !== "number") { run.gold = 0; changed = true; }
     if (typeof run.round !== "number") { run.round = 0; changed = true; }
     if (typeof run.startedAt !== "number") { run.startedAt = Date.now(); changed = true; }
+    if (typeof run.deckId !== "string" && run.deckId !== null) { run.deckId = null; changed = true; }
     if (!run.flags || typeof run.flags !== "object") { run.flags = {}; changed = true; }
   }
 
@@ -696,10 +698,10 @@ function saveState(state: LocalState) {
   }
 }
 
-function mutateGauntletRun(mutator: (run: GauntletRun) => void): GauntletRun {
+function mutateGauntletRun(mutator: (run: GauntletRun, state: LocalState) => void): GauntletRun {
   const state = loadStateRaw();
   const run = ensureGauntletRun(state);
-  mutator(run);
+  mutator(run, state);
   saveState(state);
   return { ...run, deck: cloneDeckCards(run.deck), flags: { ...run.flags } };
 }
@@ -719,6 +721,30 @@ function applyGauntletDeckMutation(existing: DeckCard[], mutation: GauntletDeckM
 
   validateGauntletDeck(tmp.cards);
   return tmp.cards;
+}
+
+function applyStandardDeckMutation(
+  deck: Deck,
+  mutation: GauntletDeckMutation,
+  inventory: InventoryItem[],
+) {
+  const remove = mutation.remove ?? [];
+  const add = mutation.add ?? [];
+  const next: DeckCard[] = deck.cards.map(c => ({ ...c }));
+  const tmp: Deck = { ...deck, cards: next };
+
+  for (const r of remove) setQty(tmp, r.cardId, Math.max(0, qtyInDeck(tmp, r.cardId) - r.qty));
+  for (const a of add) setQty(tmp, a.cardId, qtyInDeck(tmp, a.cardId) + a.qty);
+
+  if (sum(tmp.cards) > MAX_DECK_SIZE) throw new Error(`Deck too large (max ${MAX_DECK_SIZE})`);
+  for (const c of tmp.cards) {
+    if (!c.cardId.startsWith("basic_") && c.qty > MAX_COPIES_PER_DECK)
+      throw new Error(`Too many copies of ${c.cardId} (max ${MAX_COPIES_PER_DECK})`);
+    if (!ownAtLeast(inventory, c.cardId, 1))
+      throw new Error(`You don't own ${c.cardId}`);
+  }
+
+  deck.cards = tmp.cards;
 }
 
 // ===== Helpers =====
@@ -842,9 +868,11 @@ export function startGauntletRun(options: GauntletInitOptions = {}): GauntletRun
 
   const baseCards = deckSource?.cards ? cloneDeckCards(deckSource.cards) : cloneDeckCards(SEED_DECK.cards);
   validateGauntletDeck(baseCards);
+  const deckId = deckSource && "id" in deckSource ? deckSource.id : null;
 
   const run: GauntletRun = {
     id: uid("gauntlet"),
+    deckId,
     startedAt: Date.now(),
     round: Math.max(0, Math.trunc(options.startingRound ?? 0)),
     gold: Math.max(0, Math.trunc(options.startingGold ?? 0)),
@@ -924,14 +952,32 @@ export function mutateGauntletDeck(mutation: GauntletDeckMutation): GauntletRun 
 export type GauntletPurchase = GauntletDeckMutation & { cost?: number };
 
 export function applyGauntletPurchase(purchase: GauntletPurchase): GauntletRun {
-  return mutateGauntletRun(run => {
+  return mutateGauntletRun((run, state) => {
     const cost = Math.trunc(purchase.cost ?? 0);
     if (cost < 0) throw new Error("Purchase cost cannot be negative");
     if (cost > 0) {
       if (run.gold < cost) throw new Error("Not enough gold to complete purchase");
       run.gold -= cost;
     }
-    run.deck = applyGauntletDeckMutation(run.deck, purchase);
+    const nextRunDeck = applyGauntletDeckMutation(run.deck, purchase);
+
+    if (run.deckId) {
+      const deck = state.decks.find(d => d.id === run.deckId);
+      if (deck) {
+        const prospectiveInventory = state.inventory.map(item => ({ ...item }));
+        for (const item of purchase.add ?? []) {
+          if (item.qty <= 0) continue;
+          const existing = prospectiveInventory.find(i => i.cardId === item.cardId);
+          if (existing) existing.qty += item.qty;
+          else prospectiveInventory.push({ cardId: item.cardId, qty: item.qty });
+        }
+
+        applyStandardDeckMutation(deck, purchase, prospectiveInventory);
+        state.inventory = prospectiveInventory;
+      }
+    }
+
+    run.deck = nextRunDeck;
   });
 }
 
@@ -976,22 +1022,7 @@ export function swapDeckCards(deckId: string, remove: SwapItem[], add: SwapItem[
   const s = loadStateRaw();
   const deck = s.decks.find(d => d.id === deckId);
   if (!deck) throw new Error("Deck not found");
-
-  const next: DeckCard[] = deck.cards.map(c => ({ ...c }));
-  const tmp: Deck = { ...deck, cards: next };
-
-  for (const r of remove) setQty(tmp, r.cardId, Math.max(0, qtyInDeck(tmp, r.cardId) - r.qty));
-  for (const a of add) setQty(tmp, a.cardId, qtyInDeck(tmp, a.cardId) + a.qty);
-
-  if (sum(tmp.cards) > MAX_DECK_SIZE) throw new Error(`Deck too large (max ${MAX_DECK_SIZE})`);
-  for (const c of tmp.cards) {
-    if (!c.cardId.startsWith("basic_") && c.qty > MAX_COPIES_PER_DECK)
-      throw new Error(`Too many copies of ${c.cardId} (max ${MAX_COPIES_PER_DECK})`);
-    if (!ownAtLeast(s.inventory, c.cardId, 1))
-      throw new Error(`You don't own ${c.cardId}`);
-  }
-
-  deck.cards = tmp.cards;
+  applyStandardDeckMutation(deck, { remove, add }, s.inventory);
   saveState(s);
   return deck;
 }
