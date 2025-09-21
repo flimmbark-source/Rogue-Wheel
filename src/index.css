@@ -13,7 +13,7 @@ body {
    * slate fallback ensures the UI remains legible if the image fails to
    * load.  Text uses the custom font defined in tailwind.config.js. */
   @apply bg-slate-900 text-slate-200 font-text;
-  background-image: url("/assets/Desk.png");
+  background-image: url("../assets/Desk.png");
   background-size: cover;
   background-repeat: no-repeat;
   background-position: center;
@@ -48,7 +48,7 @@ h1, h2, h3, h4, h5, h6 {
  * Wood-themed frames for wheels and card slots.
  */
 div.relative[aria-label^="Wheel"] {
-  background-image: url("/assets/wheel-frame.png");
+  background-image: url("../assets/wheel-frame.png");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -58,7 +58,7 @@ div.relative[aria-label^="Wheel"] {
 /* Player and enemy card slots */
 [aria-label$="player slot"],
 [aria-label$="enemy slot"] {
-  background-image: url("/assets/card-frame.png");
+  background-image: url("../assets/card-frame.png");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -73,14 +73,14 @@ div.relative[aria-label^="Wheel"] {
  * and set the number color to a light parchment tone.
  */
 button[aria-label^="Card"] {
-  background-image: url("/assets/card-frame.png");
+  background-image: url("../assets/card-frame.png");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
   border: none;
 }
 button[aria-label^="Card"][data-card-kind="negative"] {
-  background-image: url("/assets/negative-card-frame.png");
+  background-image: url("../assets/negative-card-frame.png");
 }
 button[aria-label^="Card"] > div:first-child {
   opacity: 0;
