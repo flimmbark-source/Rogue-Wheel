@@ -13,6 +13,11 @@ import {
   type Phase,
   useMatchController,
 } from "../../match/useMatchController";
+import {
+  endGauntletRun,
+  getGauntletRun,
+  startGauntletRun,
+} from "../../../player/profileStore";
 
 const THEME = {
   panelBg: "#2c1c0e",
@@ -71,6 +76,17 @@ export default function GauntletMatch({
   useEffect(() => {
     remoteIntentRef.current = controller.handleRemoteIntent;
   }, [controller.handleRemoteIntent]);
+
+  useEffect(() => {
+    const activeRun = getGauntletRun();
+    if (!activeRun) {
+      startGauntletRun();
+    }
+
+    return () => {
+      endGauntletRun();
+    };
+  }, []);
 
   const {
     active,
