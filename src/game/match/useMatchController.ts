@@ -24,6 +24,7 @@ import {
   recordMatchResult,
   rollStoreOfferings,
   buildGauntletDeckAsCards,
+  buildAbilityDeckAsCards,
   applyGauntletPurchase,
   type MatchResultSummary,
   type LevelProgress,
@@ -55,7 +56,7 @@ import {
 } from "./useMatchActivationPhase";
 import { useLatestRef } from "./useLatestRef";
 
-export type MatchMode = "classic" | "gauntlet";
+export type MatchMode = "classic" | "gauntlet" | "tactics";
 
 export type {
   LegacySide,
@@ -141,6 +142,7 @@ export function useMatchController({
 }: UseMatchControllerOptions) {
   const matchMode = mode;
   const isGauntletMode = matchMode === "gauntlet";
+  const isTacticsMode = matchMode === "tactics";
 
   const sendIntentRef = useRef(sendIntent);
   useEffect(() => {
@@ -210,10 +212,21 @@ export function useMatchController({
     return id;
   }, []);
 
-  const [player, setPlayer] = useState<Fighter>(() =>
-    isGauntletMode ? makeFighter("Wanderer", { deck: buildGauntletDeckAsCards() }) : makeFighter("Wanderer"),
-  );
-  const [enemy, setEnemy] = useState<Fighter>(() => makeFighter("Shade Bandit"));
+  const [player, setPlayer] = useState<Fighter>(() => {
+    if (isGauntletMode) {
+      return makeFighter("Wanderer", { deck: buildGauntletDeckAsCards() });
+    }
+    if (isTacticsMode) {
+      return makeFighter("Wanderer", { deck: buildAbilityDeckAsCards() });
+    }
+    return makeFighter("Wanderer");
+  });
+  const [enemy, setEnemy] = useState<Fighter>(() => {
+    if (isTacticsMode) {
+      return makeFighter("Shade Bandit", { deck: buildAbilityDeckAsCards() });
+    }
+    return makeFighter("Shade Bandit");
+  });
   const playerRef = useLatestRef(player);
   const enemyRef = useLatestRef(enemy);
 
@@ -1619,10 +1632,21 @@ const purchaseFromShop = useCallback(
     setFreezeLayout(false);
     setLockedWheelSize(null);
 
-    setPlayer(() =>
-      isGauntletMode ? makeFighter("Wanderer", { deck: buildGauntletDeckAsCards() }) : makeFighter("Wanderer"),
-    );
-    setEnemy(() => makeFighter("Shade Bandit"));
+    setPlayer(() => {
+      if (isGauntletMode) {
+        return makeFighter("Wanderer", { deck: buildGauntletDeckAsCards() });
+      }
+      if (isTacticsMode) {
+        return makeFighter("Wanderer", { deck: buildAbilityDeckAsCards() });
+      }
+      return makeFighter("Wanderer");
+    });
+    setEnemy(() => {
+      if (isTacticsMode) {
+        return makeFighter("Shade Bandit", { deck: buildAbilityDeckAsCards() });
+      }
+      return makeFighter("Shade Bandit");
+    });
 
     setInitiative(hostId ? hostLegacySide : localLegacySide);
 
@@ -1661,6 +1685,7 @@ const purchaseFromShop = useCallback(
     clearResolveVotes,
     generateWheelSet,
     isGauntletMode,
+    isTacticsMode,
     hostId,
     hostLegacySide,
     localLegacySide,

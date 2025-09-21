@@ -19,7 +19,7 @@ type View =
   | { key: "soloMenu" }
   | { key: "mp" }
   | { key: "profile" }
-  | { key: "game"; mode: "classic" | "gauntlet" }
+  | { key: "game"; mode: "classic" | "gauntlet" | "tactics" }
   | { key: "game"; mode: "mp"; mpPayload?: MPStartPayload };
 
 export default function AppShell() {
@@ -32,6 +32,7 @@ export default function AppShell() {
   const goToProfile = useCallback(() => setView({ key: "profile" }), [setView]);
   const startClassic = useCallback(() => setView({ key: "game", mode: "classic" }), [setView]);
   const startGauntlet = useCallback(() => setView({ key: "game", mode: "gauntlet" }), [setView]);
+  const startTactics = useCallback(() => setView({ key: "game", mode: "tactics" }), [setView]);
 
   useEffect(() => {
     const handleNewRun = () => goToSoloMenu();
@@ -59,6 +60,7 @@ export default function AppShell() {
           onBack={goToHub}
           onSelectClassic={startClassic}
           onSelectGauntlet={startGauntlet}
+          onSelectTactics={startTactics}
         />
       </Suspense>
     );
@@ -126,10 +128,17 @@ export default function AppShell() {
     setMpPayload(null);
   };
 
+  const appMode =
+    view.mode === "gauntlet"
+      ? "gauntlet"
+      : view.mode === "tactics"
+        ? "tactics"
+        : "classic";
+
   return (
     <Suspense fallback={<LoadingScreen />}>
       <App
-        mode={view.mode === "gauntlet" ? "gauntlet" : "classic"}
+        mode={appMode}
         localSide={localSide}
         localPlayerId={localPlayerId}
         players={players}
