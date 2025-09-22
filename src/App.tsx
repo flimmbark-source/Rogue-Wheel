@@ -1743,9 +1743,25 @@ animateSpins();    // <-- CALL IT
 
     if (resolveVotes[localLegacySide]) return;
 
+    const remoteReady = resolveVotes[remoteLegacySide];
+
     markResolveVote(localLegacySide);
     sendIntent({ type: "reveal", side: localLegacySide });
-  }, [canReveal, isMultiplayer, localLegacySide, markResolveVote, onReveal, phase, resolveVotes, sendIntent]);
+
+    if (remoteReady) {
+      onReveal();
+    }
+  }, [
+    canReveal,
+    isMultiplayer,
+    localLegacySide,
+    markResolveVote,
+    onReveal,
+    phase,
+    remoteLegacySide,
+    resolveVotes,
+    sendIntent,
+  ]);
 
   const handleNextClick = useCallback(() => {
     if (phase !== "roundEnd") return;
