@@ -127,9 +127,7 @@ export type VC =
   | "Weakest"
   | "ReserveSum"
   | "ClosestToTarget"
-  | "Initiative"
-  | "DoubleWin"
-  | "SwapWins";
+  | "Initiative";
 
 export type WheelArchetype = "bandit" | "sorcerer" | "beast" | "guardian" | "chaos";
 
