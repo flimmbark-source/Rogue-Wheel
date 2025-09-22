@@ -15,6 +15,12 @@ export type SpellTargetDefinition =
   | { type: "card"; ownership: SpellTargetOwnership; automatic?: boolean }
   | { type: "wheel"; scope: "current" | "any" };
 
+export function getSpellDefinitions(ids: SpellId[]): SpellDefinition[] {
+  return ids
+    .map((id) => getSpellById(id))
+    .filter((s): s is SpellDefinition => Boolean(s));
+}
+
 export type SpellTargetInstance =
   | { type: "none" }
   | { type: "self" }
