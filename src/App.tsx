@@ -48,13 +48,18 @@ import {
 import {
   makeFighter,
   drawOne,
-  refillTo,
   freshFive,
   recordMatchResult,
   type MatchResultSummary,
   type LevelProgress,
 } from "./player/profileStore";
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
+import {
+  autoPickEnemy,
+  calcWheelSize,
+  computeReserveSum,
+  settleFighterAfterRound,
+} from "./features/threeWheel/utils/combat";
 
 // components
 import type { WheelHandle } from "./components/CanvasWheel";
@@ -63,6 +68,7 @@ import HandDock from "./features/threeWheel/components/HandDock";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
 import { getSpellDefinitions, type SpellDefinition } from "./game/spells";
+import ArchetypeModal from "./features/threeWheel/components/ArchetypeModal";
 
 type AblyRealtime = InstanceType<typeof Realtime>;
 type AblyChannel = ReturnType<AblyRealtime["channels"]["get"]>;
@@ -146,7 +152,6 @@ type MPIntent =
 
 
 // ---------------- Constants ----------------
-const MIN_WHEEL = 160;
 const MAX_WHEEL = 200;
 
 const THEME = {
@@ -576,17 +581,6 @@ const resetRoundTransientState = useCallback(
 
   const [handClearance, setHandClearance] = useState<number>(0);
 
-function calcWheelSize(viewH: number, viewW: number, dockAllowance = 0) {
-  const isMobile = viewW <= 480;
-  const chromeAllowance = viewW >= 1024 ? 200 : 140;
-  const raw = Math.floor((viewH - chromeAllowance - dockAllowance) / 3);
-  const MOBILE_MAX = 188;
-  const DESKTOP_MAX = 220;
-  const maxAllowed = isMobile ? MOBILE_MAX : DESKTOP_MAX;
-  return Math.max(MIN_WHEEL, Math.min(maxAllowed, raw));
-}
-  
-  
   // --- Mobile pointer-drag support ---
 const [isPtrDragging, setIsPtrDragging] = useState(false);
 const [ptrDragCard, setPtrDragCard] = useState<Card | null>(null);
@@ -866,7 +860,10 @@ const storeReserveReport = useCallback(
 
   const broadcastLocalReserve = useCallback(() => {
     const lane = localLegacySide === "player" ? assignRef.current.player : assignRef.current.enemy;
-    const reserve = computeReserveSum(localLegacySide, lane);
+    const reserve = computeReserveSum(localLegacySide, lane, {
+      player: player.hand,
+      enemy: enemy.hand,
+    });
     const updated = storeReserveReport(localLegacySide, reserve, round);
     if (isMultiplayer && updated) {
       sendIntent({ type: "reserve", side: localLegacySide, reserve, round });
@@ -1221,63 +1218,9 @@ const canReveal = useMemo(() => {
   }
 
 
-function autoPickEnemy(): (Card | null)[] {
-  const hand = [...enemy.hand].filter(isNormal);   // ← guard
-  const picks: (Card | null)[] = [null, null, null];
-  const take = (c: typeof hand[number]) => { const k = hand.indexOf(c); if (k >= 0) hand.splice(k, 1); return c; };
-  const best = [...hand].sort((a, b) => b.number - a.number)[0]; if (best) picks[0] = take(best);
-  const low  = [...hand].sort((a, b) => a.number - b.number)[0]; if (low) picks[1] = take(low);
-  const sorted = [...hand].sort((a, b) => a.number - b.number); const mid = sorted[Math.floor(sorted.length / 2)]; if (mid) picks[2] = take(mid);
-  for (let i = 0; i < 3; i++) if (!picks[i] && hand.length) picks[i] = take(hand[0]);
-  return picks;
-}
-
-function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
-  const hand = who === "player" ? player.hand : enemy.hand;
-  const usedIds = new Set((used.filter(Boolean) as Card[]).map((c) => c.id));
-  const left = hand.filter((c) => !usedIds.has(c.id));
-  return left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
-}
-
   useEffect(() => {
     broadcastLocalReserve();
   }, [broadcastLocalReserve, assign, player, enemy, localLegacySide, round, isMultiplayer]);
-
-// Keep this: after a round, move only played cards out of hand, discard them, then draw.
-function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
-  const playedIds = new Set(played.map((c) => c.id));
-  const next: Fighter = {
-    name: f.name,
-    deck: [...f.deck],
-    hand: f.hand.filter((c) => !playedIds.has(c.id)), // keep reserves in hand
-    discard: [...f.discard, ...played],
-  };
-
-  // First, try to draw back to 5 using your existing deck util.
-  const refilled = refillTo(next, 5);
-
-  // Then, as a safety net, pad with neutral 0-cards if still short.
-  return ensureFiveHand(refilled, 5);
-}
-
-// Small helper to top-up a hand with neutral 0-value cards if needed.
-// Uses crypto.randomUUID() when available to avoid ID collisions.
-function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
-  if (f.hand.length >= TARGET) return f;
-
-  const padded = [...f.hand];
-  while (padded.length < TARGET) {
-    padded.push({
-      id: typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `pad-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: "Reserve",
-      number: 0,
-      kind: "normal",
-    } as unknown as Card);
-  }
-  return { ...f, hand: padded } as T;
-}
 
   // ---------------- Reveal / Resolve ----------------
   const revealRoundCore = useCallback(
@@ -1299,7 +1242,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       if (isMultiplayer) {
         enemyPicks = [...assignRef.current.enemy];
       } else {
-        enemyPicks = autoPickEnemy();
+        enemyPicks = autoPickEnemy(enemy.hand);
         if (enemyPicks.some(Boolean)) {
           const pickIds = new Set((enemyPicks.filter(Boolean) as Card[]).map((c) => c.id));
           setEnemy((prev) => ({
@@ -1344,19 +1287,24 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       ? played.map((pe) => pe.p)
       : played.map((pe) => pe.e);
 
-    const localReserve = computeReserveSum(localLegacySide, localPlayed);
+    const handMap = {
+      player: player.hand,
+      enemy: enemy.hand,
+    } as const;
+
+    const localReserve = computeReserveSum(localLegacySide, localPlayed, handMap);
     let remoteReserve: number;
     let usedRemoteReport = false;
 
     if (!isMultiplayer) {
-      remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+      remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed, handMap);
     } else {
       const report = reserveReportsRef.current[remoteLegacySide];
       if (report && report.round === round) {
         remoteReserve = report.reserve;
         usedRemoteReport = true;
       } else {
-        remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+        remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed, handMap);
       }
     }
 
@@ -1950,20 +1898,6 @@ default:
   const localSpells = archetypeSpellIdsBySide[localLegacySide];
   const remoteSpells = archetypeSpellIdsBySide[remoteLegacySide];
 
-  const localArchetypeDef = localSelection
-    ? ARCHETYPE_DEFINITIONS[localSelection]
-    : null;
-  const remoteArchetypeDef = remoteSelection
-    ? ARCHETYPE_DEFINITIONS[remoteSelection]
-    : null;
-
-  const formatSpellId = useCallback((spellId: string) => {
-    if (!spellId) return spellId;
-    return spellId
-      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-      .replace(/(^|\s)([a-z])/g, (_, prefix, char) => prefix + char.toUpperCase());
-  }, []);
-
   const handleLocalArchetypeSelect = useCallback(
     (id: ArchetypeId) => {
       let changed = false;
@@ -2025,89 +1959,453 @@ default:
 
 
   // ---------------- UI ----------------
+// --- Archetype modal (keep this) ---
+const renderArchetypeModal = () => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4 py-6">
+    <div className="w-full max-w-4xl space-y-6 rounded-2xl border border-slate-700 bg-slate-900/95 p-6 shadow-2xl">
+      <div className="space-y-2 text-center">
+        <h2 className="text-2xl font-semibold text-amber-200">Choose Your Archetype</h2>
+        <p className="text-sm text-slate-200/80">
+          Archetypes determine which spells appear in your grimoire. Pick one, then press{" "}
+          {isMultiplayer ? "Ready" : "Next"} to begin.
+        </p>
+      </div>
 
-  const renderArchetypeModal = () => (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4 py-6">
-      <div className="w-full max-w-4xl space-y-6 rounded-2xl border border-slate-700 bg-slate-900/95 p-6 shadow-2xl">
-        <div className="space-y-2 text-center">
-          <h2 className="text-2xl font-semibold text-amber-200">Choose Your Archetype</h2>
-          <p className="text-sm text-slate-200/80">
-            Archetypes determine which spells appear in your grimoire. Pick one, then press
-            {" "}
-            {isMultiplayer ? "Ready" : "Next"} to begin.
-          </p>
+      <div className="grid gap-4 sm:grid-cols-3">
+        {ARCHETYPE_IDS.map((id) => {
+          const def = ARCHETYPE_DEFINITIONS[id];
+          const isLocalChoice = localSelection === id;
+          const isRemoteChoice = remoteSelection === id;
+          return (
+            <div
+              key={id}
+              className="relative flex h-full flex-col rounded-xl border border-slate-700/70 bg-slate-800/70 p-4 shadow"
+              style={{
+                borderColor: isLocalChoice
+                  ? HUD_COLORS[localLegacySide]
+                  : isRemoteChoice
+                  ? HUD_COLORS[remoteLegacySide]
+                  : undefined,
+              }}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-lg font-semibold text-slate-100">{def.name}</div>
+                  <p className="mt-1 text-xs text-slate-300/80 leading-snug">{def.description}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1 text-[10px] font-semibold uppercase tracking-wide">
+                  {isLocalChoice && (
+                    <span
+                      className="rounded-full px-2 py-0.5"
+                      style={{ background: `${HUD_COLORS[localLegacySide]}22`, color: HUD_COLORS[localLegacySide] }}
+                    >
+                      You
+                    </span>
+                  )}
+                  {isRemoteChoice && (
+                    <span
+                      className="rounded-full px-2 py-0.5"
+                      style={{ background: `${HUD_COLORS[remoteLegacySide]}22`, color: HUD_COLORS[remoteLegacySide] }}
+                    >
+                      {namesByLegacy[remoteLegacySide]}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-3 flex-1 rounded-lg border border-slate-700/70 bg-slate-900/60 p-3">
+                <div className="text-xs font-semibold uppercase text-slate-300/80">Spells</div>
+                <ul className="mt-2 space-y-1 text-xs text-slate-100/90">
+                  {def.spellIds.map((spell) => (
+                    <li key={spell} className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
+                      <span>{formatSpellId(spell)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <button
+                onClick={() => handleLocalArchetypeSelect(id)}
+                disabled={isLocalChoice}
+                className="mt-4 rounded-lg border border-amber-400/70 px-3 py-1.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:border-amber-200/40 disabled:text-amber-200/70"
+              >
+                {isLocalChoice ? "Selected" : "Choose"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ...keep the rest of the modal footer/buttons you already had here... */}
+    </div>
+  </div>
+);
+
+// --- Wheel panel (keep this) ---
+const renderWheelPanel = (i: number) => {
+  const pc = assign.player[i];
+  const ec = assign.enemy[i];
+
+  const damageState = wheelDamage[i];
+  const mirrorState = wheelMirror[i];
+  const lockState = wheelLocks[i];
+  const pointerShift = pointerShifts[i];
+  const playerPenalty = reservePenalties.player;
+  const enemyPenalty = reservePenalties.enemy;
+
+  const leftSlot = { side: "player" as const, card: pc, name: namesByLegacy.player };
+  const rightSlot = { side: "enemy" as const, card: ec, name: namesByLegacy.enemy };
+
+  const ws = Math.round(lockedWheelSize ?? wheelSize);
+
+  const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
+  const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
+
+  const shouldShowLeftCard =
+    !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
+  const shouldShowRightCard =
+    !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
+
+  // layout numbers
+  const slotW    = 80;
+  const gapX     = 16;
+  const paddingX = 16;
+  const borderX  = 4;
+  const EXTRA_H  = 16;
+
+  const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
+
+  const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
+    if (!slot.card) return null;
+    const card = slot.card;
+    const interactable =
+      slot.side === localLegacySide && phase === "choose" && archetypeGateOpen;
+
+    const handlePick = () => {
+      if (!interactable) return;
+      if (selectedCardId) tapAssignIfSelected();
+      else setSelectedCardId(card.id);
+    };
+
+    const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
+      if (!interactable) return;
+      setSelectedCardId(card.id);
+      setDragCardId(card.id);
+      try { e.dataTransfer.setData("text/plain", card.id); } catch {}
+      e.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleDragEnd = () => {
+      setDragCardId(null);
+      setDragOverWheel(null);
+    };
+
+    const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (!interactable) return;
+      e.stopPropagation();
+      startPointerDrag(card, e);
+    };
+
+    return (
+      <StSCard
+        card={card}
+        size="sm"
+        disabled={!interactable}
+        selected={isSlotSelected}
+        onPick={handlePick}
+        draggable={interactable}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onPointerDown={handlePointerDown}
+      />
+    );
+  };
+
+  const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
+  const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
+  const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
+    if (!id || !active[i]) return;
+    const intendedSide = targetSide ?? localLegacySide;
+    if (intendedSide !== localLegacySide) {
+      setDragOverWheel(null);
+      setDragCardId(null);
+      return;
+    }
+
+    const isLocalPlayer = localLegacySide === "player";
+    const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
+    const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as Card | undefined;
+    const card = fromHand || fromSlots || null;
+    if (card) assignToWheelLocal(i, card as Card);
+    setDragOverWheel(null);
+    setDragCardId(null);
+  };
+  const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
+    e.preventDefault();
+    handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
+  };
+
+  const tapAssignIfSelected = () => {
+    if (!selectedCardId) return;
+    const isLocalPlayer = localLegacySide === "player";
+    const card =
+      (isLocalPlayer ? player.hand : enemy.hand).find(c => c.id === selectedCardId) ||
+      (isLocalPlayer ? assign.player : assign.enemy).find(c => c?.id === selectedCardId) ||
+      null;
+    if (card) assignToWheelLocal(i, card as Card);
+  };
+
+  const panelShadow = '0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)';
+
+  return (
+    <div
+      className="relative rounded-xl border p-2 shadow flex-none"
+      style={{
+        width: panelW,
+        height: ws + EXTRA_H,
+        background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
+        borderColor: THEME.panelBorder,
+        borderWidth: 2,
+        boxShadow: panelShadow,
+        contain: 'paint',
+        backfaceVisibility: 'hidden',
+        transform: 'translateZ(0)',
+        isolation: 'isolate'
+      }}
+      data-wheel-locked={lockState ? "true" : "false"}
+      data-pointer-shift={pointerShift}
+      data-player-damage={damageState.player}
+      data-enemy-damage={damageState.enemy}
+      data-player-mirror={mirrorState.player ? "true" : "false"}
+      data-enemy-mirror={mirrorState.enemy ? "true" : "false"}
+      data-player-reserve-penalty={playerPenalty}
+      data-enemy-reserve-penalty={enemyPenalty}
+      data-initiative-override={initiativeOverride ?? ""}
+    >
+      {(phase === "roundEnd" || phase === "ended") && (
+        <>
+          <span
+            aria-label={`Wheel ${i+1} player result`}
+            className="absolute top-1 left-1 rounded-full border"
+            style={{
+              width: 10,
+              height: 10,
+              background: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : 'transparent',
+              borderColor: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : THEME.panelBorder,
+              boxShadow: '0 0 0 1px rgba(0,0,0,0.4)'
+            }}
+          />
+          <span
+            aria-label={`Wheel ${i+1} enemy result`}
+            className="absolute top-1 right-1 rounded-full border"
+            style={{
+              width: 10,
+              height: 10,
+              background: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : 'transparent',
+              borderColor: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : THEME.panelBorder,
+              boxShadow: '0 0 0 1px rgba(0,0,0,0.4)'
+            }}
+          />
+        </>
+      )}
+
+      <div
+        className="flex items-center justify-center gap-2"
+        style={{ height: ws + EXTRA_H }}
+      >
+        {/* Player slot */}
+        <div
+          data-drop="slot"
+          data-idx={i}
+          onDragOver={onZoneDragOver}
+          onDragEnter={onZoneDragOver}
+          onDragLeave={onZoneLeave}
+          onDrop={(e) => onZoneDrop(e, "player")}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (leftSlot.side !== localLegacySide) return;
+            if (selectedCardId) tapAssignIfSelected();
+            else if (leftSlot.card) setSelectedCardId(leftSlot.card.id);
+          }}
+          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+          style={{
+            backgroundColor: dragOverWheel === i || isLeftSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
+            borderColor:     dragOverWheel === i || isLeftSelected ? THEME.brass          : THEME.slotBorder,
+            boxShadow: isLeftSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
+          }}
+          aria-label={`Wheel ${i+1} left slot`}
+        >
+          {shouldShowLeftCard
+            ? renderSlotCard(leftSlot, isLeftSelected)
+            : <div className="text-[11px] opacity-80 text-center">
+                {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
+              </div>}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          {ARCHETYPE_IDS.map((id) => {
-            const def = ARCHETYPE_DEFINITIONS[id];
-            const isLocalChoice = localSelection === id;
-            const isRemoteChoice = remoteSelection === id;
-            return (
-              <div
-                key={id}
-                className="relative flex h-full flex-col rounded-xl border border-slate-700/70 bg-slate-800/70 p-4 shadow"
-                style={{
-                  borderColor: isLocalChoice
-                    ? HUD_COLORS[localLegacySide]
-                    : isRemoteChoice
-                    ? HUD_COLORS[remoteLegacySide]
-                    : undefined,
-                }}
+        {/* Wheel face */}
+        <div
+          data-drop="wheel"
+          data-idx={i}
+          className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
+          style={{ width: ws, height: ws }}
+          onDragOver={onZoneDragOver}
+          onDragEnter={onZoneDragOver}
+          onDragLeave={onZoneLeave}
+          onDrop={onZoneDrop}
+          onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
+          aria-label={`Wheel ${i+1}`}
+        >
+          <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 rounded-full"
+            style={{ boxShadow: dragOverWheel === i ? '0 0 0 2px rgba(251,191,36,0.7) inset' : 'none' }}
+          />
+        </div>
+
+        {/* Enemy slot */}
+        <div
+          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+          style={{
+            backgroundColor: dragOverWheel === i || isRightSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
+            borderColor:     dragOverWheel === i || isRightSelected ? THEME.brass          : THEME.slotBorder,
+            boxShadow: isRightSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
+          }}
+          aria-label={`Wheel ${i+1} right slot`}
+          data-drop="slot"
+          data-idx={i}
+          onDragOver={onZoneDragOver}
+          onDragEnter={onZoneDragOver}
+          onDragLeave={onZoneLeave}
+          onDrop={(e) => onZoneDrop(e, "enemy")}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (rightSlot.side !== localLegacySide) return;
+            if (selectedCardId) tapAssignIfSelected();
+            else if (rightSlot.card) setSelectedCardId(rightSlot.card.id);
+          }}
+        >
+          {shouldShowRightCard
+            ? renderSlotCard(rightSlot, isRightSelected)
+            : <div className="text-[11px] opacity-60 text-center">
+                {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
+              </div>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Hand dock (keep this) ---
+const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  const [liftPx, setLiftPx] = useState<number>(18);
+
+  useEffect(() => {
+    const compute = () => {
+      const root = dockRef.current; if (!root) return;
+      const sample = root.querySelector('[data-hand-card]') as HTMLElement | null; if (!sample) return;
+      const h = sample.getBoundingClientRect().height || 96;
+      const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
+      setLiftPx(nextLift);
+      const clearance = Math.round(h + nextLift + 12);
+      onMeasure?.(clearance);
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    window.addEventListener('orientationchange', compute);
+    return () => {
+      window.removeEventListener('resize', compute);
+      window.removeEventListener('orientationchange', compute);
+    };
+  }, [onMeasure]);
+
+  const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
+
+  return (
+    <div
+      ref={dockRef}
+      className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none"
+      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + -30px)' }}
+    >
+      <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
+        {localFighter.hand.map((card, idx) => {
+          const isSelected = selectedCardId === card.id;
+          return (
+            <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
+              <motion.div
+                data-hand-card
+                initial={false}
+                animate={{ y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx, opacity: 1, scale: isSelected ? 1.06 : 1 }}
+                whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+                className={`drop-shadow-xl ${isSelected ? 'ring-2 ring-amber-300' : ''}`}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-lg font-semibold text-slate-100">{def.name}</div>
-                    <p className="mt-1 text-xs text-slate-300/80 leading-snug">{def.description}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 text-[10px] font-semibold uppercase tracking-wide">
-                    {isLocalChoice && (
-                      <span
-                        className="rounded-full px-2 py-0.5"
-                        style={{ background: `${HUD_COLORS[localLegacySide]}22`, color: HUD_COLORS[localLegacySide] }}
-                      >
-                        You
-                      </span>
-                    )}
-                    {isRemoteChoice && (
-                      <span
-                        className="rounded-full px-2 py-0.5"
-                        style={{ background: `${HUD_COLORS[remoteLegacySide]}22`, color: HUD_COLORS[remoteLegacySide] }}
-                      >
-                        {namesByLegacy[remoteLegacySide]}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-3 flex-1 rounded-lg border border-slate-700/70 bg-slate-900/60 p-3">
-                  <div className="text-xs font-semibold uppercase text-slate-300/80">Spells</div>
-                  <ul className="mt-2 space-y-1 text-xs text-slate-100/90">
-                    {def.spellIds.map((spell) => (
-                      <li key={spell} className="flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
-                        <span>{formatSpellId(spell)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
                 <button
-                  onClick={() => handleLocalArchetypeSelect(id)}
-                  disabled={isLocalChoice}
-                  className="mt-4 rounded-lg border border-amber-400/70 px-3 py-1.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:border-amber-200/40 disabled:text-amber-200/70"
+                  data-hand-card
+                  className="pointer-events-auto"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!selectedCardId) { setSelectedCardId(card.id); return; }
+                    if (selectedCardId === card.id) { setSelectedCardId(null); return; }
+                    const lane = localLegacySide === "player" ? assign.player : assign.enemy;
+                    const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
+                    if (slotIdx !== -1) { assignToWheelLocal(slotIdx, card); return; }
+                    setSelectedCardId(card.id);
+                  }}
+                  draggable
+                  onDragStart={(e) => {
+                    setDragCardId(card.id);
+                    try { e.dataTransfer.setData("text/plain", card.id); } catch {}
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragEnd={() => setDragCardId(null)}
+                  onPointerDown={(e) => startPointerDrag(card, e)}
+                  aria-pressed={isSelected}
+                  aria-label={`Select ${card.name}`}
                 >
-                  {isLocalChoice ? "Selected" : "Choose"}
+                  <StSCard card={card} />
                 </button>
+              </motion.div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Touch drag ghost (mobile) */}
+      {isPtrDragging && ptrDragCard && (
+        <div
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            transform: `translate(${ptrPos.current.x - 48}px, ${ptrPos.current.y - 64}px)`,
+            pointerEvents: 'none',
+            zIndex: 9999,
+          }}
+          aria-hidden
+        >
+          <div style={{ transform: 'scale(0.9)', filter: 'drop-shadow(0 6px 8px rgba(0,0,0,.35))' }}>
+            <StSCard card={ptrDragCard} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
               </div>
             );
           })}
         </div>
-
+        {/* Archetype selections summary + ready controls */}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-4">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-slate-100">{namesByLegacy[localLegacySide]}</div>
+              <div className="text-sm font-semibold text-slate-100">
+                {namesByLegacy[localLegacySide]}
+              </div>
               <span
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                   localReady ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-700/60 text-slate-300"
@@ -2130,7 +2428,9 @@ default:
 
           <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-4">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-slate-100">{namesByLegacy[remoteLegacySide]}</div>
+              <div className="text-sm font-semibold text-slate-100">
+                {namesByLegacy[remoteLegacySide]}
+              </div>
               <span
                 className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                   remoteReady ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-700/60 text-slate-300"
@@ -2175,6 +2475,13 @@ default:
       </div>
     </div>
   );
+}; // <- end renderArchetypeModal
+
+        </div>
+      </div>
+    </div>
+  );
+};
 
   const localResolveReady = resolveVotes[localLegacySide];
   const remoteResolveReady = resolveVotes[remoteLegacySide];
@@ -2236,7 +2543,25 @@ default:
   data-pending-spell={pendingSpell ? pendingSpell.spell.id : ""}
   data-local-mana={localMana}
 >
-  {showArchetypeModal && renderArchetypeModal()}
+      {showArchetypeModal && (
+        <ArchetypeModal
+          isMultiplayer={isMultiplayer}
+          hudColors={HUD_COLORS}
+          localSide={localLegacySide}
+          remoteSide={remoteLegacySide}
+          namesBySide={namesByLegacy}
+          localSelection={localSelection}
+          remoteSelection={remoteSelection}
+          localReady={localReady}
+          remoteReady={remoteReady}
+          localSpells={localSpells}
+          remoteSpells={remoteSpells}
+          onSelect={handleLocalArchetypeSelect}
+          onReady={handleLocalArchetypeReady}
+          readyButtonLabel={readyButtonLabel}
+          readyButtonDisabled={readyButtonDisabled}
+        />
+      )}
 
 
       {/* Controls */}
