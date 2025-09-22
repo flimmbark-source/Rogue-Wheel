@@ -62,7 +62,8 @@ import {
 } from "./features/threeWheel/utils/combat";
 
 // components
-import type { WheelHandle } from "./components/CanvasWheel";
+import { motion } from "framer-motion";
+import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
 import WheelPanel from "./features/threeWheel/components/WheelPanel";
 import HandDock from "./features/threeWheel/components/HandDock";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
@@ -2296,30 +2297,6 @@ const renderWheelPanel = (i: number) => {
     </div>
   );
 };
-
-// --- Hand dock (keep this) ---
-const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
-  const dockRef = useRef<HTMLDivElement | null>(null);
-  const [liftPx, setLiftPx] = useState<number>(18);
-
-  useEffect(() => {
-    const compute = () => {
-      const root = dockRef.current; if (!root) return;
-      const sample = root.querySelector('[data-hand-card]') as HTMLElement | null; if (!sample) return;
-      const h = sample.getBoundingClientRect().height || 96;
-      const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
-      setLiftPx(nextLift);
-      const clearance = Math.round(h + nextLift + 12);
-      onMeasure?.(clearance);
-    };
-    compute();
-    window.addEventListener('resize', compute);
-    window.addEventListener('orientationchange', compute);
-    return () => {
-      window.removeEventListener('resize', compute);
-      window.removeEventListener('orientationchange', compute);
-    };
-  }, [onMeasure]);
 
   const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
