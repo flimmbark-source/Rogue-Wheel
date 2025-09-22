@@ -2503,10 +2503,10 @@ return (
             </button>
           </div>
         </div>
-      </div>{/* end modal card */}
-    </div>{/* end backdrop */}
+      </div>
+    </div>
   );
-}; // end renderArchetypeModal
+};
       
 
   const localResolveReady = resolveVotes[localLegacySide];
