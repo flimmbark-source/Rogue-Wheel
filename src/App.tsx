@@ -1607,9 +1607,14 @@ case "spellState": {
   if (msg.side === localLegacySide) break;
   if (typeof msg.lane !== "number" || !msg.state) break;
   applyRemoteLaneSpellState(msg.lane, msg.state);
+break;
+}
+
+default:
   break;
 }
-    [
+
+}, [
       assignToWheelFor,
       clearAssignFor,
       isMultiplayer,
@@ -1625,8 +1630,7 @@ case "spellState": {
       setArchetypeSelections,
       setSpellSyncState,
       setMana,
-    ]
-  );
+    ]);
 
   useEffect(() => {
     handleMPIntentRef.current = handleMPIntent;
