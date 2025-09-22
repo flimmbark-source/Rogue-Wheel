@@ -1290,7 +1290,6 @@ type Outcome = {
       const secList = wheelSections[w];
       const baseP = (played[w].p?.number ?? 0);
       const baseE = (played[w].e?.number ?? 0);
-      const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
       const bonusP = combosForResolve.player.laneBonus[w] ?? 0;
       const bonusE = combosForResolve.enemy.laneBonus[w] ?? 0;
       const pVal = baseP + bonusP;
@@ -1394,7 +1393,6 @@ case "ReserveSum": {
       // Single commit after all wheels have finished
       setTokens(finalTokens);
 
-// HUD colors, per-round tallies, mana gains, and swap tracking
 const hudColors: [string | null, string | null, string | null] = [null, null, null];
 const roundWins: Record<LegacySide, number> = { player: 0, enemy: 0 };
 const manaGains: Record<LegacySide, number> = { player: 0, enemy: 0 };
@@ -1416,19 +1414,18 @@ outcomes.forEach((o) => {
 
   hudColors[o.wheel] = HUD_COLORS[o.winner];
 
-  // base award, with DoubleWin support
   let awarded = 1;
   if (o.section.id === "DoubleWin") {
     awarded = 2;
   }
   roundWins[o.winner] += awarded;
 
-  // mana rewards on specific VC sections
   if (MANA_VC_REWARD.includes(o.section.id)) {
     manaGains[o.winner] += 1;
   }
 
   appendLog(`${wheelLabel} win -> ${o.winner} (${o.detail}).`);
+
   if (o.section.id === "DoubleWin") {
     appendLog(`✨ ${wheelLabel}: ${namesByLegacy[o.winner]} claims two wins from this slice!`);
   }
@@ -1436,10 +1433,8 @@ outcomes.forEach((o) => {
     swapCount += 1;
     appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
   }
-});
-        }
-      });
-
+}); // <— exactly one closing brace + parenthesis here
+      
       if (swapCount > 0) {
         const before = `${roundWins.player}-${roundWins.enemy}`;
         if (swapCount % 2 === 1) {
