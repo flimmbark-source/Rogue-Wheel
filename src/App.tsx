@@ -559,6 +559,16 @@ const reserveReportsRef = useRef<
   enemy: null,
 });
 
+const pendingSpellRef = useRef<SpellDefinition | null>(null);
+const wheelModifiersRef = useRef<[string | null, string | null, string | null]>([
+  null,
+  null,
+  null,
+]);
+const reservePenaltyRef = useRef<Record<LegacySide, number>>({ player: 0, enemy: 0 });
+const pointerShiftRef = useRef<[number, number, number]>([0, 0, 0]);
+const initiativeOverrideRef = useRef<LegacySide | null>(null);
+
 const storeReserveReport = useCallback(
   (side: LegacySide, reserve: number, roundValue: number) => {
     const prev = reserveReportsRef.current[side];
@@ -678,6 +688,21 @@ useEffect(() => {
 
   // Wheel refs for imperative token updates
   const wheelRefs = [useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null)];
+
+  const resetRoundTransientState = useCallback(
+    (opts?: { includePointerReset?: boolean }) => {
+      pendingSpellRef.current = null;
+      wheelModifiersRef.current = [null, null, null] as [string | null, string | null, string | null];
+      reservePenaltyRef.current = { player: 0, enemy: 0 };
+      pointerShiftRef.current = [0, 0, 0];
+      initiativeOverrideRef.current = null;
+
+      if (opts?.includePointerReset) {
+        wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
+      }
+    },
+    [wheelRefs]
+  );
 
   // ---- Assignment helpers (batched) ----
   const assignToWheelFor = useCallback(
@@ -1074,12 +1099,11 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
       clearResolveVotes();
       clearAdvanceVotes();
+      resetRoundTransientState({ includePointerReset: true });
 
       const currentAssign = assignRef.current;
       const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
       const enemyPlayed  = currentAssign.enemy.filter((c): c is Card => !!c);
-
-      wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
 
       setFreezeLayout(false);
       setLockedWheelSize(null);
@@ -1121,7 +1145,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setWheelHUD,
       setWheelSections,
       setRound,
-      wheelRefs
+      resetRoundTransientState
     ]
   );
 
@@ -1297,7 +1321,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
     reserveReportsRef.current = { player: null, enemy: null };
 
-    wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
+    resetRoundTransientState({ includePointerReset: true });
 
     setFreezeLayout(false);
     setLockedWheelSize(null);
@@ -1335,6 +1359,9 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     dragOverRef.current = null;
     _setDragOverWheel(null);
 
+    setShowRef(false);
+    setShowGrimoire(false);
+
     setTokens([0, 0, 0]);
     setReserveSums(null);
     setWheelHUD([null, null, null]);
@@ -1367,13 +1394,15 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     setReserveSums,
     setRound,
     setSelectedCardId,
+    setShowGrimoire,
+    setShowRef,
     setMana,
     setTokens,
     setWheelHUD,
     setWheelSections,
     setWins,
     _setDragOverWheel,
-    wheelRefs
+    resetRoundTransientState
   ]);
 
   useEffect(() => {
