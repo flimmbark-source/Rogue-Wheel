@@ -72,6 +72,20 @@ type AblyChannel = ReturnType<AblyRealtime["channels"]["get"]>;
 type LegacySide = "player" | "enemy";
 
 // your existing MPIntent union (merged from conflict)
+type SpellTargetIntentPayload = {
+  kind?: string;
+  side?: LegacySide | null;
+  lane?: number | null;
+  cardId?: string | null;
+  [key: string]: unknown;
+};
+
+type SpellResolutionIntentPayload = {
+  manaSpent?: number;
+  result?: Record<string, unknown> | null;
+  [key: string]: unknown;
+};
+
 type MPIntent =
   | { type: "assign"; lane: number; side: LegacySide; card: Card }
   | { type: "clear"; lane: number; side: LegacySide }
@@ -80,7 +94,28 @@ type MPIntent =
   | { type: "rematch"; side: LegacySide }
   | { type: "reserve"; side: LegacySide; reserve: number; round: number }
   | { type: "archetypeSelect"; side: LegacySide; archetype: ArchetypeId }
-  | { type: "archetypeReady"; side: LegacySide; ready: boolean };
+  | { type: "archetypeReady"; side: LegacySide; ready: boolean }
+  | { type: "archetypeReadyAck"; side: LegacySide; ready: boolean }
+  | { type: "spellSelect"; side: LegacySide; spellId: string | null }
+  | {
+      type: "spellTarget";
+      side: LegacySide;
+      spellId: string;
+      target: SpellTargetIntentPayload | null;
+    }
+  | {
+      type: "spellFireballCost";
+      side: LegacySide;
+      spellId: string;
+      cost: number;
+    }
+  | {
+      type: "spellResolve";
+      side: LegacySide;
+      spellId: string;
+      manaAfter: number;
+      payload?: SpellResolutionIntentPayload | null;
+    };
 
 // ---------------- Constants ----------------
 const MIN_WHEEL = 160;
@@ -216,12 +251,43 @@ const effectiveGameMode: GameMode =
   const [mana, setMana] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
   const [round, setRound] = useState(1);
 
+  type SpellSyncEntry = {
+    selectedSpellId: string | null;
+    target: SpellTargetIntentPayload | null;
+    fireballCost: number | null;
+    lastResolvedSpellId: string | null;
+    lastResolutionPayload: SpellResolutionIntentPayload | null;
+    lastKnownMana: number | null;
+  };
+
+  const createSpellSyncEntry = (): SpellSyncEntry => ({
+    selectedSpellId: null,
+    target: null,
+    fireballCost: null,
+    lastResolvedSpellId: null,
+    lastResolutionPayload: null,
+    lastKnownMana: null,
+  });
+
+  const [spellSyncState, setSpellSyncState] = useState<Record<LegacySide, SpellSyncEntry>>({
+    player: createSpellSyncEntry(),
+    enemy: createSpellSyncEntry(),
+  });
+  const spellSyncStateRef = useRef(spellSyncState);
+  useEffect(() => {
+    spellSyncStateRef.current = spellSyncState;
+  }, [spellSyncState]);
+
   const [archetypeSelections, setArchetypeSelections] = useState<
     Record<LegacySide, ArchetypeId | null>
   >(createInitialArchetypeSelection);
   const [archetypeReady, setArchetypeReady] = useState<Record<LegacySide, boolean>>(
     createInitialArchetypeReady
   );
+  const [archetypeReadyAck, setArchetypeReadyAck] = useState<Record<LegacySide, boolean>>({
+    player: false,
+    enemy: false,
+  });
 
   const archetypeSpellIdsBySide = useMemo(
     () => ({
@@ -253,6 +319,9 @@ const effectiveGameMode: GameMode =
         ? { player: false, enemy: false }
         : { player: true, enemy: true }
     );
+    setArchetypeReadyAck({ player: false, enemy: false });
+
+    setSpellSyncState({ player: createSpellSyncEntry(), enemy: createSpellSyncEntry() });
   }, [isGrimoireMode, setArchetypeReady, setArchetypeSelections]);
 
   useEffect(() => {
@@ -596,6 +665,107 @@ const storeReserveReport = useCallback(
   }, [isMultiplayer, localLegacySide, round, sendIntent, storeReserveReport, player, enemy]);
 
 
+  const syncLocalSpellSelection = useCallback(
+    (spellId: string | null) => {
+      setSpellSyncState((prev) => {
+        const current = prev[localLegacySide];
+        const next: SpellSyncEntry = {
+          ...current,
+          selectedSpellId: spellId,
+        };
+        if (!spellId) {
+          next.target = null;
+          next.fireballCost = null;
+        }
+        return { ...prev, [localLegacySide]: next };
+      });
+      if (isMultiplayer) {
+        sendIntent({ type: "spellSelect", side: localLegacySide, spellId });
+      }
+    },
+    [isMultiplayer, localLegacySide, sendIntent, setSpellSyncState]
+  );
+
+  const syncLocalSpellTarget = useCallback(
+    (spellId: string, target: SpellTargetIntentPayload | null) => {
+      setSpellSyncState((prev) => {
+        const current = prev[localLegacySide];
+        const next: SpellSyncEntry = {
+          ...current,
+          selectedSpellId: spellId ?? current.selectedSpellId,
+          target: target ?? null,
+        };
+        return { ...prev, [localLegacySide]: next };
+      });
+      if (isMultiplayer) {
+        sendIntent({ type: "spellTarget", side: localLegacySide, spellId, target });
+      }
+    },
+    [isMultiplayer, localLegacySide, sendIntent, setSpellSyncState]
+  );
+
+  const syncLocalFireballCost = useCallback(
+    (spellId: string, cost: number) => {
+      const normalizedCost = Number.isFinite(cost) ? cost : 0;
+      setSpellSyncState((prev) => {
+        const current = prev[localLegacySide];
+        const next: SpellSyncEntry = {
+          ...current,
+          selectedSpellId: spellId ?? current.selectedSpellId,
+          fireballCost: normalizedCost,
+        };
+        return { ...prev, [localLegacySide]: next };
+      });
+      if (isMultiplayer) {
+        sendIntent({
+          type: "spellFireballCost",
+          side: localLegacySide,
+          spellId,
+          cost: normalizedCost,
+        });
+      }
+    },
+    [isMultiplayer, localLegacySide, sendIntent, setSpellSyncState]
+  );
+
+  const syncLocalSpellResolve = useCallback(
+    (
+      spellId: string,
+      manaAfter: number,
+      payload: SpellResolutionIntentPayload | null = null
+    ) => {
+      const safeMana = Number.isFinite(manaAfter) ? manaAfter : 0;
+      setSpellSyncState((prev) => {
+        const current = prev[localLegacySide];
+        const next: SpellSyncEntry = {
+          ...current,
+          selectedSpellId: null,
+          target: null,
+          fireballCost: null,
+          lastResolvedSpellId: spellId,
+          lastResolutionPayload: payload,
+          lastKnownMana: safeMana,
+        };
+        return { ...prev, [localLegacySide]: next };
+      });
+      setMana((prev) => {
+        if (prev[localLegacySide] === safeMana) return prev;
+        return { ...prev, [localLegacySide]: safeMana };
+      });
+      if (isMultiplayer) {
+        sendIntent({
+          type: "spellResolve",
+          side: localLegacySide,
+          spellId,
+          manaAfter: safeMana,
+          payload,
+        });
+      }
+    },
+    [isMultiplayer, localLegacySide, sendIntent, setMana, setSpellSyncState]
+  );
+
+
   // Drag state + tap-to-assign selected id
   const [dragCardId, setDragCardId] = useState<string | null>(null);
   const [dragOverWheel, _setDragOverWheel] = useState<number | null>(null);
@@ -664,10 +834,11 @@ useEffect(() => {
   const handleSpellActivate = useCallback(
     (spell: SpellDefinition) => {
       if (gameMode !== "grimoire") return;
+      syncLocalSpellSelection(spell.id);
       spellCastRequestRef.current(spell);
       setShowGrimoire(false);
     },
-    [gameMode]
+    [gameMode, syncLocalSpellSelection]
   );
 
   const canReveal = useMemo(() => {
@@ -1162,6 +1333,23 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
             if (prev[msg.side] === msg.ready) return prev;
             return { ...prev, [msg.side]: !!msg.ready };
           });
+          if (isMultiplayer) {
+            try {
+              sendIntent({
+                type: "archetypeReadyAck",
+                side: localLegacySide,
+                ready: !!msg.ready,
+              });
+            } catch {}
+          }
+          break;
+        }
+        case "archetypeReadyAck": {
+          if (msg.side === localLegacySide) break;
+          setArchetypeReadyAck((prev) => {
+            if (prev[msg.side] === !!msg.ready) return prev;
+            return { ...prev, [msg.side]: !!msg.ready };
+          });
           break;
         }
         case "reveal": {
@@ -1187,6 +1375,71 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
           }
           break;
         }
+        case "spellSelect": {
+          if (msg.side === localLegacySide) break;
+          setSpellSyncState((prev) => {
+            const current = prev[msg.side];
+            const next: SpellSyncEntry = {
+              ...current,
+              selectedSpellId: msg.spellId ?? null,
+            };
+            if (!msg.spellId) {
+              next.target = null;
+              next.fireballCost = null;
+            }
+            return { ...prev, [msg.side]: next };
+          });
+          break;
+        }
+        case "spellTarget": {
+          if (msg.side === localLegacySide) break;
+          setSpellSyncState((prev) => {
+            const current = prev[msg.side];
+            const next: SpellSyncEntry = {
+              ...current,
+              target: msg.target ?? null,
+              selectedSpellId: msg.spellId ?? current.selectedSpellId,
+            };
+            return { ...prev, [msg.side]: next };
+          });
+          break;
+        }
+        case "spellFireballCost": {
+          if (msg.side === localLegacySide) break;
+          setSpellSyncState((prev) => {
+            const current = prev[msg.side];
+            const next: SpellSyncEntry = {
+              ...current,
+              fireballCost: Number.isFinite(msg.cost) ? msg.cost : current.fireballCost,
+              selectedSpellId: msg.spellId ?? current.selectedSpellId,
+            };
+            return { ...prev, [msg.side]: next };
+          });
+          break;
+        }
+        case "spellResolve": {
+          if (msg.side === localLegacySide) break;
+          setSpellSyncState((prev) => {
+            const current = prev[msg.side];
+            const next: SpellSyncEntry = {
+              ...current,
+              selectedSpellId: null,
+              target: null,
+              fireballCost: null,
+              lastResolvedSpellId: msg.spellId ?? null,
+              lastResolutionPayload: msg.payload ?? null,
+              lastKnownMana: msg.manaAfter ?? current.lastKnownMana,
+            };
+            return { ...prev, [msg.side]: next };
+          });
+          setMana((prev) => {
+            const nextMana = msg.manaAfter;
+            if (typeof nextMana !== "number" || !Number.isFinite(nextMana)) return prev;
+            if (prev[msg.side] === nextMana) return prev;
+            return { ...prev, [msg.side]: nextMana };
+          });
+          break;
+        }
         default:
           break;
       }
@@ -1194,13 +1447,18 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     [
       assignToWheelFor,
       clearAssignFor,
+      isMultiplayer,
       localLegacySide,
       markAdvanceVote,
       markRematchVote,
       markResolveVote,
+      sendIntent,
       storeReserveReport,
+      setArchetypeReadyAck,
       setArchetypeReady,
       setArchetypeSelections,
+      setSpellSyncState,
+      setMana,
     ]
   );
 
@@ -1469,9 +1727,20 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       return { ...prev, [localLegacySide]: toggled };
     });
     if (nextReady !== null) {
+      setArchetypeReadyAck((prev) => {
+        if (prev[localLegacySide] === false) return prev;
+        return { ...prev, [localLegacySide]: false };
+      });
       sendIntent({ type: "archetypeReady", side: localLegacySide, ready: nextReady });
     }
-  }, [isMultiplayer, localLegacySide, localSelection, sendIntent, setArchetypeReady]);
+  }, [
+    isMultiplayer,
+    localLegacySide,
+    localSelection,
+    sendIntent,
+    setArchetypeReady,
+    setArchetypeReadyAck,
+  ]);
 
   const readyButtonLabel = isMultiplayer
     ? localReady
