@@ -69,6 +69,69 @@ type MPIntent =
   | { type: "rematch"; side: LegacySide }
   | { type: "reserve"; side: LegacySide; reserve: number; round: number };
 
+type ComboLaneResult = {
+  laneBonus: number[];
+  laneNotes: string[][];
+};
+
+function evaluateCombos(assignments: { player: (Card | null)[]; enemy: (Card | null)[] }):
+  Record<LegacySide, ComboLaneResult> {
+  const base: Record<LegacySide, ComboLaneResult> = {
+    player: { laneBonus: Array(assignments.player.length).fill(0), laneNotes: Array.from({ length: assignments.player.length }, () => [] as string[]) },
+    enemy: { laneBonus: Array(assignments.enemy.length).fill(0), laneNotes: Array.from({ length: assignments.enemy.length }, () => [] as string[]) },
+  };
+
+  (Object.keys(base) as LegacySide[]).forEach((side) => {
+    const slots = assignments[side];
+    const laneBonus = base[side].laneBonus;
+    const laneNotes = base[side].laneNotes;
+
+    const byCard = new Map<string, { card: Card; lanes: number[] }>();
+    const byNumber = new Map<number, { cards: Card[]; lanes: number[] }>();
+
+    slots.forEach((card, laneIdx) => {
+      if (!card) return;
+      if (!byCard.has(card.id)) byCard.set(card.id, { card, lanes: [] });
+      byCard.get(card.id)!.lanes.push(laneIdx);
+
+      if (isNormal(card)) {
+        if (!byNumber.has(card.number)) byNumber.set(card.number, { cards: [], lanes: [] });
+        const entry = byNumber.get(card.number)!;
+        entry.cards.push(card);
+        entry.lanes.push(laneIdx);
+      }
+    });
+
+    byCard.forEach(({ card, lanes }) => {
+      if (!card.multiLane || lanes.length <= 1) return;
+      const descriptor = card.linkDescriptors?.find((d) => d.kind === "lane");
+      const bonus = descriptor?.bonusSteps ?? 2;
+      const label = descriptor?.label ?? "Lane link";
+      lanes.forEach((laneIdx) => {
+        if (laneIdx >= laneBonus.length) return;
+        laneBonus[laneIdx] += bonus;
+        laneNotes[laneIdx].push(`${label} +${bonus}`);
+      });
+    });
+
+    byNumber.forEach(({ cards, lanes }, number) => {
+      if (lanes.length <= 1) return;
+      const descriptor = cards
+        .map((c) => c.linkDescriptors?.find((d) => d.kind === "numberMatch"))
+        .find((d): d is NonNullable<typeof d> => !!d);
+      const bonus = descriptor?.bonusSteps ?? 1;
+      const label = descriptor?.label ?? `Match ${fmtNum(number)}`;
+      lanes.forEach((laneIdx) => {
+        if (laneIdx >= laneBonus.length) return;
+        laneBonus[laneIdx] += bonus;
+        laneNotes[laneIdx].push(`${label} +${bonus}`);
+      });
+    });
+  });
+
+  return base;
+}
+
 // ---------------- Constants ----------------
 const MIN_WHEEL = 160;
 const MAX_WHEEL = 200;
@@ -409,6 +472,7 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
   useEffect(() => {
     assignRef.current = assign;
   }, [assign]);
+  const comboSummary = useMemo(() => evaluateCombos(assign), [assign]);
 
 const reserveReportsRef = useRef<
   Record<LegacySide, { reserve: number; round: number } | null>
@@ -499,6 +563,15 @@ const storeReserveReport = useCallback(
       const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
       const prevAtLane = lane[laneIndex];
       const fromIdx = lane.findIndex((c) => c?.id === card.id);
+      const allowsMulti = !!card.multiLane;
+      const prevElsewhere = prevAtLane
+        ? lane.some((c, idx) => idx !== laneIndex && c?.id === prevAtLane.id)
+        : false;
+      const shouldReturnPrev = !!(
+        prevAtLane &&
+        prevAtLane.id !== card.id &&
+        !prevElsewhere
+      );
 
 
       if (prevAtLane && prevAtLane.id === card.id && fromIdx === laneIndex) {
@@ -515,25 +588,39 @@ const storeReserveReport = useCallback(
           const laneArr = isPlayer ? prev.player : prev.enemy;
           const nextLane = [...laneArr];
           const existingIdx = nextLane.findIndex((c) => c?.id === card.id);
-          if (existingIdx !== -1) nextLane[existingIdx] = null;
+          if (existingIdx !== -1 && (!allowsMulti || existingIdx === laneIndex)) {
+            nextLane[existingIdx] = null;
+          }
           nextLane[laneIndex] = card;
           return isPlayer ? { ...prev, player: nextLane } : { ...prev, enemy: nextLane };
         });
 
         if (isPlayer) {
           setPlayer((p) => {
-            let hand = p.hand.filter((c) => c.id !== card.id);
-            if (prevAtLane && prevAtLane.id !== card.id && !hand.some((c) => c.id === prevAtLane.id)) {
-              hand = [...hand, prevAtLane];
+            let hand = p.hand;
+            if (hand.some((c) => c.id === card.id)) {
+              hand = hand.filter((c) => c.id !== card.id);
             }
+            if (shouldReturnPrev && prevAtLane) {
+              if (!hand.some((c) => c.id === prevAtLane.id)) {
+                hand = [...hand, prevAtLane];
+              }
+            }
+            if (hand === p.hand) return p;
             return { ...p, hand };
           });
         } else {
           setEnemy((e) => {
-            let hand = e.hand.filter((c) => c.id !== card.id);
-            if (prevAtLane && prevAtLane.id !== card.id && !hand.some((c) => c.id === prevAtLane.id)) {
-              hand = [...hand, prevAtLane];
+            let hand = e.hand;
+            if (hand.some((c) => c.id === card.id)) {
+              hand = hand.filter((c) => c.id !== card.id);
             }
+            if (shouldReturnPrev && prevAtLane) {
+              if (!hand.some((c) => c.id === prevAtLane.id)) {
+                hand = [...hand, prevAtLane];
+              }
+            }
+            if (hand === e.hand) return e;
             return { ...e, hand };
           });
         }
@@ -556,6 +643,7 @@ const storeReserveReport = useCallback(
       const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
       const prev = lane[laneIndex];
       if (!prev) return false;
+      const stillAssigned = lane.some((c, idx) => idx !== laneIndex && c?.id === prev.id);
 
       const isPlayer = side === "player";
 
@@ -570,12 +658,12 @@ const storeReserveReport = useCallback(
 
         if (isPlayer) {
           setPlayer((p) => {
-            if (p.hand.some((c) => c.id === prev.id)) return p;
+            if (stillAssigned || p.hand.some((c) => c.id === prev.id)) return p;
             return { ...p, hand: [...p.hand, prev] };
           });
         } else {
           setEnemy((e) => {
-            if (e.hand.some((c) => c.id === prev.id)) return e;
+            if (stillAssigned || e.hand.some((c) => c.id === prev.id)) return e;
             return { ...e, hand: [...e.hand, prev] };
           });
         }
@@ -909,18 +997,33 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       };
     }
 
-    type Outcome = { steps: number; targetSlice: number; section: Section; winner: LegacySide | null; tie: boolean; wheel: number; detail: string };
+
+    type Outcome = { steps: number; targetSlice: number; section: Section; winner: LegacySide | null; tie: boolean; wheel: number; detail: string; comboNotes: string[] };
+
     const outcomes: Outcome[] = [];
+    const combosForResolve = evaluateCombos({
+      player: played.map((pe) => pe.p ?? null),
+      enemy: played.map((pe) => pe.e ?? null),
+    });
 
     for (let w = 0; w < 3; w++) {
       const secList = wheelSections[w];
-      const baseP = laneValues[w].player;
-      const baseE = laneValues[w].enemy;
-      const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
+
+      const baseP = (played[w].p?.number ?? 0);
+      const baseE = (played[w].e?.number ?? 0);
+      const bonusP = combosForResolve.player.laneBonus[w] ?? 0;
+      const bonusE = combosForResolve.enemy.laneBonus[w] ?? 0;
+      const pVal = baseP + bonusP;
+      const eVal = baseE + bonusE;
+      const steps = (((pVal % SLICES) + (eVal % SLICES)) % SLICES + SLICES) % SLICES;
       const targetSlice = (tokens[w] + steps) % SLICES;
       const section = secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) || ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
 
-      const pVal = baseP; const eVal = baseE;
+      const comboNotes = [
+        ...((combosForResolve.player.laneNotes[w] ?? []).map((note) => `${namesByLegacy.player}: ${note}`)),
+        ...((combosForResolve.enemy.laneNotes[w] ?? []).map((note) => `${namesByLegacy.enemy}: ${note}`)),
+      ];
+
       let winner: LegacySide | null = null; let tie = false; let detail = "";
       switch (section.id) {
         case "Strongest": if (pVal === eVal) tie = true; else winner = pVal > eVal ? "player" : "enemy"; detail = `Strongest ${pVal} vs ${eVal}`; break;
@@ -936,9 +1039,14 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
           break;
         }
         case "Initiative": winner = initiative; detail = `Initiative -> ${winner}`; break;
+        case "DoubleWin": if (pVal === eVal) tie = true; else winner = pVal > eVal ? "player" : "enemy"; detail = `Double win ${pVal} vs ${eVal}`; break;
+        case "SwapWins": if (pVal === eVal) tie = true; else winner = pVal < eVal ? "player" : "enemy"; detail = `Swap wins ${pVal} vs ${eVal}`; break;
         default: tie = true; detail = `Slice 0: no section`; break;
       }
-      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail });
+      if (comboNotes.length) {
+        detail = `${detail} | ${comboNotes.join("; ")}`;
+      }
+      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail, comboNotes });
     }
 
     const animateSpins = async () => {
@@ -965,17 +1073,21 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       // Single commit after all wheels have finished
       setTokens(finalTokens);
 
-      let pWins = wins.player, eWins = wins.enemy;
-      let hudColors: [string | null, string | null, string | null] = [null, null, null];
-      const roundWinsCount: Record<LegacySide, number> = { player: 0, enemy: 0 };
-      outcomes.forEach((o) => {
+      const hudColors: [string | null, string | null, string | null] = [
+        null,
+        null,
+        null,
+      ];
+      const roundWins: Record<LegacySide, number> = { player: 0, enemy: 0 };
+      let swapCount = 0;
+      outcomes.forEach((o) => 
+        const wheelLabel = `Wheel ${o.wheel + 1}`;
         if (o.tie) {
-          appendLog(`Wheel ${o.wheel + 1} tie: ${o.detail} — no win.`);
-          if (laneWagers[o.wheel] > 0) {
-            workingJackpot += laneWagers[o.wheel];
-            const msg = `Wheel ${o.wheel + 1} tie pushes +${laneWagers[o.wheel]} into the jackpot.`;
-            gambleEvents.push(msg);
-            appendLog(msg);
+          appendLog(`${wheelLabel} tie: ${o.detail} — no win.`);
+          if (o.section.id === "SwapWins") {
+            swapCount += 1;
+            appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
+
           }
           return;
         }
@@ -1009,8 +1121,32 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
         if (bonusParts.length) {
           const msg = `Wheel ${o.wheel + 1} pays ${bonusParts.join(" & ")} to ${namesByLegacy[o.winner]}.`;
           gambleEvents.push(msg);
+
+        let awarded = 1;
+        if (o.section.id === "DoubleWin") {
+          awarded = 2;
+        }
+        roundWins[o.winner] += awarded;
+        appendLog(`${wheelLabel} win -> ${o.winner} (${o.detail}).`);
+        if (o.section.id === "DoubleWin") {
+          appendLog(`✨ ${wheelLabel}: ${namesByLegacy[o.winner]} claims two wins from this slice!`);
+        }
+        if (o.section.id === "SwapWins") {
+          swapCount += 1;
+          appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
+
         }
       });
+
+      if (swapCount > 0) {
+        const before = `${roundWins.player}-${roundWins.enemy}`;
+        if (swapCount % 2 === 1) {
+          [roundWins.player, roundWins.enemy] = [roundWins.enemy, roundWins.player];
+          appendLog(`🔄 Swap effect: tallies trade places (${before} → ${roundWins.player}-${roundWins.enemy}).`);
+        } else {
+          appendLog(`🔄 Swap effect triggered ${swapCount} times: tallies return to ${before}.`);
+        }
+      }
 
       if (!mountedRef.current) return;
 
@@ -1018,6 +1154,9 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setGambleSummary({ events: gambleEvents.slice(-5), pot: workingJackpot });
 
       const prevInitiative = initiative;
+      const roundWinsCount = roundWins;
+      const pWins = wins.player + roundWinsCount.player;
+      const eWins = wins.enemy + roundWinsCount.enemy;
       const roundScore = `${roundWinsCount.player}-${roundWinsCount.enemy}`;
       let nextInitiative: LegacySide;
       let initiativeLog: string;
@@ -1359,132 +1498,175 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
   // ---------------- UI ----------------
 
   const renderWheelPanel = (i: number) => {
-  const pc = assign.player[i];
-  const ec = assign.enemy[i];
+    const pc = assign.player[i];
+    const ec = assign.enemy[i];
 
-  const leftSlot = { side: "player" as const, card: pc, name: namesByLegacy.player };
-  const rightSlot = { side: "enemy" as const, card: ec, name: namesByLegacy.enemy };
+    const localNotes = comboSummary[localLegacySide].laneNotes[i] ?? [];
+    const remoteNotes = comboSummary[remoteLegacySide].laneNotes[i] ?? [];
+    const combinedComboNotes = [
+      ...localNotes.map((note) => `${namesByLegacy[localLegacySide]}: ${note}`),
+      ...((phase !== "choose") ? remoteNotes.map((note) => `${namesByLegacy[remoteLegacySide]}: ${note}`) : []),
+    ];
 
-  const ws = Math.round(lockedWheelSize ?? wheelSize);
-
-  const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
-  const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
-
-  const shouldShowLeftCard =
-    !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
-  const shouldShowRightCard =
-    !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
-
-  // --- layout numbers that must match the classes below ---
-  const slotW    = 80;   // w-[80px] on both slots
-  const gapX     = 16;   // gap-2 => 8px, two gaps between three items => 16
-  const paddingX = 16;   // p-2 => 8px left + 8px right
-  const borderX  = 4;    // border-2 => 2px left + 2px right
-  const EXTRA_H  = 16;   // extra breathing room inside the panel (change to tweak height)
-
-  // panel width (border-box) so wheel is visually centered
-  const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
-
-  const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
-    if (!slot.card) return null;
-    const card = slot.card;
-    const interactable = slot.side === localLegacySide && phase === "choose";
-
-    const handlePick = () => {
-      if (!interactable) return;
-      if (selectedCardId) {
-        tapAssignIfSelected();
-      } else {
-        setSelectedCardId(card.id);
+    let previewNotes: string[] = [];
+    if (phase === "choose" && active[i]) {
+      const candidateId = dragCardId ?? selectedCardId;
+      if (candidateId) {
+        const simulated = {
+          player: [...assign.player],
+          enemy: [...assign.enemy],
+        };
+        const isLocalPlayer = localLegacySide === "player";
+        const handSource = isLocalPlayer ? player.hand : enemy.hand;
+        const slotSource = isLocalPlayer ? assign.player : assign.enemy;
+        const card =
+          handSource.find((c) => c.id === candidateId) ||
+          slotSource.find((c) => c?.id === candidateId) ||
+          null;
+        if (card) {
+          const laneArr = isLocalPlayer ? simulated.player : simulated.enemy;
+          if (!card.multiLane) {
+            const existing = laneArr.findIndex((c) => c?.id === card.id);
+            if (existing !== -1) laneArr[existing] = null;
+          }
+          laneArr[i] = card;
+          const simSummary = evaluateCombos(simulated);
+          previewNotes = simSummary[localLegacySide].laneNotes[i] ?? [];
+        }
       }
+    }
+    const lanePreviewActive = previewNotes.length > 0;
+    const laneComboActive = localNotes.length > 0 || (phase !== "choose" && remoteNotes.length > 0);
+
+    const leftSlot = { side: "player" as const, card: pc, name: namesByLegacy.player };
+    const rightSlot = { side: "enemy" as const, card: ec, name: namesByLegacy.enemy };
+
+    const ws = Math.round(lockedWheelSize ?? wheelSize);
+
+    const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
+    const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
+
+    const shouldShowLeftCard =
+      !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
+    const shouldShowRightCard =
+      !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
+
+    // --- layout numbers that must match the classes below ---
+    const slotW    = 80;   // w-[80px] on both slots
+    const gapX     = 16;   // gap-2 => 8px, two gaps between three items => 16
+    const paddingX = 16;   // p-2 => 8px left + 8px right
+    const borderX  = 4;    // border-2 => 2px left + 2px right
+    const EXTRA_H  = 16;   // extra breathing room inside the panel (change to tweak height)
+
+    // panel width (border-box) so wheel is visually centered
+    const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
+
+    const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
+      if (!slot.card) return null;
+      const card = slot.card;
+      const interactable = slot.side === localLegacySide && phase === "choose";
+
+      const handlePick = () => {
+        if (!interactable) return;
+        if (selectedCardId) {
+          tapAssignIfSelected();
+        } else {
+          setSelectedCardId(card.id);
+        }
+      };
+
+      const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
+        if (!interactable) return;
+        setSelectedCardId(card.id);
+        setDragCardId(card.id);
+        try { e.dataTransfer.setData("text/plain", card.id); } catch {}
+        e.dataTransfer.effectAllowed = "move";
+      };
+
+      const handleDragEnd = () => {
+        setDragCardId(null);
+        setDragOverWheel(null);
+      };
+
+      const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+        if (!interactable) return;
+        e.stopPropagation();
+        startPointerDrag(card, e);
+      };
+
+      return (
+        <StSCard
+          card={card}
+          size="sm"
+          disabled={!interactable}
+          selected={isSlotSelected}
+          onPick={handlePick}
+          draggable={interactable}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onPointerDown={handlePointerDown}
+        />
+      );
     };
 
-    const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
-      if (!interactable) return;
-      setSelectedCardId(card.id);
-      setDragCardId(card.id);
-      try { e.dataTransfer.setData("text/plain", card.id); } catch {}
-      e.dataTransfer.effectAllowed = "move";
-    };
+    const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
+    const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
+    const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
+      if (!id || !active[i]) return;
+      const intendedSide = targetSide ?? localLegacySide;
+      if (intendedSide !== localLegacySide) {
+        setDragOverWheel(null);
+        setDragCardId(null);
+        return;
+      }
 
-    const handleDragEnd = () => {
-      setDragCardId(null);
+      const isLocalPlayer = localLegacySide === "player";
+      const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
+      const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as Card | undefined;
+      const card = fromHand || fromSlots || null;
+      if (card) assignToWheelLocal(i, card as Card);
       setDragOverWheel(null);
+      setDragCardId(null);
+    };
+    const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
+      e.preventDefault();
+      handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
     };
 
-    const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (!interactable) return;
-      e.stopPropagation();
-      startPointerDrag(card, e);
+    const tapAssignIfSelected = () => {
+      if (!selectedCardId) return;
+      const isLocalPlayer = localLegacySide === "player";
+      const card =
+        (isLocalPlayer ? player.hand : enemy.hand).find(c => c.id === selectedCardId) ||
+        (isLocalPlayer ? assign.player : assign.enemy).find(c => c?.id === selectedCardId) ||
+        null;
+      if (card) assignToWheelLocal(i, card as Card);
     };
+
+    const panelShadow = '0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)';
+    const borderColor = lanePreviewActive ? '#facc15' : laneComboActive ? '#fb923c' : THEME.panelBorder;
+    const shadowWithCombo = lanePreviewActive
+      ? `${panelShadow}, 0 0 12px rgba(250,204,21,0.35)`
+      : laneComboActive
+        ? `${panelShadow}, 0 0 10px rgba(249,115,22,0.28)`
+        : panelShadow;
 
     return (
-      <StSCard
-        card={card}
-        size="sm"
-        disabled={!interactable}
-        selected={isSlotSelected}
-        onPick={handlePick}
-        draggable={interactable}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onPointerDown={handlePointerDown}
-      />
-    );
-  };
-
-  const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
-  const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
-  const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
-    if (!id || !active[i]) return;
-    const intendedSide = targetSide ?? localLegacySide;
-    if (intendedSide !== localLegacySide) {
-      setDragOverWheel(null);
-      setDragCardId(null);
-      return;
-    }
-
-    const isLocalPlayer = localLegacySide === "player";
-    const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
-    const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as Card | undefined;
-    const card = fromHand || fromSlots || null;
-    if (card) assignToWheelLocal(i, card as Card);
-    setDragOverWheel(null);
-    setDragCardId(null);
-  };
-  const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
-    e.preventDefault();
-    handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
-  };
-
-  const tapAssignIfSelected = () => {
-    if (!selectedCardId) return;
-    const isLocalPlayer = localLegacySide === "player";
-    const card =
-      (isLocalPlayer ? player.hand : enemy.hand).find(c => c.id === selectedCardId) ||
-      (isLocalPlayer ? assign.player : assign.enemy).find(c => c?.id === selectedCardId) ||
-      null;
-    if (card) assignToWheelLocal(i, card as Card);
-  };
-
-  const panelShadow = '0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)';
-
-  return (
-    <div
-      className="relative rounded-xl border p-2 shadow flex-none"
-      style={{
-        width: panelW,
-        height: ws + EXTRA_H,
-        background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
-        borderColor: THEME.panelBorder,
-        borderWidth: 2,
-        boxShadow: panelShadow,
-        contain: 'paint',
-        backfaceVisibility: 'hidden',
-        transform: 'translateZ(0)',
-        isolation: 'isolate'
-      }}
-    >
+      <div
+        className="relative rounded-xl border p-2 shadow flex-none"
+        style={{
+          width: panelW,
+          height: ws + EXTRA_H,
+          background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
+          borderColor,
+          borderWidth: 2,
+          boxShadow: shadowWithCombo,
+          contain: 'paint',
+          backfaceVisibility: 'hidden',
+          transform: 'translateZ(0)',
+          isolation: 'isolate'
+        }}
+      >
   {/* ADD: winner dots (don’t affect layout) */}
   { (phase === "roundEnd" || phase === "ended") && (
     <>
@@ -1608,6 +1790,17 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
               </div>}
         </div>
       </div>
+
+      {(laneComboActive || lanePreviewActive) && (
+        <div className="absolute left-2 right-2 bottom-2 text-[10px] leading-tight text-amber-100 space-y-0.5">
+          {combinedComboNotes.map((note, idx) => (
+            <div key={`combo-${i}-${idx}`} className="font-semibold drop-shadow">{note}</div>
+          ))}
+          {lanePreviewActive && previewNotes.map((note, idx) => (
+            <div key={`preview-${i}-${idx}`} className="italic text-amber-200/80">Preview: {note}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -1901,6 +2094,8 @@ const HUDPanels = () => {
                   <li>🗃️ Reserve — compare the two cards left in hand</li>
                   <li>🎯 Closest — value closest to target wins</li>
                   <li>⚑ Initiative — initiative holder wins</li>
+                  <li>✨ Double Win — higher value wins and counts double</li>
+                  <li>🔄 Swap Wins — lower value wins, then the round tallies swap sides</li>
                   <li><span className="font-semibold">0 Start</span> — no one wins</li>
                 </ul>
               </div>

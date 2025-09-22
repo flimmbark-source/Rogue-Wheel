@@ -106,10 +106,20 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
       setVisualToken: (s: number) => { tokenSliceRef.current = s; placeToken(s); }
     }), [size]);
 
+    const tooltip = sections
+      .map((sec) => {
+        const meta = VC_META[sec.id];
+        const base = `${meta.icon} ${meta.short} — ${meta.explain}`;
+        return meta.effect ? `${base} ${meta.effect}` : base;
+      })
+      .join("\n");
+
     return (
       <div
         onClick={onTapAssign}
         className="relative overflow-hidden rounded-full"
+        title={tooltip}
+        aria-label={tooltip.replace(/\n/g, "; ")}
         style={{
           width: size,
           height: size,

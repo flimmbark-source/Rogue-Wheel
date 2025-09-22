@@ -36,6 +36,16 @@ export type TagId =
   | "reroll"
   | "jackpot";
 
+export type LinkKind = "lane" | "numberMatch";
+
+export type CardLinkDescriptor = {
+  kind: LinkKind;
+  key: string;
+  label: string;
+  bonusSteps: number;
+  description?: string;
+};
+
 export type CardType = "normal" | "split";
 
 export type Card = {
@@ -46,6 +56,8 @@ export type Card = {
   leftValue?: number;   // when type === "split"
   rightValue?: number;  // when type === "split"
   tags: TagId[];
+  multiLane?: boolean;
+  linkDescriptors?: CardLinkDescriptor[];
 };
 
 export type VC =
@@ -53,7 +65,9 @@ export type VC =
   | "Weakest"
   | "ReserveSum"
   | "ClosestToTarget"
-  | "Initiative";
+  | "Initiative"
+  | "DoubleWin"
+  | "SwapWins";
 
 export type Section = {
   id: VC;
