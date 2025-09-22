@@ -2404,9 +2404,6 @@ return (
   onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
   aria-label={`Wheel ${i+1}`}
 >
-    <div className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 text-[11px] font-semibold uppercase tracking-wide text-white/80">
-      {(wheelArchetypes[i] ?? `wheel-${i + 1}`).replace(/^(\w)/, (c) => c.toUpperCase())}
-    </div>
     <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
     <div
       aria-hidden
