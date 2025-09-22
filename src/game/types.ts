@@ -44,7 +44,9 @@ export type VC =
   | "Weakest"
   | "ReserveSum"
   | "ClosestToTarget"
-  | "Initiative";
+  | "Initiative"
+  | "DoubleWin"
+  | "SwapWins";
 
 export type Section = {
   id: VC;
