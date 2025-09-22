@@ -11,7 +11,6 @@ import React, {
 } from "react";
 import { Realtime } from "ably";
 import { motion } from "framer-motion";
-import type { GameMode } from "./gameModes";
 
 
 /**
@@ -128,11 +127,48 @@ export default function ThreeWheel_WinsOnly({
     enemy: players.right.name,
   };
 
-  const rawGameMode =
-    (players as Players & { gameMode?: unknown }).gameMode ??
-    (players.left as Players["left"] & { gameMode?: unknown }).gameMode ??
-    (players.right as Players["right"] & { gameMode?: unknown }).gameMode;
-  const gameMode: GameMode = rawGameMode === "grimoire" ? "grimoire" : "classic";
+
+  const hasGrimoireMarker = useMemo(() => {
+    const markerValues = [
+      players.left.id,
+      players.right.id,
+      players.left.name,
+      players.right.name,
+    ];
+    if (markerValues.some((value) => value.toLowerCase().includes("grimoire"))) {
+      return true;
+    }
+
+    if (typeof window !== "undefined") {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const modeParam = (params.get("mode") ?? params.get("ruleset") ?? "").toLowerCase();
+        if (modeParam.includes("grimoire")) {
+          return true;
+        }
+      } catch {
+        // ignore query parsing errors
+      }
+
+      const hash = (window.location.hash ?? "").toLowerCase();
+      if (hash.includes("grimoire")) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [players.left.id, players.left.name, players.right.id, players.right.name]);
+
+  c// raw value from players.* (or undefined)
+const rawGameMode =
+  (players as Players & { gameMode?: unknown }).gameMode ??
+  (players.left as Players["left"] & { gameMode?: unknown }).gameMode ??
+  (players.right as Players["right"] & { gameMode?: unknown }).gameMode;
+
+// USE THIS instead of 'const gameMode = ...'
+const effectiveGameMode: GameMode =
+  rawGameMode === "grimoire" ? "grimoire" : (gameMode ?? "classic");
+
 
   const winGoal =
     typeof targetWins === "number" && Number.isFinite(targetWins)
@@ -148,7 +184,7 @@ export default function ThreeWheel_WinsOnly({
   })();
 
   const isMultiplayer = !!roomCode;
-  const isGrimoireMode = gameMode === "grimoire";
+  const isGrimoireMode = effectiveGameMode === "grimoire" || hasGrimoireMarker;
   const ablyRef = useRef<AblyRealtime | null>(null);
   const chanRef = useRef<AblyChannel | null>(null);
 
@@ -159,6 +195,7 @@ export default function ThreeWheel_WinsOnly({
     hostId ? hostLegacySide : localLegacySide
   );
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
+  const [mana, setMana] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
   const [round, setRound] = useState(1);
 
   // Freeze layout during resolution
@@ -875,6 +912,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setTokens(finalTokens);
 
       let pWins = wins.player, eWins = wins.enemy;
+      let pMana = mana.player, eMana = mana.enemy;
       let hudColors: [string | null, string | null, string | null] = [null, null, null];
       const roundWinsCount: Record<LegacySide, number> = { player: 0, enemy: 0 };
       outcomes.forEach((o) => {
@@ -882,7 +920,13 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
         else if (o.winner) {
           hudColors[o.wheel] = HUD_COLORS[o.winner];
           roundWinsCount[o.winner] += 1;
-          if (o.winner === "player") pWins++; else eWins++;
+          if (o.winner === "player") {
+            pWins++;
+            pMana++;
+          } else {
+            eWins++;
+            eMana++;
+          }
           appendLog(`Wheel ${o.wheel + 1} win -> ${o.winner} (${o.detail}).`);
         }
       });
@@ -909,6 +953,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
       setWheelHUD(hudColors);
       setWins({ player: pWins, enemy: eWins });
+      setMana({ player: pMana, enemy: eMana });
       setReserveSums({ player: pReserve, enemy: eReserve });
       clearAdvanceVotes();
       setPhase("roundEnd");
@@ -1137,6 +1182,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     setInitiative(hostId ? hostLegacySide : localLegacySide);
 
     setWins({ player: 0, enemy: 0 });
+    setMana({ player: 0, enemy: 0 });
     setRound(1);
     setPhase("choose");
 
@@ -1181,6 +1227,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     setReserveSums,
     setRound,
     setSelectedCardId,
+    setMana,
     setTokens,
     setWheelHUD,
     setWheelSections,
@@ -1574,7 +1621,13 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     );
   };
 
-const HUDPanels = () => {
+const HUDPanels = ({
+  mana,
+  isGrimoireMode,
+}: {
+  mana: { player: number; enemy: number };
+  isGrimoireMode: boolean;
+}) => {
   const rsP = reserveSums ? reserveSums.player : null;
   const rsE = reserveSums ? reserveSums.enemy : null;
 
@@ -1583,6 +1636,7 @@ const HUDPanels = () => {
     const color = isPlayer ? (players.left.color ?? HUD_COLORS.player) : (players.right.color ?? HUD_COLORS.enemy);
     const name = isPlayer ? players.left.name : players.right.name;
     const win = isPlayer ? wins.player : wins.enemy;
+    const manaCount = isPlayer ? mana.player : mana.enemy;
     const rs = isPlayer ? rsP : rsE;
     const hasInit = initiative === side;
     const isReserveVisible =
@@ -1608,9 +1662,30 @@ const HUDPanels = () => {
               <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px]">You</span>
             )}
           </div>
-          <div className="flex items-center gap-1 ml-1 flex-shrink-0">
-            <span className="opacity-80">Wins</span>
-            <span className="text-base font-extrabold tabular-nums">{win}</span>
+          <div className="flex items-center gap-3 ml-1 flex-shrink-0">
+            <div className="flex items-center gap-1">
+              <span className="opacity-80">Wins</span>
+              <span className="text-base font-extrabold tabular-nums">{win}</span>
+            </div>
+            <div
+              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-opacity ${
+                isGrimoireMode ? 'opacity-100 visible' : 'opacity-0 invisible'
+              }`}
+              style={{
+                background: '#1b1209ee',
+                borderColor: THEME.slotBorder,
+                color: THEME.textWarm,
+                minWidth: '62px',
+                justifyContent: 'center',
+              }}
+              aria-hidden={!isGrimoireMode}
+              title={isGrimoireMode ? `Mana: ${manaCount}` : undefined}
+            >
+              <span role="img" aria-label="Mana" className="text-sm leading-none">
+                🔮
+              </span>
+              <span className="tabular-nums text-sm leading-none">{manaCount}</span>
+            </div>
           </div>
           <div
             className={`ml-2 hidden sm:flex rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap transition-opacity ${
@@ -1645,16 +1720,33 @@ const HUDPanels = () => {
 
         {isReserveVisible && (
           <div className="mt-1 w-full sm:hidden">
-            <div
-              className="w-full rounded-full border px-3 py-1 text-[11px] text-center"
-              style={{
-                background: '#1b1209ee',
-                borderColor: THEME.slotBorder,
-                color: THEME.textWarm,
-              }}
-              title={rs !== null ? `Reserve: ${rs}` : undefined}
-            >
-              Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
+            <div className="w-full flex flex-col gap-1">
+              <div
+                className="w-full rounded-full border px-3 py-1 text-[11px] text-center"
+                style={{
+                  background: '#1b1209ee',
+                  borderColor: THEME.slotBorder,
+                  color: THEME.textWarm,
+                }}
+                title={rs !== null ? `Reserve: ${rs}` : undefined}
+              >
+                Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
+              </div>
+              <div
+                className={`w-full rounded-full border px-3 py-1 text-[11px] text-center transition-opacity ${
+                  isGrimoireMode ? 'opacity-100 visible' : 'opacity-0 invisible'
+                }`}
+                style={{
+                  background: '#1b1209ee',
+                  borderColor: THEME.slotBorder,
+                  color: THEME.textWarm,
+                }}
+                aria-hidden={!isGrimoireMode}
+                title={isGrimoireMode ? `Mana: ${manaCount}` : undefined}
+              >
+                <span className="font-semibold">Mana:</span>{' '}
+                <span className="font-bold tabular-nums">{manaCount}</span>
+              </div>
             </div>
           </div>
         )}
@@ -1912,7 +2004,7 @@ const HUDPanels = () => {
       </div>
 
       {/* HUD */}
-      <div className="relative z-10"><HUDPanels /></div>
+      <div className="relative z-10"><HUDPanels mana={mana} isGrimoireMode={isGrimoireMode} /></div>
 
       {/* Wheels center */}
       <div className="relative z-0" style={{ paddingBottom: handClearance }}>
