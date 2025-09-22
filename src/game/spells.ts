@@ -1,127 +1,234 @@
 import type { Fighter, Phase } from "./types";
 
+export type SpellId =
+  | "fireball"
+  | "ice-shard"
+  | "mirror-image"
+  | "arcane-shift"
+  | "hex"
+  | "time-twist";
+
 export type SpellArchetype = "wanderer" | "bandit" | "sorcerer" | "beast";
 
+export type SpellTargetOwnership = "ally" | "enemy" | "any";
+
+export type SpellTargetDefinition =
+  | { type: "none" }
+  | { type: "self"; automatic?: boolean }
+  | { type: "card"; ownership: SpellTargetOwnership; automatic?: boolean }
+  | { type: "wheel"; scope: "current" | "any" };
+
+export type SpellTargetInstance =
+  | { type: "none" }
+  | { type: "self" }
+  | { type: "card"; cardId: string; owner: SpellTargetOwnership; cardName?: string }
+  | { type: "wheel"; wheelId: string; label?: string };
+
+export type SpellRuntimeState = Record<string, unknown> & { log?: string[] };
+
+export type SpellResolverContext = {
+  caster: Fighter;
+  opponent: Fighter;
+  phase: Phase;
+  target?: SpellTargetInstance;
+  state: SpellRuntimeState;
+};
+
+export type SpellResolver = (context: SpellResolverContext) => void;
+
 export type SpellDefinition = {
-  id: string;
+  id: SpellId;
   name: string;
-  cost: number;
   description: string;
+  cost: number;
+  /**
+   * Optional hook for spells whose mana cost can shift based on battle state.
+   * When omitted the static {@link cost} should be used.
+   */
+  variableCost?: (context: SpellResolverContext) => number;
+  target: SpellTargetDefinition;
+  resolver: SpellResolver;
   icon?: string;
   allowedPhases?: Phase[];
 };
 
-const SPELLBOOK: Record<SpellArchetype, SpellDefinition[]> = {
-  wanderer: [
-    {
-      id: "spark-bolt",
-      name: "Spark Bolt",
-      cost: 1,
-      description: "Send a jolt through a visible enemy card, reducing its value by 1.",
-      icon: "⚡",
-      allowedPhases: ["choose"],
+const ensureLog = (context: SpellResolverContext) => {
+  if (!Array.isArray(context.state.log)) {
+    context.state.log = [];
+  }
+  return context.state.log;
+};
+
+const describeTarget = (target?: SpellTargetInstance): string => {
+  if (!target) return "the void";
+  switch (target.type) {
+    case "card":
+      return target.cardName ?? `card ${target.cardId}`;
+    case "wheel":
+      return target.label ?? `wheel ${target.wheelId}`;
+    case "self":
+      return "the caster";
+    default:
+      return "the field";
+  }
+};
+
+const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
+  "fireball": {
+    id: "fireball",
+    name: "Fireball",
+    description:
+      "Hurl a blazing orb at an enemy card. Each successive cast costs 1 additional mana this combat.",
+    cost: 2,
+    variableCost: (context) => {
+      const streak = (context.state.fireballStreak as number | undefined) ?? 0;
+      return context.state.fireballBaseCost === undefined
+        ? 2 + streak
+        : Number(context.state.fireballBaseCost);
     },
-    {
-      id: "lightstep",
-      name: "Lightstep",
-      cost: 2,
-      description: "Swap one of your assigned cards with another in hand.",
-      icon: "🚶",
-      allowedPhases: ["choose"],
+    icon: "🔥",
+    allowedPhases: ["choose", "showEnemy"],
+    target: { type: "card", ownership: "enemy" },
+    resolver: (context) => {
+      const log = ensureLog(context);
+      log.push(`${context.caster.name} scorches ${describeTarget(context.target)} with a Fireball.`);
+
+      const streak = (context.state.fireballStreak as number | undefined) ?? 0;
+      context.state.fireballStreak = streak + 1;
+      context.state.lastFireballTarget = context.target ?? { type: "none" };
     },
-    {
-      id: "aether-wash",
-      name: "Aether Wash",
-      cost: 3,
-      description: "Return all cards from discard to hand, then redraw down to five.",
-      icon: "💧",
-      allowedPhases: ["roundEnd"],
+  },
+  "ice-shard": {
+    id: "ice-shard",
+    name: "Ice Shard",
+    description:
+      "Freeze an exposed enemy card, reducing its effectiveness and marking it as chilled.",
+    cost: 1,
+    icon: "❄️",
+    allowedPhases: ["choose", "showEnemy"],
+    target: { type: "card", ownership: "enemy" },
+    resolver: (context) => {
+      const log = ensureLog(context);
+      log.push(`${context.caster.name} encases ${describeTarget(context.target)} in razor ice.`);
+
+      const chilled = (context.state.chilledCards as Record<string, number> | undefined) ?? {};
+      if (context.target?.type === "card") {
+        chilled[context.target.cardId] = (chilled[context.target.cardId] ?? 0) + 1;
+      }
+      context.state.chilledCards = chilled;
     },
-  ],
-  bandit: [
-    {
-      id: "smokescreen",
-      name: "Smokescreen",
-      cost: 1,
-      description: "Obscure one enemy slot so it cannot be targeted this round.",
-      icon: "💨",
-      allowedPhases: ["choose"],
+  },
+  "mirror-image": {
+    id: "mirror-image",
+    name: "Mirror Image",
+    description:
+      "Create an illusion of one of your cards, storing a copy for later tricks and misdirection.",
+    cost: 2,
+    icon: "🪞",
+    allowedPhases: ["choose", "showEnemy"],
+    target: { type: "card", ownership: "ally" },
+    resolver: (context) => {
+      const log = ensureLog(context);
+      log.push(`${context.caster.name} weaves a mirror image of ${describeTarget(context.target)}.`);
+
+      if (context.target?.type === "card") {
+        const copies = (context.state.mirroredCards as Record<string, number> | undefined) ?? {};
+        copies[context.target.cardId] = (copies[context.target.cardId] ?? 0) + 1;
+        context.state.mirroredCards = copies;
+      }
     },
-    {
-      id: "blade-flurry",
-      name: "Blade Flurry",
-      cost: 2,
-      description: "Increase the value of one of your revealed cards by 2 for this round.",
-      icon: "🗡️",
-      allowedPhases: ["showEnemy", "anim"],
+  },
+  "arcane-shift": {
+    id: "arcane-shift",
+    name: "Arcane Shift",
+    description:
+      "Twist the active wheel's victory condition toward the caster's preferred outcome.",
+    cost: 2,
+    icon: "🌀",
+    allowedPhases: ["choose", "showEnemy", "anim"],
+    target: { type: "wheel", scope: "current" },
+    resolver: (context) => {
+      const log = ensureLog(context);
+      log.push(`${context.caster.name} warps ${describeTarget(context.target)} with an Arcane Shift.`);
+
+      context.state.shiftedWheel = {
+        target: context.target ?? { type: "none" },
+        by: context.caster.name,
+      };
     },
-    {
-      id: "cut-purse",
-      name: "Cut Purse",
-      cost: 3,
-      description: "Steal 2 mana from the opponent if they have any remaining.",
-      icon: "🪙",
-      allowedPhases: ["choose"],
+  },
+  hex: {
+    id: "hex",
+    name: "Hex",
+    description:
+      "Afflict an enemy card with a weakening charm, tracking the curse for later resolution.",
+    cost: 1,
+    icon: "🕯️",
+    allowedPhases: ["choose", "showEnemy"],
+    target: { type: "card", ownership: "enemy" },
+    resolver: (context) => {
+      const log = ensureLog(context);
+      log.push(`${context.caster.name} hexes ${describeTarget(context.target)} with baleful energy.`);
+
+      if (context.target?.type === "card") {
+        const curses = (context.state.hexedCards as Record<string, number> | undefined) ?? {};
+        curses[context.target.cardId] = (curses[context.target.cardId] ?? 0) + 1;
+        context.state.hexedCards = curses;
+      }
     },
-  ],
-  sorcerer: [
-    {
-      id: "scry",
-      name: "Scry",
-      cost: 1,
-      description: "Peek at the top card of your deck and optionally draw it.",
-      icon: "🔮",
-      allowedPhases: ["choose"],
+  },
+  "time-twist": {
+    id: "time-twist",
+    name: "Time Twist",
+    description:
+      "Fold the timeline, granting the caster momentum while queuing a delayed surge for later phases.",
+    cost: 3,
+    icon: "⏳",
+    allowedPhases: ["anim", "roundEnd"],
+    target: { type: "self", automatic: true },
+    resolver: (context) => {
+      const log = ensureLog(context);
+      log.push(`${context.caster.name} bends time around themselves.`);
+
+      const momentum = (context.state.timeMomentum as number | undefined) ?? 0;
+      context.state.timeMomentum = momentum + 1;
+      const delayed = (context.state.delayedEffects as string[] | undefined) ?? [];
+      delayed.push(`${context.caster.name} banks a future surge.`);
+      context.state.delayedEffects = delayed;
     },
-    {
-      id: "arcane-shift",
-      name: "Arcane Shift",
-      cost: 2,
-      description: "Change the victory condition of the current wheel to Closest to Target.",
-      icon: "🌀",
-      allowedPhases: ["choose"],
-    },
-    {
-      id: "mana-surge",
-      name: "Mana Surge",
-      cost: 3,
-      description: "Refresh 2 mana and draw a card.",
-      icon: "✨",
-      allowedPhases: ["roundEnd"],
-    },
-  ],
-  beast: [
-    {
-      id: "feral-roar",
-      name: "Feral Roar",
-      cost: 1,
-      description: "Force the opponent to reroll their chosen card on a wheel.",
-      icon: "🦁",
-      allowedPhases: ["choose"],
-    },
-    {
-      id: "pack-hunt",
-      name: "Pack Hunt",
-      cost: 2,
-      description: "Duplicate one of your assigned cards for this resolution.",
-      icon: "🐺",
-      allowedPhases: ["showEnemy"],
-    },
-    {
-      id: "alpha-claim",
-      name: "Alpha Claim",
-      cost: 3,
-      description: "Seize initiative for the next round.",
-      icon: "👑",
-      allowedPhases: ["roundEnd"],
-    },
-  ],
+  },
+};
+
+const SPELLS_BY_ARCHETYPE: Record<SpellArchetype, SpellId[]> = {
+  wanderer: ["fireball", "ice-shard", "mirror-image"],
+  bandit: ["hex", "mirror-image", "ice-shard"],
+  sorcerer: ["fireball", "arcane-shift", "time-twist"],
+  beast: ["fireball", "hex", "ice-shard"],
 };
 
 const ARCHETYPES: SpellArchetype[] = ["wanderer", "bandit", "sorcerer", "beast"];
 
 function isSpellArchetype(value: unknown): value is SpellArchetype {
   return typeof value === "string" && (ARCHETYPES as string[]).includes(value);
+}
+
+export function getSpellById(id: SpellId | string): SpellDefinition | undefined {
+  return SPELL_REGISTRY[id as SpellId];
+}
+
+export function listSpellIds(): SpellId[] {
+  return Object.keys(SPELL_REGISTRY) as SpellId[];
+}
+
+export function listSpellsForArchetype(archetype: SpellArchetype): SpellDefinition[] {
+  const spellIds = SPELLS_BY_ARCHETYPE[archetype] ?? [];
+  return spellIds
+    .map((id) => getSpellById(id))
+    .filter((spell): spell is SpellDefinition => Boolean(spell));
+}
+
+export function getSpellbookForArchetype(archetype: SpellArchetype): SpellDefinition[] {
+  return listSpellsForArchetype(archetype);
 }
 
 export function inferSpellArchetypeFromFighter(fighter: Fighter): SpellArchetype {
@@ -137,17 +244,15 @@ export function inferSpellArchetypeFromFighter(fighter: Fighter): SpellArchetype
   return "wanderer";
 }
 
-export function getSpellbookForArchetype(archetype: SpellArchetype): SpellDefinition[] {
-  return SPELLBOOK[archetype] ?? [];
-}
-
 export function getLearnedSpellsForFighter(fighter: Fighter): SpellDefinition[] {
   const archetype = inferSpellArchetypeFromFighter(fighter);
   const book = getSpellbookForArchetype(archetype);
   const learned = (fighter as Fighter & { learnedSpells?: unknown }).learnedSpells;
 
   if (Array.isArray(learned) && learned.length > 0) {
-    const allowed = new Set(learned.filter((id): id is string => typeof id === "string"));
+    const allowed = new Set<SpellId>(
+      learned.filter((id): id is SpellId => typeof id === "string" && getSpellById(id) !== undefined)
+    );
     if (allowed.size > 0) {
       return book.filter((spell) => allowed.has(spell.id));
     }
@@ -155,3 +260,4 @@ export function getLearnedSpellsForFighter(fighter: Fighter): SpellDefinition[] 
 
   return book;
 }
+

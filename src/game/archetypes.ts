@@ -1,4 +1,4 @@
-export type SpellId = string;
+import type { SpellId } from "./spells";
 
 export type ArchetypeId = "bandit" | "sorcerer" | "beast";
 
@@ -15,21 +15,21 @@ const definitions: Record<ArchetypeId, ArchetypeDefinition> = {
     name: "Shade Bandit",
     description:
       "A cunning rogue who manipulates momentum with tricks and stolen reserves.",
-    spellIds: ["smokeBomb", "shadowStep", "cutpurse", "ambush"],
+    spellIds: ["hex", "mirror-image", "ice-shard"],
   },
   sorcerer: {
     id: "sorcerer",
     name: "Chronomancer",
     description:
       "A master of temporal magic who bends slices and values to their will.",
-    spellIds: ["timeWarp", "arcaneShield", "manaSurge", "scry"],
+    spellIds: ["fireball", "arcane-shift", "time-twist"],
   },
   beast: {
     id: "beast",
     name: "Wildshifter",
     description:
       "A primal force that overwhelms foes with ferocity and relentless pressure.",
-    spellIds: ["feralRoar", "pounce", "packTactics", "regenerate"],
+    spellIds: ["fireball", "hex", "ice-shard"],
   },
 };
 
