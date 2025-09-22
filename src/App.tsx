@@ -344,31 +344,46 @@ useEffect(() => {
 }, [spellSyncState]);
 
 // ---- Round-transient reset (from codex), plus clear transient spell selections
-const resetRoundTransientState = useCallback(() => {
-  setPendingSpell(null);
-  setWheelDamage(createWheelSideState(0));
-  setWheelMirror(createWheelSideState(false));
-  setWheelLocks(createWheelLockState());
-  setReservePenalties(createReservePenaltyState());
-  setPointerShifts(createPointerShiftState());
-  setInitiativeOverride(null);
+// Single source of truth — keep only this definition in the file
+const resetRoundTransientState = useCallback(
+  (opts?: { includePointerReset?: boolean }) => {
+    const includePointerReset = opts?.includePointerReset ?? true;
 
-  // Optional: clear only transient parts of spell sync (keep lastKnownMana / lastResolved if you want)
-  setSpellSyncState((prev) => ({
-    player: { ...prev.player, selectedSpellId: null, target: null, fireballCost: null },
-    enemy:  { ...prev.enemy,  selectedSpellId: null, target: null, fireballCost: null },
-  }));
-}, [
-  setPendingSpell,
-  setWheelDamage,
-  setWheelMirror,
-  setWheelLocks,
-  setReservePenalties,
-  setPointerShifts,
-  setInitiativeOverride,
-  setSpellSyncState, // <- include the new setter in deps
-]);
+    // Pending spell (support both state and ref if they exist in your file)
+    try { setPendingSpell?.(null); } catch {}
+    try { (pendingSpellRef as React.MutableRefObject<any> | undefined) && (pendingSpellRef.current = null); } catch {}
 
+    // Derived transient state (codex branch)
+    try { setWheelDamage(createWheelSideState(0)); } catch {}
+    try { setWheelMirror(createWheelSideState(false)); } catch {}
+    try { setWheelLocks(createWheelLockState()); } catch {}
+    try { setReservePenalties(createReservePenaltyState()); } catch {}
+    try { setPointerShifts(createPointerShiftState()); } catch {}
+    try { setInitiativeOverride?.(null); } catch {}
+
+    // Spell/lane transient (spells branch)
+    try { resetLaneSpellStates?.(); } catch {}
+
+    // Optionally zero the visual tokens/pointers
+    if (includePointerReset) {
+      try {
+        wheelRefs?.forEach((ref) => ref.current?.setVisualToken(0));
+      } catch {}
+    }
+  },
+  [
+    // keep deps minimal and stable
+    setPendingSpell,
+    setWheelDamage,
+    setWheelMirror,
+    setWheelLocks,
+    setReservePenalties,
+    setPointerShifts,
+    setInitiativeOverride,
+    resetLaneSpellStates,
+    wheelRefs,
+  ]
+);
 
   const [archetypeSelections, setArchetypeSelections] = useState<
     Record<LegacySide, ArchetypeId | null>
@@ -1049,19 +1064,14 @@ const storeReserveReport = useCallback(
     };
   }, [showRef, showGrimoire]);
 
-// keep this near the other callbacks
-const handleSpellActivate = useCallback(
-  (spell: SpellDefinition) => {
-    if (gameMode !== "grimoire") return;
-
-    // if you’re syncing selection to MP
-    syncLocalSpellSelection?.(spell.id);
-
-    spellCastRequestRef.current(spell);
-    setShowGrimoire(false);
-  },
-  [gameMode, syncLocalSpellSelection] // <-- dependency array, then close the hook
-);
+  const handleSpellActivate = useCallback(
+    (spell: SpellDefinition) => {
+      if (gameMode !== "grimoire") return;
+setPendingSpell({ side: localLegacySide, spell }); // local pending state
+syncLocalSpellSelection(spell.id);                  // sync to peer/remote UI
+spellCastRequestRef.current(spell);
+setShowGrimoire(false);
+  );
 
   const canReveal = useMemo(() => {
     if (!archetypeGateOpen) return false;
