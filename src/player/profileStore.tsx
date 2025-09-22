@@ -307,6 +307,33 @@ const nextCardId = (() => { let i = 1; return () => `C${i++}`; })();
  *  - "num_X" explicit number alias
  * Anything else falls back to number 0.
  */
+function buildDescriptorsForNumber(num: number) {
+  const pretty = num < 0 ? `−${Math.abs(num)}` : `${num}`;
+  const linkDescriptors: Card["linkDescriptors"] = [];
+  let multiLane = false;
+
+  if (num % 3 === 0) {
+    multiLane = true;
+    linkDescriptors.push({
+      kind: "lane",
+      key: `triad-${num}`,
+      label: "Tri-Link",
+      bonusSteps: 2,
+      description: "Copy this card across lanes to add +2 steps each.",
+    });
+  }
+
+  linkDescriptors.push({
+    kind: "numberMatch",
+    key: `match-${num}`,
+    label: `Match ${pretty}`,
+    bonusSteps: 1,
+    description: `Pair ${pretty} on another lane to add +1 step.`,
+  });
+
+  return { multiLane, linkDescriptors };
+}
+
 function cardFromId(cardId: string): Card {
   let num = 0;
   const mBasic = /^basic_(\d+)$/.exec(cardId);
@@ -317,12 +344,15 @@ function cardFromId(cardId: string): Card {
   else if (mNeg) num = parseInt(mNeg[1], 10);
   else if (mNum) num = parseInt(mNum[1], 10);
 
+  const descriptors = buildDescriptorsForNumber(num);
+
   return {
     id: nextCardId(),
     name: `${num}`,
     type: "normal",
     number: num,
     tags: [],
+    ...descriptors,
   };
 }
 
@@ -340,13 +370,7 @@ export function buildActiveDeckAsCards(): Card[] {
 
 // ====== Runtime helpers (folded from your src/game/decks.ts) ======
 export function starterDeck(): Card[] {
-  const base: Card[] = Array.from({ length: 10 }, (_, n) => ({
-    id: nextCardId(),
-    name: `${n}`,
-    type: "normal",
-    number: n,
-    tags: [],
-  }));
+  const base: Card[] = Array.from({ length: 10 }, (_, n) => cardFromId(`basic_${n}`));
   return shuffle(base);
 }
 

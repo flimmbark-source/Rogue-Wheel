@@ -25,6 +25,8 @@ export default memo(function StSCard({
   onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
 }) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
+  const laneDescriptor = card.linkDescriptors?.find((d) => d.kind === "lane");
+  const matchDescriptor = card.linkDescriptors?.find((d) => d.kind === "numberMatch");
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onPick?.(); }}
@@ -39,6 +41,20 @@ export default memo(function StSCard({
     >
       <div className="absolute inset-0 rounded-xl border bg-gradient-to-br from-slate-600 to-slate-800 border-slate-400"></div>
       <div className="absolute inset-px rounded-[10px] bg-slate-900/85 backdrop-blur-[1px] border border-slate-700/70" />
+      {(card.multiLane || card.linkDescriptors?.length) && (
+        <div className="absolute top-1 left-1 right-1 flex flex-wrap gap-0.5 justify-start">
+          {card.multiLane && (
+            <span className="px-1 py-px rounded-sm bg-amber-500/80 text-[9px] font-semibold text-stone-900 shadow">
+              {(laneDescriptor?.label ?? "Link").slice(0, 8)}
+            </span>
+          )}
+          {card.linkDescriptors?.some((d) => d.kind === "numberMatch") && (
+            <span className="px-1 py-px rounded-sm bg-emerald-500/80 text-[9px] font-semibold text-stone-900 shadow">
+              {(matchDescriptor?.label ?? "Match").slice(0, 8)}
+            </span>
+          )}
+        </div>
+      )}
       <div className="absolute inset-0 flex items-center justify-center">
         {isSplit(card) ? (
           <div className="text-xl font-extrabold text-white/90 leading-none text-center">
