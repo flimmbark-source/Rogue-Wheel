@@ -135,13 +135,9 @@ type MPIntent =
       spellId: string;
       manaAfter: number;
       payload?: SpellResolutionIntentPayload | null;
-    }
-  | {
-      type: "spellState";
-      side: LegacySide;
-      lane: number;
-      state: LaneSpellState;
     };
+
+  { type: "spellState"; side: LegacySide; lane: number; state: LaneSpellState };
 
 
 // ---------------- Constants ----------------
@@ -1584,37 +1580,35 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
           break;
         }
         case "spellResolve": {
-          if (msg.side === localLegacySide) break;
-          setSpellSyncState((prev) => {
-            const current = prev[msg.side];
-            const next: SpellSyncEntry = {
-              ...current,
-              selectedSpellId: null,
-              target: null,
-              fireballCost: null,
-              lastResolvedSpellId: msg.spellId ?? null,
-              lastResolutionPayload: msg.payload ?? null,
-              lastKnownMana: msg.manaAfter ?? current.lastKnownMana,
-            };
-            return { ...prev, [msg.side]: next };
-          });
-          setMana((prev) => {
-            const nextMana = msg.manaAfter;
-            if (typeof nextMana !== "number" || !Number.isFinite(nextMana)) return prev;
-            if (prev[msg.side] === nextMana) return prev;
-            return { ...prev, [msg.side]: nextMana };
-          });
+  if (msg.side === localLegacySide) break;
+  setSpellSyncState((prev) => {
+    const current = prev[msg.side];
+    const next: SpellSyncEntry = {
+      ...current,
+      selectedSpellId: null,
+      target: null,
+      fireballCost: null,
+      lastResolvedSpellId: msg.spellId ?? null,
+      lastResolutionPayload: msg.payload ?? null,
+      lastKnownMana: msg.manaAfter ?? current.lastKnownMana,
+    };
+    return { ...prev, [msg.side]: next };
+  });
+  setMana((prev) => {
+    const nextMana = msg.manaAfter;
+    if (typeof nextMana !== "number" || !Number.isFinite(nextMana)) return prev;
+    if (prev[msg.side] === nextMana) return prev;
+    return { ...prev, [msg.side]: nextMana };
+  });
+  break; // ✅ end the spellResolve case
+}
 
-        case "spellState": {
-          if (msg.side === localLegacySide) break;
-          if (typeof msg.lane !== "number" || !msg.state) break;
-          applyRemoteLaneSpellState(msg.lane, msg.state);
-
-          break;
-        }
-        default:
-          break;
-      }
+case "spellState": {
+  if (msg.side === localLegacySide) break;
+  if (typeof msg.lane !== "number" || !msg.state) break;
+  applyRemoteLaneSpellState(msg.lane, msg.state);
+  break;
+}
     },
     [
       assignToWheelFor,
