@@ -1609,7 +1609,6 @@ case "spellState": {
   applyRemoteLaneSpellState(msg.lane, msg.state);
   break;
 }
-    },
     [
       assignToWheelFor,
       clearAssignFor,
