@@ -2,7 +2,7 @@
 // to match your existing game types/functions.
 
 import { shuffle } from "../game/math";
-import type { Card, Fighter } from "../game/types";
+import type { Card, Fighter, MatchModeId } from "../game/types";
 
 // ===== Local persistence types (module-scoped) =====
 type CardId = string;
@@ -191,9 +191,24 @@ export type MatchResultSummary = {
   after: LevelProgress;
   segments: LevelProgressSegment[];
   levelUps: number;
+  modeId?: MatchModeId;
+  modeLabel?: string;
+  targetWins?: number;
+  timerSeconds?: number | null;
+  winMethod?: "goal" | "timer";
 };
 
-export function recordMatchResult({ didWin }: { didWin: boolean }): MatchResultSummary {
+type RecordMatchOptions = {
+  didWin: boolean;
+  modeId?: MatchModeId;
+  modeLabel?: string;
+  targetWins?: number;
+  timerSeconds?: number | null;
+  winMethod?: "goal" | "timer";
+};
+
+export function recordMatchResult(options: RecordMatchOptions): MatchResultSummary {
+  const { didWin, modeId, modeLabel, targetWins, timerSeconds, winMethod } = options;
   const state = loadStateRaw();
   const profile = state.profile;
   const before = toLevelProgress(profile);
@@ -248,6 +263,11 @@ export function recordMatchResult({ didWin }: { didWin: boolean }): MatchResultS
     after,
     segments,
     levelUps,
+    modeId,
+    modeLabel,
+    targetWins,
+    timerSeconds: timerSeconds ?? null,
+    winMethod,
   };
 }
 
@@ -388,16 +408,35 @@ const TAGGED_LIBRARY: Record<string, TaggedCardDefinition> = {
  *  - "num_X" explicit number alias
  * Anything else falls back to number 0.
  */
-export function cardFromId(cardId: string, opts?: { preview?: boolean }): Card {
-  const tagged = TAGGED_LIBRARY[cardId];
-  if (tagged) {
-    const id = opts?.preview ? `preview_${cardId}` : nextCardId();
-    return {
-      ...tagged,
-      id,
-      name: tagged.name,
-    };
+
+function buildDescriptorsForNumber(num: number) {
+  const pretty = num < 0 ? `−${Math.abs(num)}` : `${num}`;
+  const linkDescriptors: Card["linkDescriptors"] = [];
+  let multiLane = false;
+
+  if (num % 3 === 0) {
+    multiLane = true;
+    linkDescriptors.push({
+      kind: "lane",
+      key: `triad-${num}`,
+      label: "Tri-Link",
+      bonusSteps: 2,
+      description: "Copy this card across lanes to add +2 steps each.",
+    });
   }
+
+  linkDescriptors.push({
+    kind: "numberMatch",
+    key: `match-${num}`,
+    label: `Match ${pretty}`,
+    bonusSteps: 1,
+    description: `Pair ${pretty} on another lane to add +1 step.`,
+  });
+
+  return { multiLane, linkDescriptors };
+}
+
+function cardFromId(cardId: string): Card {
 
   let num = 0;
   const mBasic = /^basic_(\d+)$/.exec(cardId);
@@ -408,12 +447,15 @@ export function cardFromId(cardId: string, opts?: { preview?: boolean }): Card {
   else if (mNeg) num = parseInt(mNeg[1], 10);
   else if (mNum) num = parseInt(mNum[1], 10);
 
+  const descriptors = buildDescriptorsForNumber(num);
+
   return {
     id: opts?.preview ? `preview_${cardId}` : nextCardId(),
     name: `${num}`,
     type: "normal",
     number: num,
     tags: [],
+    ...descriptors,
   };
 }
 
@@ -431,13 +473,7 @@ export function buildActiveDeckAsCards(): Card[] {
 
 // ====== Runtime helpers (folded from your src/game/decks.ts) ======
 export function starterDeck(): Card[] {
-  const base: Card[] = Array.from({ length: 10 }, (_, n) => ({
-    id: nextCardId(),
-    name: `${n}`,
-    type: "normal",
-    number: n,
-    tags: [],
-  }));
+  const base: Card[] = Array.from({ length: 10 }, (_, n) => cardFromId(`basic_${n}`));
   return shuffle(base);
 }
 
