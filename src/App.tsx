@@ -1832,7 +1832,7 @@ default:
     setWheelSections,
     setWins,
     _setDragOverWheel,
-    resetRoundTransientState
+    resetRoundTransientState,
     wheelRefs,
     resetLaneSpellStates
   ]);
