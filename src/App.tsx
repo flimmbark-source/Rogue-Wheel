@@ -95,12 +95,12 @@ function evaluateCombos(assignments: { player: (Card | null)[]; enemy: (Card | n
       if (!byCard.has(card.id)) byCard.set(card.id, { card, lanes: [] });
       byCard.get(card.id)!.lanes.push(laneIdx);
 
-      if (isNormal(card)) {
-        if (!byNumber.has(card.number)) byNumber.set(card.number, { cards: [], lanes: [] });
-        const entry = byNumber.get(card.number)!;
-        entry.cards.push(card);
-        entry.lanes.push(laneIdx);
-      }
+if (typeof card.number === "number") {
+  if (!byNumber.has(card.number)) byNumber.set(card.number, { cards: [], lanes: [] });
+  const entry = byNumber.get(card.number)!;
+  entry.cards.push(card);
+  entry.lanes.push(laneIdx);
+}
     });
 
     byCard.forEach(({ card, lanes }) => {
@@ -152,13 +152,6 @@ const OPPOSITE_SIDE: Record<LegacySide, LegacySide> = {
 };
 
 const uniqueSorted = (values: number[]) => Array.from(new Set(values)).sort((a, b) => a - b);
-
-const cardNumericValue = (card: Card | null | undefined): number => {
-  if (!card) return 0;
-  if (typeof card.number === "number") return card.number;
-  if (card.meta?.decoy?.reserveValue !== undefined) return card.meta.decoy.reserveValue ?? 0;
-  return 0;
-};
 
 const cardReserveValue = (card: Card | null | undefined): number => {
   if (!card) return 0;
@@ -494,10 +487,11 @@ function getDropTargetAt(x: number, y: number): { kind: 'wheel' | 'slot'; idx: n
   let el = document.elementFromPoint(x, y) as HTMLElement | null;
   while (el) {
     const d = (el as HTMLElement).dataset;
-    if (d.drop && d.idx) {
-      if (d.drop === 'wheel') return { kind: 'wheel', idx: Number(d.idx) };
-      if (d.drop === 'slot')  return { kind: 'slot',  idx: Number(d.idx) };
-    }
+if (d.drop && d.idx !== undefined) {
+  const idx = Number(d.idx);
+  if (d.drop === "wheel") return { kind: "wheel", idx };
+  if (d.drop === "slot")  return { kind: "slot",  idx };
+}
     el = el.parentElement;
   }
   return null;
@@ -1720,7 +1714,6 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
     const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
 
-
     const shouldShowLeftCard =
       !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
     const shouldShowRightCard =
@@ -1736,7 +1729,11 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     // panel width (border-box) so wheel is visually centered
     const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
 
-    const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
+const renderSlotCard = (
+  slot: typeof leftSlot,
+  isSlotSelected: boolean,
+  faceDown: boolean
+) => {
       if (!slot.card) return null;
       const card = slot.card;
       const interactable = slot.side === localLegacySide && phase === "choose";
@@ -1769,38 +1766,22 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
         startPointerDrag(card, e);
       };
 
-      return (
-        <StSCard
-          card={card}
-          size="sm"
-          disabled={!interactable}
-          selected={isSlotSelected}
-          onPick={handlePick}
-          draggable={interactable}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onPointerDown={handlePointerDown}
+return (
+    <StSCard
+      card={card}
+      size="sm"
+      disabled={!interactable}
+      selected={isSlotSelected}
+      onPick={handlePick}
+      draggable={interactable}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onPointerDown={handlePointerDown}
+      faceDown={faceDown}
+      showHint={!faceDown}
         />
       );
     };
-
-
-    return (
-      <StSCard
-        card={card}
-        size="sm"
-        disabled={!interactable}
-        selected={isSlotSelected}
-        onPick={handlePick}
-        draggable={interactable}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onPointerDown={handlePointerDown}
-        faceDown={faceDown}
-        showHint={!faceDown}
-      />
-    );
-  };
 
     const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
     const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
