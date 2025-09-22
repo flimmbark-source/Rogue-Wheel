@@ -82,6 +82,88 @@ type MPIntent =
   | { type: "archetypeSelect"; side: LegacySide; archetype: ArchetypeId }
   | { type: "archetypeReady"; side: LegacySide; ready: boolean };
 
+const WHEEL_INDEXES = [0, 1, 2] as const;
+type WheelIndex = (typeof WHEEL_INDEXES)[number];
+
+type MirrorCopyValue = LegacySide | "ally" | "opponent" | Card | null;
+type MirrorCopySpec = Partial<Record<LegacySide, MirrorCopyValue>>;
+type FireballDamageSpec = Partial<Record<LegacySide, number | null | undefined>>;
+type LockSpec = Partial<Record<LegacySide, boolean>>;
+type PointerShiftSpec = {
+  delta?: number | null;
+  absolute?: number | null;
+  reason?: "arcaneShift" | "effect" | "manual";
+};
+
+type RoundEffects = {
+  mirrorCopies: Partial<Record<WheelIndex, MirrorCopySpec>>;
+  fireballDamage: Partial<Record<WheelIndex, FireballDamageSpec>>;
+  locks: Partial<Record<WheelIndex, LockSpec>>;
+  reservePenalty: Partial<Record<LegacySide, number>>;
+  pointerShift: Partial<Record<WheelIndex, PointerShiftSpec>>;
+  initiativeOverride: LegacySide | null;
+};
+
+const createDefaultRoundEffects = (): RoundEffects => ({
+  mirrorCopies: {},
+  fireballDamage: {},
+  locks: {},
+  reservePenalty: {},
+  pointerShift: {},
+  initiativeOverride: null,
+});
+
+const cloneCardForRound = (card: Card | null): Card | null => {
+  if (!card) return null;
+  const tags = Array.isArray(card.tags) ? [...card.tags] : [];
+  return { ...card, tags };
+};
+
+const resolveMirrorValue = (
+  spec: MirrorCopyValue | undefined,
+  target: LegacySide,
+  basePlayer: Card | null,
+  baseEnemy: Card | null
+): Card | null => {
+  if (spec === undefined) {
+    return target === "player" ? cloneCardForRound(basePlayer) : cloneCardForRound(baseEnemy);
+  }
+  if (spec === null) return null;
+
+  if (typeof spec === "string") {
+    let source: LegacySide;
+    if (spec === "ally") {
+      source = target;
+    } else if (spec === "opponent") {
+      source = target === "player" ? "enemy" : "player";
+    } else {
+      source = spec;
+    }
+    const picked = source === "player" ? basePlayer : baseEnemy;
+    return cloneCardForRound(picked);
+  }
+
+  return cloneCardForRound(spec);
+};
+
+const applyFireballDamage = (card: Card | null, amount: number): Card | null => {
+  if (!card) return null;
+  const dmg = Number.isFinite(amount) ? Math.max(0, Math.floor(amount)) : 0;
+  if (dmg <= 0) return card;
+
+  if (card.type === "split") {
+    const left = typeof card.leftValue === "number" ? Math.max(0, card.leftValue - dmg) : card.leftValue;
+    const right = typeof card.rightValue === "number" ? Math.max(0, card.rightValue - dmg) : card.rightValue;
+    return { ...card, leftValue: left, rightValue: right } as Card;
+  }
+
+  if (typeof card.number === "number") {
+    return { ...card, number: Math.max(0, card.number - dmg) };
+  }
+
+  return card;
+};
+
 // ---------------- Constants ----------------
 const MIN_WHEEL = 160;
 const MAX_WHEEL = 200;
@@ -559,6 +641,12 @@ const reserveReportsRef = useRef<
   enemy: null,
 });
 
+const roundEffectsRef = useRef<RoundEffects>(createDefaultRoundEffects());
+
+const resetRoundEffects = useCallback(() => {
+  roundEffectsRef.current = createDefaultRoundEffects();
+}, []);
+
 const storeReserveReport = useCallback(
   (side: LegacySide, reserve: number, roundValue: number) => {
     const prev = reserveReportsRef.current[side];
@@ -914,14 +1002,49 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
   }, [canReveal, isMultiplayer, phase, resolveVotes, revealRoundCore]);
 
   function resolveRound(enemyPicks?: (Card | null)[]) {
-    const played = [0, 1, 2].map((i) => ({ p: assign.player[i] as Card | null, e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null }));
+    const basePlayed = WHEEL_INDEXES.map((i) => ({
+      p: assign.player[i] as Card | null,
+      e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null,
+    }));
+
+    const effects = roundEffectsRef.current;
+
+    const adjustedPlayed = WHEEL_INDEXES.map((idx) => {
+      const original = basePlayed[idx];
+      const basePlayer = cloneCardForRound(original.p);
+      const baseEnemy = cloneCardForRound(original.e);
+      const lockInfo = effects.locks?.[idx] ?? {};
+      const mirrorInfo = effects.mirrorCopies?.[idx] ?? {};
+      const fireInfo = effects.fireballDamage?.[idx] ?? {};
+
+      let playerCard = basePlayer;
+      let enemyCard = baseEnemy;
+
+      if (!lockInfo.player && mirrorInfo.player !== undefined) {
+        playerCard = resolveMirrorValue(mirrorInfo.player, "player", basePlayer, baseEnemy);
+      }
+
+      if (!lockInfo.enemy && mirrorInfo.enemy !== undefined) {
+        enemyCard = resolveMirrorValue(mirrorInfo.enemy, "enemy", basePlayer, baseEnemy);
+      }
+
+      if (!lockInfo.player && typeof fireInfo.player === "number") {
+        playerCard = applyFireballDamage(playerCard, fireInfo.player);
+      }
+
+      if (!lockInfo.enemy && typeof fireInfo.enemy === "number") {
+        enemyCard = applyFireballDamage(enemyCard, fireInfo.enemy);
+      }
+
+      return { p: playerCard, e: enemyCard };
+    });
 
     const localPlayed = localLegacySide === "player"
-      ? played.map((pe) => pe.p)
-      : played.map((pe) => pe.e);
+      ? adjustedPlayed.map((pe) => pe.p)
+      : adjustedPlayed.map((pe) => pe.e);
     const remotePlayed = remoteLegacySide === "player"
-      ? played.map((pe) => pe.p)
-      : played.map((pe) => pe.e);
+      ? adjustedPlayed.map((pe) => pe.p)
+      : adjustedPlayed.map((pe) => pe.e);
 
     const localReserve = computeReserveSum(localLegacySide, localPlayed);
     let remoteReserve: number;
@@ -944,29 +1067,91 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       storeReserveReport(remoteLegacySide, remoteReserve, round);
     }
 
-    const pReserve = localLegacySide === "player" ? localReserve : remoteReserve;
-    const eReserve = localLegacySide === "enemy" ? localReserve : remoteReserve;
+    const pointerSeeds: [number, number, number] = [...tokens] as [number, number, number];
+    const touchedPointerWheels = new Set<WheelIndex>();
+
+    for (const idx of WHEEL_INDEXES) {
+      const spec = effects.pointerShift?.[idx];
+      if (!spec) continue;
+
+      const prev = pointerSeeds[idx];
+      let next = prev;
+
+      if (spec.absolute !== null && spec.absolute !== undefined && Number.isFinite(spec.absolute)) {
+        next = ((Math.round(spec.absolute) % SLICES) + SLICES) % SLICES;
+      } else if (spec.delta !== null && spec.delta !== undefined && Number.isFinite(spec.delta)) {
+        next = ((prev + spec.delta) % SLICES + SLICES) % SLICES;
+      }
+
+      if (next !== prev) {
+        pointerSeeds[idx] = next;
+        roundEffectsRef.current.pointerShift[idx] = { ...spec, absolute: next, delta: 0 };
+      }
+
+      touchedPointerWheels.add(idx);
+    }
+
+    touchedPointerWheels.forEach((idx) => {
+      wheelRefs[idx].current?.setVisualToken(pointerSeeds[idx]);
+    });
+
+    const getReservePenalty = (side: LegacySide) => {
+      const raw = effects.reservePenalty?.[side];
+      return typeof raw === "number" && Number.isFinite(raw)
+        ? Math.max(0, Math.floor(raw))
+        : 0;
+    };
+
+    const normalizeReserve = (value: number) => Math.max(0, Math.floor(value));
+
+    const pReserveBase = localLegacySide === "player" ? localReserve : remoteReserve;
+    const eReserveBase = localLegacySide === "enemy" ? localReserve : remoteReserve;
+
+    const adjustedReserves = {
+      player: normalizeReserve(pReserveBase - getReservePenalty("player")),
+      enemy: normalizeReserve(eReserveBase - getReservePenalty("enemy")),
+    };
 
     // 🔸 show these during showEnemy/anim immediately
-    setReserveSums({ player: pReserve, enemy: eReserve });
+    setReserveSums(adjustedReserves);
 
     type Outcome = { steps: number; targetSlice: number; section: Section; winner: LegacySide | null; tie: boolean; wheel: number; detail: string };
     const outcomes: Outcome[] = [];
 
-    for (let w = 0; w < 3; w++) {
-      const secList = wheelSections[w];
-      const baseP = (played[w].p?.number ?? 0);
-      const baseE = (played[w].e?.number ?? 0);
+    for (const idx of WHEEL_INDEXES) {
+      const secList = wheelSections[idx];
+      const cardP = adjustedPlayed[idx].p;
+      const cardE = adjustedPlayed[idx].e;
+      const baseP = cardP?.number ?? 0;
+      const baseE = cardE?.number ?? 0;
       const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
-      const targetSlice = (tokens[w] + steps) % SLICES;
+      const targetSlice = (pointerSeeds[idx] + steps) % SLICES;
       const section = secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) || ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
 
-      const pVal = baseP; const eVal = baseE;
-      let winner: LegacySide | null = null; let tie = false; let detail = "";
+      const pVal = baseP;
+      const eVal = baseE;
+      let winner: LegacySide | null = null;
+      let tie = false;
+      let detail = "";
       switch (section.id) {
-        case "Strongest": if (pVal === eVal) tie = true; else winner = pVal > eVal ? "player" : "enemy"; detail = `Strongest ${pVal} vs ${eVal}`; break;
-        case "Weakest": if (pVal === eVal) tie = true; else winner = pVal < eVal ? "player" : "enemy"; detail = `Weakest ${pVal} vs ${eVal}`; break;
-        case "ReserveSum": if (pReserve === eReserve) tie = true; else winner = pReserve > eReserve ? "player" : "enemy"; detail = `Reserve ${pReserve} vs ${eReserve}`; break;
+        case "Strongest":
+          if (pVal === eVal) tie = true;
+          else winner = pVal > eVal ? "player" : "enemy";
+          detail = `Strongest ${pVal} vs ${eVal}`;
+          break;
+        case "Weakest":
+          if (pVal === eVal) tie = true;
+          else winner = pVal < eVal ? "player" : "enemy";
+          detail = `Weakest ${pVal} vs ${eVal}`;
+          break;
+        case "ReserveSum": {
+          const pAdj = adjustedReserves.player;
+          const eAdj = adjustedReserves.enemy;
+          if (pAdj === eAdj) tie = true;
+          else winner = pAdj > eAdj ? "player" : "enemy";
+          detail = `Reserve ${pAdj} vs ${eAdj}`;
+          break;
+        }
         case "ClosestToTarget": {
           const t = targetSlice === 0 ? (section.target ?? 0) : targetSlice;
           const pd = Math.abs(pVal - t);
@@ -976,14 +1161,22 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
           detail = `Closest to ${t}: ${pVal} vs ${eVal}`;
           break;
         }
-        case "Initiative": winner = initiative; detail = `Initiative -> ${winner}`; break;
-        default: tie = true; detail = `Slice 0: no section`; break;
+        case "Initiative": {
+          const initiativeWinner = effects.initiativeOverride ?? initiative;
+          winner = initiativeWinner;
+          detail = `Initiative -> ${winner}`;
+          break;
+        }
+        default:
+          tie = true;
+          detail = `Slice 0: no section`;
+          break;
       }
-      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail });
+      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: idx, detail });
     }
 
     const animateSpins = async () => {
-      const finalTokens: [number, number, number] = [...tokens] as [number, number, number];
+      const finalTokens: [number, number, number] = [...pointerSeeds] as [number, number, number];
 
       for (const o of outcomes) {
         const start = finalTokens[o.wheel]; const steps = o.steps; if (steps <= 0) continue;
@@ -1049,7 +1242,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setWheelHUD(hudColors);
       setWins({ player: pWins, enemy: eWins });
       setMana({ player: pMana, enemy: eMana });
-      setReserveSums({ player: pReserve, enemy: eReserve });
+      setReserveSums(adjustedReserves);
       clearAdvanceVotes();
       setPhase("roundEnd");
       if (pWins >= winGoal || eWins >= winGoal) {
@@ -1074,6 +1267,8 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
       clearResolveVotes();
       clearAdvanceVotes();
+
+      resetRoundEffects();
 
       const currentAssign = assignRef.current;
       const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
@@ -1121,7 +1316,8 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setWheelHUD,
       setWheelSections,
       setRound,
-      wheelRefs
+      wheelRefs,
+      resetRoundEffects
     ]
   );
 
@@ -1295,6 +1491,8 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     clearAdvanceVotes();
     clearRematchVotes();
 
+    resetRoundEffects();
+
     reserveReportsRef.current = { player: null, enemy: null };
 
     wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
@@ -1373,7 +1571,8 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     setWheelSections,
     setWins,
     _setDragOverWheel,
-    wheelRefs
+    wheelRefs,
+    resetRoundEffects
   ]);
 
   useEffect(() => {
