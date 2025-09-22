@@ -11,17 +11,40 @@ import {
   expRequiredForLevel,
   type ProfileBundle,
 } from "./player/profileStore";
+
 import type { Card, SorcererPerk } from "./game/types";
 import { SORCERER_PERKS } from "./game/types";
 
-/** Map our string cardId → runtime Card for StSCard preview. */
-function cardFromId(cardId: string): Card {
+
+/** Map a string cardId → a preview Card shape for StSCard. */
+function cardFromId(cardId: string, _opts?: { preview?: boolean }): Card {
+  // Support a few simple id formats: basic_#, neg_#, num_#
   const mBasic = /^basic_(\d+)$/.exec(cardId);
-  const mNeg = /^neg_(-?\d+)$/.exec(cardId);
-  const mNum = /^num_(-?\d+)$/.exec(cardId);
-  const num = mBasic ? +mBasic[1] : mNeg ? +mNeg[1] : mNum ? +mNum[1] : 0;
-  return { id: `preview_${cardId}`, name: `${num}`, type: "normal", number: num, tags: [] };
+  const mNeg   = /^neg_(-?\d+)$/.exec(cardId);
+  const mNum   = /^num_(-?\d+)$/.exec(cardId);
+
+  const value =
+    mBasic ? Number(mBasic[1])
+  : mNeg   ? Number(mNeg[1])
+  : mNum   ? Number(mNum[1])
+  : 0;
+
+  const name =
+    mBasic ? `Basic ${value}`
+  : mNeg   ? `Negative ${value}`
+  : mNum   ? `Number ${value}`
+  : "Card";
+
+  // Minimal Card shape that StSCard can render
+  return {
+    id: `preview_${cardId}`,
+    name,
+    number: value,
+    kind: "normal",
+    tags: [],
+  } as Card;
 }
+
 
 /** Scales its child to fit the available width while preserving aspect. */
 function FitCard({
@@ -270,7 +293,7 @@ export default function ProfilePage() {
               {cardId ? (
                 <FitCard>
                   <StSCard
-                    card={cardFromId(cardId)}
+                    card={cardFromId(cardId, { preview: true })}
                     size="md"
                     draggable
                     onDragStart={(e) => setDrag(e, { from: "deck", cardId })}
@@ -309,7 +332,7 @@ export default function ProfilePage() {
                 <div className="aspect-[3/4] w-full max-w-[180px] p-1 rounded-lg ring-1 ring-white/10 bg-white/5 grid place-items-center">
                   <FitCard>
                     <StSCard
-                      card={cardFromId(i.cardId)}
+                      card={cardFromId(i.cardId, { preview: true })}
                       size="md"
                       disabled={avail <= 0}
                       draggable

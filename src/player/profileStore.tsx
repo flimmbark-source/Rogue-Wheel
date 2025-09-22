@@ -2,8 +2,10 @@
 // to match your existing game types/functions.
 
 import { shuffle } from "../game/math";
+
 import type { Card, Fighter, SorcererPerk } from "../game/types";
 import { SORCERER_PERKS } from "../game/types";
+
 
 // ===== Local persistence types (module-scoped) =====
 type CardId = string;
@@ -65,13 +67,32 @@ function uid(prefix = "id") {
 }
 
 // ===== Seed data (keep numbers only to match Card { type:'normal', number:n }) =====
-const SEED_INVENTORY: InventoryItem[] = [];
+const SEED_INVENTORY: InventoryItem[] = [
+  { cardId: "trick_decoy", qty: 1 },
+  { cardId: "trick_oddshift_right", qty: 1 },
+  { cardId: "trick_parity_flip", qty: 1 },
+  { cardId: "trick_swap_edges", qty: 1 },
+  { cardId: "trick_steal_center", qty: 1 },
+  { cardId: "trick_echo", qty: 1 },
+  { cardId: "trick_reveal", qty: 1 },
+];
 
 const SEED_DECK: Deck = {
   id: uid("deck"),
   name: "Starter Deck",
   isActive: true,
-  cards: Array.from({ length: 10 }, (_, n) => ({ cardId: `basic_${n}`, qty: 1 })),
+  cards: [
+    { cardId: "basic_0", qty: 1 },
+    { cardId: "basic_1", qty: 1 },
+    { cardId: "basic_2", qty: 1 },
+    { cardId: "basic_3", qty: 1 },
+    { cardId: "basic_4", qty: 1 },
+    { cardId: "basic_5", qty: 1 },
+    { cardId: "trick_decoy", qty: 1 },
+    { cardId: "trick_oddshift_right", qty: 1 },
+    { cardId: "trick_parity_flip", qty: 1 },
+    { cardId: "trick_echo", qty: 1 },
+  ],
 };
 
 function seed(): LocalState {
@@ -200,9 +221,24 @@ export type MatchResultSummary = {
   after: LevelProgress;
   segments: LevelProgressSegment[];
   levelUps: number;
+  modeId?: MatchModeId;
+  modeLabel?: string;
+  targetWins?: number;
+  timerSeconds?: number | null;
+  winMethod?: "goal" | "timer";
 };
 
-export function recordMatchResult({ didWin }: { didWin: boolean }): MatchResultSummary {
+type RecordMatchOptions = {
+  didWin: boolean;
+  modeId?: MatchModeId;
+  modeLabel?: string;
+  targetWins?: number;
+  timerSeconds?: number | null;
+  winMethod?: "goal" | "timer";
+};
+
+export function recordMatchResult(options: RecordMatchOptions): MatchResultSummary {
+  const { didWin, modeId, modeLabel, targetWins, timerSeconds, winMethod } = options;
   const state = loadStateRaw();
   const profile = state.profile;
   const before = toLevelProgress(profile);
@@ -257,6 +293,11 @@ export function recordMatchResult({ didWin }: { didWin: boolean }): MatchResultS
     after,
     segments,
     levelUps,
+    modeId,
+    modeLabel,
+    targetWins,
+    timerSeconds: timerSeconds ?? null,
+    winMethod,
   };
 }
 
@@ -368,14 +409,105 @@ export function addToInventory(items: SwapItem[]) {
 // sequential card ids for the runtime deck
 const nextCardId = (() => { let i = 1; return () => `C${i++}`; })();
 
+type TaggedCardDefinition = Omit<Card, "id"> & { number?: number };
+
+const TAGGED_LIBRARY: Record<string, TaggedCardDefinition> = {
+  trick_decoy: {
+    name: "Smoke Decoy",
+    type: "normal",
+    number: 0,
+    tags: ["decoy"],
+    hint: "Counts as zero when seen.",
+    meta: { decoy: { display: "??", reserveValue: 0 } },
+  },
+  trick_oddshift_right: {
+    name: "Oddshift Engine",
+    type: "normal",
+    number: 3,
+    tags: ["oddshift"],
+    hint: "Slides right if its value is odd.",
+    meta: { oddshift: { direction: 1 } },
+  },
+  trick_parity_flip: {
+    name: "Parity Flip",
+    type: "normal",
+    number: 2,
+    tags: ["parityflip"],
+    hint: "Flip both numbers' parity here.",
+    meta: { parityflip: { target: "both", amount: 1 } },
+  },
+  trick_swap_edges: {
+    name: "Edge Swap",
+    type: "normal",
+    number: 1,
+    tags: ["swap"],
+    hint: "Swap this lane with the far edge.",
+    meta: { swap: { with: 2 } },
+  },
+  trick_steal_center: {
+    name: "Center Heist",
+    type: "normal",
+    number: 1,
+    tags: ["steal"],
+    hint: "Trade with the foe's center card.",
+    meta: { steal: { from: 1 } },
+  },
+  trick_echo: {
+    name: "Reserve Echo",
+    type: "normal",
+    number: 0,
+    tags: ["echoreserve"],
+    hint: "Copy rival reserve for this round.",
+    meta: { echoreserve: { mode: "copy-opponent" } },
+  },
+  trick_reveal: {
+    name: "Silent Scout",
+    type: "normal",
+    number: 1,
+    tags: ["reveal"],
+    hint: "Reveal a foe placement once per match.",
+    meta: { reveal: {} },
+  },
+};
+
 /**
  * Supported cardId formats:
+ *  - Known trick ids defined in TAGGED_LIBRARY
  *  - "basic_N" where N is 0..9  → normal card with number N
  *  - "neg_X" where X is a number (e.g., -2) → normal card with number X
  *  - "num_X" explicit number alias
  * Anything else falls back to number 0.
  */
+
+function buildDescriptorsForNumber(num: number) {
+  const pretty = num < 0 ? `−${Math.abs(num)}` : `${num}`;
+  const linkDescriptors: Card["linkDescriptors"] = [];
+  let multiLane = false;
+
+  if (num % 3 === 0) {
+    multiLane = true;
+    linkDescriptors.push({
+      kind: "lane",
+      key: `triad-${num}`,
+      label: "Tri-Link",
+      bonusSteps: 2,
+      description: "Copy this card across lanes to add +2 steps each.",
+    });
+  }
+
+  linkDescriptors.push({
+    kind: "numberMatch",
+    key: `match-${num}`,
+    label: `Match ${pretty}`,
+    bonusSteps: 1,
+    description: `Pair ${pretty} on another lane to add +1 step.`,
+  });
+
+  return { multiLane, linkDescriptors };
+}
+
 function cardFromId(cardId: string): Card {
+
   let num = 0;
   const mBasic = /^basic_(\d+)$/.exec(cardId);
   const mNeg   = /^neg_(-?\d+)$/.exec(cardId);
@@ -385,12 +517,15 @@ function cardFromId(cardId: string): Card {
   else if (mNeg) num = parseInt(mNeg[1], 10);
   else if (mNum) num = parseInt(mNum[1], 10);
 
+  const descriptors = buildDescriptorsForNumber(num);
+
   return {
-    id: nextCardId(),
+    id: opts?.preview ? `preview_${cardId}` : nextCardId(),
     name: `${num}`,
     type: "normal",
     number: num,
     tags: [],
+    ...descriptors,
   };
 }
 
@@ -408,13 +543,7 @@ export function buildActiveDeckAsCards(bundle?: ProfileBundle): Card[] {
 
 // ====== Runtime helpers (folded from your src/game/decks.ts) ======
 export function starterDeck(): Card[] {
-  const base: Card[] = Array.from({ length: 10 }, (_, n) => ({
-    id: nextCardId(),
-    name: `${n}`,
-    type: "normal",
-    number: n,
-    tags: [],
-  }));
+  const base: Card[] = Array.from({ length: 10 }, (_, n) => cardFromId(`basic_${n}`));
   return shuffle(base);
 }
 
