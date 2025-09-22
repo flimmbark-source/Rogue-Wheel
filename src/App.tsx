@@ -1476,7 +1476,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setWheelHUD,
       setWheelSections,
       setRound,
-      resetRoundTransientState
+      resetRoundTransientState,
       resetLaneSpellStates,
       wheelRefs
     ]
