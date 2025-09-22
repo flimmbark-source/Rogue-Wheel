@@ -2559,8 +2559,8 @@ const renderArchetypeModal = () => (
           </button>
         </div>
       </div>
-    </div>{/* end modal card */}
-  </div>{/* end backdrop */}
+    </div>
+  </div>
 );
 
   const localResolveReady = resolveVotes[localLegacySide];
