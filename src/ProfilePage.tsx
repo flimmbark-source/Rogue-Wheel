@@ -139,15 +139,15 @@ const PERK_INFO: Record<SorcererPerk, { title: string; description: string }> = 
   },
   spellEcho: {
     title: "Spell Echo",
-    description: "Predictive casts grant +3 reserve instead of +2.",
+    description: "Fireball reduces an extra point without extra mana.",
   },
   planarSwap: {
     title: "Planar Swap",
-    description: "VC swaps cost 1 less mana (minimum 1).",
+    description: "Arcane Shift moves two slices instead of one.",
   },
   recallMastery: {
     title: "Recall Mastery",
-    description: "Reserve recalls are free and pull up to two cards when possible.",
+    description: "Hex reduces reserves by 3 instead of 2.",
   },
 };
 

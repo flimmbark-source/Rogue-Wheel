@@ -55,7 +55,7 @@ import {
   type LevelProgress,
   getWheelLoadout,
 } from "./player/profileStore";
-import { isSplit, fmtNum } from "./game/values";
+import { fmtNum } from "./game/values";
 
 // components
 import CanvasWheel, { WheelHandle } from "./components/CanvasWheel";
@@ -76,28 +76,28 @@ type MPIntent =
   | { type: "rematch"; side: LegacySide }
   | { type: "reserve"; side: LegacySide; reserve: number; round: number };
 
-// ==== Merged: Mana/Recall planning + Combo evaluation ====
+// ==== Merged: Spell planning + Combo evaluation ====
 
-/** Pre-spin plan for bonuses and VC overrides (from mana/recall interactions). */
+/** Spell planning for pre-spin effects. */
 type PreSpinPlan = {
-  reserveBonus: number;
-  recallBonus: number;
   notes: string[];
-  vcOverrides: Partial<Record<number, VC>>;
-  recallUsed: boolean;
+  fireball: Partial<Record<number, number>>;
+  iceShard: Partial<Record<number, boolean>>;
+  mirrorImage: Partial<Record<number, boolean>>;
+  arcaneShift: Partial<Record<number, number>>;
+  hexPenalty: number;
+  initiativeSwapped: boolean;
 };
 
 const createEmptyPlan = (): PreSpinPlan => ({
-  reserveBonus: 0,
-  recallBonus: 0,
   notes: [],
-  vcOverrides: {},
-  recallUsed: false,
+  fireball: {},
+  iceShard: {},
+  mirrorImage: {},
+  arcaneShift: {},
+  hexPenalty: 0,
+  initiativeSwapped: false,
 });
-
-/** VC swap sequence and which VCs grant mana rewards. */
-const VC_SWAP_SEQUENCE: VC[] = ["Strongest", "Weakest", "ReserveSum", "ClosestToTarget", "Initiative"];
-const MANA_VC_REWARD: VC[] = ["ReserveSum", "Initiative"];
 
 /** Reserve HUD breakdown for UI. */
 type ReserveHUD = {
@@ -710,7 +710,8 @@ const storeReserveReport = useCallback(
   const broadcastLocalReserve = useCallback(() => {
     const lane = localLegacySide === "player" ? assignRef.current.player : assignRef.current.enemy;
     const plan = preSpinPlan[localLegacySide] ?? createEmptyPlan();
-    const reserveCtx = computeReserveContext(localLegacySide, lane, plan);
+    const opponentPlan = preSpinPlan[remoteLegacySide] ?? createEmptyPlan();
+    const reserveCtx = computeReserveContext(localLegacySide, lane, plan, opponentPlan);
     const reserve = reserveCtx.total;
     const updated = storeReserveReport(localLegacySide, reserve, round);
     if (isMultiplayer && updated) {
@@ -934,7 +935,8 @@ function autoPickEnemy(): (Card | null)[] {
 function computeReserveContext(
   who: LegacySide,
   used: (Card | null)[],
-  plan: PreSpinPlan = createEmptyPlan()
+  plan: PreSpinPlan = createEmptyPlan(),
+  opponentPlan: PreSpinPlan = createEmptyPlan()
 ): ReserveHUD {
   const fighter = who === "player" ? player : enemy;
 
@@ -946,23 +948,18 @@ function computeReserveContext(
   const baseCards = left.slice(0, 2);
   const base = baseCards.reduce((acc, card) => acc + (typeof card.number === "number" ? card.number : 0), 0);
 
-  // Planned bonuses
-  const reserveBonus = Math.max(0, plan.reserveBonus);
-  const recallBonus  = Math.max(0, plan.recallBonus);
+  let total = base;
+  const notes: string[] = [];
 
-  // HUD notes (de-duped)
-  const noteSet = new Set(plan.notes);
-  if (reserveBonus > 0 && plan.notes.length === 0) {
-    noteSet.add(`Arcane +${reserveBonus}`);
-  }
-  if (recallBonus > 0 && !plan.notes.some(n => n.toLowerCase().includes("recall"))) {
-    noteSet.add(`Recall +${recallBonus}`);
+  const hexPenalty = Math.max(0, opponentPlan.hexPenalty ?? 0);
+  if (hexPenalty > 0) {
+    total = Math.max(0, total - hexPenalty);
+    notes.push(`Hex -${hexPenalty}`);
   }
 
-  const bonus = reserveBonus + recallBonus;
-  const total = base + bonus;
+  const bonus = total - base;
 
-  return { base, bonus, total, notes: Array.from(noteSet) };
+  return { base, bonus, total, notes };
 }
 
   useEffect(() => {
@@ -1218,19 +1215,19 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     const remotePlayed = remoteLegacySide === "player"
       ? played.map((pe) => pe.p)
       : played.map((pe) => pe.e);
-// ==== Merged: reserve context (mana/recall) + echo interactions + outcome ====
+// ==== Merged: reserve context + echo interactions + outcome ====
 
 const localPlan = preSpinPlan[localLegacySide] ?? createEmptyPlan();
 const remotePlan = preSpinPlan[remoteLegacySide] ?? createEmptyPlan();
 
 // Build reserve contexts (base/bonus/total/notes) for each side
-const localReserveCtx = computeReserveContext(localLegacySide, localPlayed, localPlan);
+const localReserveCtx = computeReserveContext(localLegacySide, localPlayed, localPlan, remotePlan);
 
 let remoteReserveCtx: ReserveHUD;
 let usedRemoteReport = false;
 
 if (!isMultiplayer) {
-  remoteReserveCtx = computeReserveContext(remoteLegacySide, remotePlayed, remotePlan);
+  remoteReserveCtx = computeReserveContext(remoteLegacySide, remotePlayed, remotePlan, localPlan);
 } else {
   const report = reserveReportsRef.current[remoteLegacySide];
   if (report && report.round === round) {
@@ -1238,7 +1235,7 @@ if (!isMultiplayer) {
     remoteReserveCtx = { base: report.reserve, bonus: 0, total: report.reserve, notes: [] };
     usedRemoteReport = true;
   } else {
-    remoteReserveCtx = computeReserveContext(remoteLegacySide, remotePlayed, remotePlan);
+    remoteReserveCtx = computeReserveContext(remoteLegacySide, remotePlayed, remotePlan, localPlan);
   }
 }
 
@@ -1327,36 +1324,86 @@ type Outcome = {
       enemy: played.map((pe) => pe.e ?? null),
     });
 
+    const planBySide: Record<LegacySide, PreSpinPlan> = {
+      player: preSpinPlan.player ?? createEmptyPlan(),
+      enemy: preSpinPlan.enemy ?? createEmptyPlan(),
+    };
+
     for (let w = 0; w < 3; w++) {
       const secList = wheelSections[w];
-      const baseP = (played[w].p?.number ?? 0);
-      const baseE = (played[w].e?.number ?? 0);
+      const playerCard = played[w].p;
+      const enemyCard = played[w].e;
+      const baseP = playerCard?.number ?? 0;
+      const baseE = enemyCard?.number ?? 0;
       const bonusP = combosForResolve.player.laneBonus[w] ?? 0;
       const bonusE = combosForResolve.enemy.laneBonus[w] ?? 0;
-      const pVal = baseP + bonusP;
-      const eVal = baseE + bonusE;
-      const steps = (((pVal % SLICES) + (eVal % SLICES)) % SLICES + SLICES) % SLICES;
-      const targetSlice = (tokens[w] + steps) % SLICES;
-      let section =
-        secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) ||
-        ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
 
-      const playerOverride = preSpinPlan.player.vcOverrides[w];
-      const enemyOverride = preSpinPlan.enemy.vcOverrides[w];
-      let override: VC | null = null;
-      if (playerOverride && enemyOverride) {
-        override = initiative === "player" ? playerOverride : enemyOverride;
-      } else {
-        override = playerOverride ?? enemyOverride ?? null;
-      }
-      if (override) {
-        section = { ...section, id: override };
-      }
+      const playerPlanForWheel = planBySide.player;
+      const enemyPlanForWheel = planBySide.enemy;
+
+      const playerLocked = !!enemyPlanForWheel.iceShard[w];
+      const enemyLocked = !!playerPlanForWheel.iceShard[w];
+
+      let effectiveBaseP = baseP;
+      let effectiveBaseE = baseE;
 
       const comboNotes = [
         ...((combosForResolve.player.laneNotes[w] ?? []).map((note) => `${namesByLegacy.player}: ${note}`)),
         ...((combosForResolve.enemy.laneNotes[w] ?? []).map((note) => `${namesByLegacy.enemy}: ${note}`)),
       ];
+
+      if (playerLocked) {
+        comboNotes.push(`${namesByLegacy.enemy}: Ice Shard (lane ${w + 1})`);
+      }
+      if (enemyLocked) {
+        comboNotes.push(`${namesByLegacy.player}: Ice Shard (lane ${w + 1})`);
+      }
+
+      if (!playerLocked && playerPlanForWheel.mirrorImage[w] && enemyCard) {
+        effectiveBaseP = enemyCard.number ?? 0;
+        comboNotes.push(`${namesByLegacy.player}: Mirror Image (lane ${w + 1})`);
+      }
+
+      if (!enemyLocked && enemyPlanForWheel.mirrorImage[w] && playerCard) {
+        effectiveBaseE = playerCard.number ?? 0;
+        comboNotes.push(`${namesByLegacy.enemy}: Mirror Image (lane ${w + 1})`);
+      }
+
+      let pVal = playerLocked ? effectiveBaseP : effectiveBaseP + bonusP;
+      let eVal = enemyLocked ? effectiveBaseE : effectiveBaseE + bonusE;
+
+      if (!enemyLocked) {
+        const fireball = playerPlanForWheel.fireball[w] ?? 0;
+        if (fireball > 0) {
+          eVal -= fireball;
+          comboNotes.push(`${namesByLegacy.player}: Fireball -${fireball} (lane ${w + 1})`);
+        }
+      }
+
+      if (!playerLocked) {
+        const fireball = enemyPlanForWheel.fireball[w] ?? 0;
+        if (fireball > 0) {
+          pVal -= fireball;
+          comboNotes.push(`${namesByLegacy.enemy}: Fireball -${fireball} (lane ${w + 1})`);
+        }
+      }
+
+      const playerShift = playerPlanForWheel.arcaneShift[w] ?? 0;
+      const enemyShift = enemyPlanForWheel.arcaneShift[w] ?? 0;
+      if (playerShift !== 0) {
+        comboNotes.push(`${namesByLegacy.player}: Arcane Shift ${playerShift > 0 ? "+" : ""}${playerShift} (wheel ${w + 1})`);
+      }
+      if (enemyShift !== 0) {
+        comboNotes.push(`${namesByLegacy.enemy}: Arcane Shift ${enemyShift > 0 ? "+" : ""}${enemyShift} (wheel ${w + 1})`);
+      }
+      const totalShift = playerShift + enemyShift;
+
+      const stepsBase = (((pVal % SLICES) + (eVal % SLICES)) % SLICES + SLICES) % SLICES;
+      const steps = (((stepsBase + totalShift) % SLICES) + SLICES) % SLICES;
+      const targetSlice = (tokens[w] + steps) % SLICES;
+      let section =
+        secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) ||
+        ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
 
       let winner: LegacySide | null = null; let tie = false; let detail = "";
 
@@ -1398,11 +1445,7 @@ case "ReserveSum": {
         detail = `${detail} | ${comboNotes.join("; ")}`;
       }
 
-      if (override) {
-        detail = `[${override}] ${detail}`;
-      }
-
-      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail, override, comboNotes });
+      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail, override: null, comboNotes });
 
     }
 
@@ -1447,10 +1490,7 @@ outcomes.forEach((o) => {
   hudColors[o.wheel] = HUD_COLORS[o.winner];
 
   roundWins[o.winner] += 1;
-
-  if (MANA_VC_REWARD.includes(o.section.id)) {
-    manaGains[o.winner] += 1;
-  }
+  manaGains[o.winner] += 1;
 
   appendLog(`${wheelLabel} win -> ${o.winner} (${o.detail}).`);
 
@@ -1479,15 +1519,6 @@ outcomes.forEach((o) => {
 
       setInitiative(nextInitiative);
       appendLog(initiativeLog);
-
-      if (roundWinsCount.player >= 2) {
-        manaGains.player += 1;
-        appendLog(`${namesByLegacy.player} weaves a combo and gains bonus mana!`);
-      }
-      if (roundWinsCount.enemy >= 2) {
-        manaGains.enemy += 1;
-        appendLog(`${namesByLegacy.enemy} weaves a combo and gains bonus mana!`);
-      }
 
       if (manaGains.player > 0) {
         setPlayer((prev) => ({ ...prev, mana: prev.mana + manaGains.player }));
@@ -1537,7 +1568,7 @@ if (winner && method) {
     );
   }
 } else {
-  // No match end: reset mana/recall planning for the next round
+  // No match end: reset spell planning for the next round
   setPreSpinPlan({ player: createEmptyPlan(), enemy: createEmptyPlan() });
   setPhase("roundEnd");
 }
@@ -1737,140 +1768,240 @@ animateSpins();    // <-- CALL IT
     nextRound();
   }, [advanceVotes, isMultiplayer, nextRound, phase]);
 
-  const handlePredictiveCast = useCallback(() => {
-    if (phase !== "choose") return;
-    if (isMultiplayer) {
-      appendLog("Mana actions are disabled during multiplayer matches.");
-      return;
-    }
-    const fighter = localLegacySide === "player" ? player : enemy;
-    const cost = 1;
-    if (fighter.mana < cost) {
-      appendLog(`${namesByLegacy[localLegacySide]} lacks the mana to cast a prediction.`);
-      return;
-    }
-    const bonus = 2 + (fighter.perks.includes("spellEcho") ? 1 : 0);
-    setPreSpinPlan((prev) => {
-      const current = prev[localLegacySide] ?? createEmptyPlan();
-      const nextPlan: PreSpinPlan = {
-        ...current,
-        reserveBonus: current.reserveBonus + bonus,
-        notes: [...current.notes, `Predictive +${bonus}`],
-      };
-      return { ...prev, [localLegacySide]: nextPlan };
-    });
-    if (localLegacySide === "player") {
-      setPlayer((prev) => ({ ...prev, mana: prev.mana - cost }));
+  const spendMana = useCallback((side: LegacySide, amount: number) => {
+    if (amount <= 0) return;
+    if (side === "player") {
+      setPlayer((prev) => ({ ...prev, mana: Math.max(0, prev.mana - amount) }));
     } else {
-      setEnemy((prev) => ({ ...prev, mana: prev.mana - cost }));
+      setEnemy((prev) => ({ ...prev, mana: Math.max(0, prev.mana - amount) }));
     }
-    appendLog(`${namesByLegacy[localLegacySide]} casts a predictive ward (+${bonus} reserve).`);
-    setTimeout(() => broadcastLocalReserve(), 0);
-  }, [appendLog, broadcastLocalReserve, enemy, isMultiplayer, localLegacySide, namesByLegacy, phase, player]);
+  }, [setEnemy, setPlayer]);
 
-  const handleReserveRecall = useCallback(() => {
+  const handleFireballCast = useCallback(() => {
     if (phase !== "choose") return;
     if (isMultiplayer) {
       appendLog("Mana actions are disabled during multiplayer matches.");
       return;
     }
-    const fighter = localLegacySide === "player" ? player : enemy;
-    const plan = preSpinPlan[localLegacySide];
-    if (plan?.recallUsed) {
-      appendLog("Reserve recall already used this round.");
+    const casterSide = localLegacySide;
+    const opponentSide = casterSide === "player" ? "enemy" : "player";
+    const fighter = casterSide === "player" ? player : enemy;
+    if (fighter.mana < 1) {
+      appendLog(`${namesByLegacy[casterSide]} lacks the mana to cast Fireball.`);
       return;
     }
-    const discardValues = fighter.discard
-      .filter((c) => isNormal(c) && typeof c.number === "number")
-      .map((c) => c.number as number)
-      .sort((a, b) => b - a);
-    if (!discardValues.length) {
-      appendLog("No discarded spells to recall.");
+    if (typeof window === "undefined") return;
+    const laneStr = window.prompt("Select target lane (1-3) for Fireball:", "1");
+    if (laneStr === null) return;
+    const laneIdx = Number.parseInt(laneStr, 10) - 1;
+    if (!(laneIdx >= 0 && laneIdx < 3)) {
+      appendLog("Fireball fizzles without a valid target.");
       return;
     }
-    const recallCount = fighter.perks.includes("recallMastery") ? Math.min(2, discardValues.length) : 1;
-    const selected = discardValues.slice(0, recallCount);
-    const bonus = selected.reduce((sum, value) => sum + value, 0);
-    if (bonus <= 0) {
-      appendLog("Your discarded spells hold no arcane charge.");
+    const opponentAssignments = opponentSide === "player" ? assign.player : assign.enemy;
+    if (!opponentAssignments[laneIdx]) {
+      appendLog("No opposing card to scorch in that lane.");
       return;
     }
-    const baseCost = 1;
-    const discount = fighter.perks.includes("recallMastery") ? 1 : 0;
-    const cost = Math.max(0, baseCost - discount);
-    if (fighter.mana < cost) {
-      appendLog(`${namesByLegacy[localLegacySide]} lacks the mana to recall reserves.`);
+    const maxMana = fighter.mana;
+    const amountStr = window.prompt(`Spend how much mana? (1-${maxMana})`, "1");
+    if (amountStr === null) return;
+    const parsed = Number.parseInt(amountStr, 10);
+    if (!Number.isFinite(parsed) || parsed < 1) {
+      appendLog("The spell fails without fuel.");
+      return;
+    }
+    const amount = Math.min(parsed, maxMana);
+    const echoBonus = fighter.perks.includes("spellEcho") ? 1 : 0;
+    const totalDamage = amount + echoBonus;
+    setPreSpinPlan((prev) => {
+      const cur = prev[casterSide] ?? createEmptyPlan();
+      const fireball = { ...cur.fireball, [laneIdx]: (cur.fireball[laneIdx] ?? 0) + totalDamage };
+      const notes = [...cur.notes, `Fireball lane ${laneIdx + 1} -${totalDamage}`];
+      return { ...prev, [casterSide]: { ...cur, fireball, notes } };
+    });
+    spendMana(casterSide, amount);
+    const bonusNote = echoBonus > 0 ? ` (echo +${echoBonus})` : "";
+    appendLog(`${namesByLegacy[casterSide]} hurls a fireball at lane ${laneIdx + 1}, reducing it by ${totalDamage}${bonusNote}.`);
+  }, [appendLog, assign, enemy, isMultiplayer, localLegacySide, namesByLegacy, phase, player, spendMana]);
+
+  const handleIceShardCast = useCallback(() => {
+    if (phase !== "choose") return;
+    if (isMultiplayer) {
+      appendLog("Mana actions are disabled during multiplayer matches.");
+      return;
+    }
+    const casterSide = localLegacySide;
+    const opponentSide = casterSide === "player" ? "enemy" : "player";
+    const fighter = casterSide === "player" ? player : enemy;
+    if (fighter.mana < 1) {
+      appendLog(`${namesByLegacy[casterSide]} lacks the mana to cast Ice Shard.`);
+      return;
+    }
+    if (typeof window === "undefined") return;
+    const laneStr = window.prompt("Select target lane (1-3) to freeze:", "1");
+    if (laneStr === null) return;
+    const laneIdx = Number.parseInt(laneStr, 10) - 1;
+    if (!(laneIdx >= 0 && laneIdx < 3)) {
+      appendLog("The shard misses its mark.");
+      return;
+    }
+    const opponentAssignments = opponentSide === "player" ? assign.player : assign.enemy;
+    if (!opponentAssignments[laneIdx]) {
+      appendLog("There is no enemy card to freeze there.");
+      return;
+    }
+    const plan = preSpinPlan[casterSide] ?? createEmptyPlan();
+    if (plan.iceShard[laneIdx]) {
+      appendLog("That lane is already frozen.");
       return;
     }
     setPreSpinPlan((prev) => {
-      const current = prev[localLegacySide] ?? createEmptyPlan();
-      const nextPlan: PreSpinPlan = {
-        ...current,
-        recallUsed: true,
-        recallBonus: current.recallBonus + bonus,
-        notes: [...current.notes, `Recall +${bonus}`],
-      };
-      return { ...prev, [localLegacySide]: nextPlan };
+      const cur = prev[casterSide] ?? createEmptyPlan();
+      const iceShard = { ...cur.iceShard, [laneIdx]: true };
+      const notes = [...cur.notes, `Ice Shard lane ${laneIdx + 1}`];
+      return { ...prev, [casterSide]: { ...cur, iceShard, notes } };
     });
-    if (cost > 0) {
-      if (localLegacySide === "player") {
-        setPlayer((prev) => ({ ...prev, mana: prev.mana - cost }));
-      } else {
-        setEnemy((prev) => ({ ...prev, mana: prev.mana - cost }));
-      }
-    }
-    appendLog(`${namesByLegacy[localLegacySide]} recalls reserves (+${bonus}).`);
-    setTimeout(() => broadcastLocalReserve(), 0);
-  }, [appendLog, broadcastLocalReserve, enemy, isMultiplayer, localLegacySide, namesByLegacy, phase, player, preSpinPlan]);
+    spendMana(casterSide, 1);
+    appendLog(`${namesByLegacy[casterSide]} freezes lane ${laneIdx + 1} with an ice shard.`);
+  }, [appendLog, assign, enemy, isMultiplayer, localLegacySide, namesByLegacy, phase, player, preSpinPlan, spendMana]);
 
-  const handleSwapVC = useCallback(
-    (wheelIndex: number) => {
-      if (phase !== "choose") return;
-      if (isMultiplayer) {
-        appendLog("Mana actions are disabled during multiplayer matches.");
-        return;
-      }
-      const fighter = localLegacySide === "player" ? player : enemy;
-      const currentPlan = preSpinPlan[localLegacySide] ?? createEmptyPlan();
-      const currentOverride = currentPlan.vcOverrides[wheelIndex];
-      if (!currentOverride) {
-        const baseCost = 2;
-        const discount = fighter.perks.includes("planarSwap") ? 1 : 0;
-        const cost = Math.max(1, baseCost - discount);
-        if (fighter.mana < cost) {
-          appendLog(`${namesByLegacy[localLegacySide]} lacks the mana to reshape that wheel.`);
-          return;
-        }
-        const nextOverride = VC_SWAP_SEQUENCE[0];
-        setPreSpinPlan((prev) => {
-          const cur = prev[localLegacySide] ?? createEmptyPlan();
-          const overrides = { ...cur.vcOverrides, [wheelIndex]: nextOverride };
-          return { ...prev, [localLegacySide]: { ...cur, vcOverrides: overrides } };
-        });
-        if (localLegacySide === "player") {
-          setPlayer((prev) => ({ ...prev, mana: prev.mana - cost }));
-        } else {
-          setEnemy((prev) => ({ ...prev, mana: prev.mana - cost }));
-        }
-        appendLog(`${namesByLegacy[localLegacySide]} fixes wheel ${wheelIndex + 1} to ${nextOverride}.`);
-      } else {
-        const idx = VC_SWAP_SEQUENCE.indexOf(currentOverride);
-        const nextOverride = idx === -1 || idx === VC_SWAP_SEQUENCE.length - 1 ? null : VC_SWAP_SEQUENCE[idx + 1];
-        setPreSpinPlan((prev) => {
-          const cur = prev[localLegacySide] ?? createEmptyPlan();
-          const overrides = { ...cur.vcOverrides };
-          if (nextOverride) overrides[wheelIndex] = nextOverride; else delete overrides[wheelIndex];
-          return { ...prev, [localLegacySide]: { ...cur, vcOverrides: overrides } };
-        });
-        appendLog(
-          nextOverride
-            ? `${namesByLegacy[localLegacySide]} cycles wheel ${wheelIndex + 1} to ${nextOverride}.`
-            : `${namesByLegacy[localLegacySide]} lets wheel ${wheelIndex + 1} return to fate.`
-        );
-      }
-    },
-    [appendLog, isMultiplayer, localLegacySide, namesByLegacy, phase, player, preSpinPlan, enemy]
-  );
+  const handleMirrorImageCast = useCallback(() => {
+    if (phase !== "choose") return;
+    if (isMultiplayer) {
+      appendLog("Mana actions are disabled during multiplayer matches.");
+      return;
+    }
+    const casterSide = localLegacySide;
+    const opponentSide = casterSide === "player" ? "enemy" : "player";
+    const fighter = casterSide === "player" ? player : enemy;
+    if (fighter.mana < 1) {
+      appendLog(`${namesByLegacy[casterSide]} lacks the mana to cast Mirror Image.`);
+      return;
+    }
+    if (typeof window === "undefined") return;
+    const laneStr = window.prompt("Select your lane (1-3) to mirror:", "1");
+    if (laneStr === null) return;
+    const laneIdx = Number.parseInt(laneStr, 10) - 1;
+    if (!(laneIdx >= 0 && laneIdx < 3)) {
+      appendLog("Mirror Image finds no focus.");
+      return;
+    }
+    const myAssignments = casterSide === "player" ? assign.player : assign.enemy;
+    const opponentAssignments = opponentSide === "player" ? assign.player : assign.enemy;
+    if (!myAssignments[laneIdx]) {
+      appendLog("You must commit a card to mirror there.");
+      return;
+    }
+    if (!opponentAssignments[laneIdx]) {
+      appendLog("There is no opposing card to copy there.");
+      return;
+    }
+    const plan = preSpinPlan[casterSide] ?? createEmptyPlan();
+    if (plan.mirrorImage[laneIdx]) {
+      appendLog("That lane is already mirrored.");
+      return;
+    }
+    setPreSpinPlan((prev) => {
+      const cur = prev[casterSide] ?? createEmptyPlan();
+      const mirrorImage = { ...cur.mirrorImage, [laneIdx]: true };
+      const notes = [...cur.notes, `Mirror lane ${laneIdx + 1}`];
+      return { ...prev, [casterSide]: { ...cur, mirrorImage, notes } };
+    });
+    spendMana(casterSide, 1);
+    appendLog(`${namesByLegacy[casterSide]} mirrors the foe on lane ${laneIdx + 1}.`);
+  }, [appendLog, assign, enemy, isMultiplayer, localLegacySide, namesByLegacy, phase, player, preSpinPlan, spendMana]);
+
+  const handleArcaneShiftCast = useCallback(() => {
+    if (phase !== "choose") return;
+    if (isMultiplayer) {
+      appendLog("Mana actions are disabled during multiplayer matches.");
+      return;
+    }
+    const casterSide = localLegacySide;
+    const fighter = casterSide === "player" ? player : enemy;
+    if (fighter.mana < 1) {
+      appendLog(`${namesByLegacy[casterSide]} lacks the mana to weave an Arcane Shift.`);
+      return;
+    }
+    if (typeof window === "undefined") return;
+    const wheelStr = window.prompt("Choose a wheel to shift (1-3):", "1");
+    if (wheelStr === null) return;
+    const wheelIdx = Number.parseInt(wheelStr, 10) - 1;
+    if (!(wheelIdx >= 0 && wheelIdx < 3)) {
+      appendLog("The weave slips; no wheel selected.");
+      return;
+    }
+    const dirStr = window.prompt("Shift direction? Enter +1 or -1:", "+1");
+    if (dirStr === null) return;
+    const dir = Number.parseInt(dirStr, 10);
+    if (!(dir === 1 || dir === -1)) {
+      appendLog("Arcane Shift needs a direction of +1 or -1.");
+      return;
+    }
+    const magnitude = fighter.perks.includes("planarSwap") ? 2 : 1;
+    const appliedDir = dir * magnitude;
+    setPreSpinPlan((prev) => {
+      const cur = prev[casterSide] ?? createEmptyPlan();
+      const arcaneShift = { ...cur.arcaneShift, [wheelIdx]: (cur.arcaneShift[wheelIdx] ?? 0) + appliedDir };
+      const notes = [...cur.notes, `Shift wheel ${wheelIdx + 1} ${appliedDir > 0 ? "+" : ""}${appliedDir}`];
+      return { ...prev, [casterSide]: { ...cur, arcaneShift, notes } };
+    });
+    spendMana(casterSide, 1);
+    const shiftLabel = appliedDir > 0 ? `+${appliedDir}` : `${appliedDir}`;
+    appendLog(`${namesByLegacy[casterSide]} shifts wheel ${wheelIdx + 1} by ${shiftLabel} slice${Math.abs(appliedDir) > 1 ? "s" : ""}.`);
+  }, [appendLog, enemy, isMultiplayer, localLegacySide, namesByLegacy, phase, player, spendMana]);
+
+  const handleHexCast = useCallback(() => {
+    if (phase !== "choose") return;
+    if (isMultiplayer) {
+      appendLog("Mana actions are disabled during multiplayer matches.");
+      return;
+    }
+    const casterSide = localLegacySide;
+    const fighter = casterSide === "player" ? player : enemy;
+    if (fighter.mana < 1) {
+      appendLog(`${namesByLegacy[casterSide]} lacks the mana to unleash a Hex.`);
+      return;
+    }
+    const penalty = fighter.perks.includes("recallMastery") ? 3 : 2;
+    setPreSpinPlan((prev) => {
+      const cur = prev[casterSide] ?? createEmptyPlan();
+      const notes = [...cur.notes, `Hex -${penalty} reserve`];
+      return { ...prev, [casterSide]: { ...cur, hexPenalty: cur.hexPenalty + penalty, notes } };
+    });
+    spendMana(casterSide, 1);
+    appendLog(`${namesByLegacy[casterSide]} curses the foe's reserves (-${penalty}).`);
+    setTimeout(() => broadcastLocalReserve(), 0);
+  }, [appendLog, broadcastLocalReserve, enemy, localLegacySide, namesByLegacy, phase, player, spendMana, isMultiplayer]);
+
+  const handleTimeTwistCast = useCallback(() => {
+    if (phase !== "choose") return;
+    if (isMultiplayer) {
+      appendLog("Mana actions are disabled during multiplayer matches.");
+      return;
+    }
+    const casterSide = localLegacySide;
+    const fighter = casterSide === "player" ? player : enemy;
+    if (fighter.mana < 1) {
+      appendLog(`${namesByLegacy[casterSide]} lacks the mana to twist time.`);
+      return;
+    }
+    const plan = preSpinPlan[casterSide] ?? createEmptyPlan();
+    if (plan.initiativeSwapped) {
+      appendLog("Time Twist has already altered initiative this round.");
+      return;
+    }
+    const nextInitiative = initiative === "player" ? "enemy" : "player";
+    setPreSpinPlan((prev) => {
+      const cur = prev[casterSide] ?? createEmptyPlan();
+      const notes = [...cur.notes, "Time Twist"];
+      return { ...prev, [casterSide]: { ...cur, initiativeSwapped: true, notes } };
+    });
+    spendMana(casterSide, 1);
+    setInitiative(nextInitiative);
+    appendLog(`${namesByLegacy[casterSide]} twists time — initiative shifts to ${namesByLegacy[nextInitiative]}.`);
+  }, [appendLog, enemy, initiative, isMultiplayer, localLegacySide, namesByLegacy, phase, player, preSpinPlan, spendMana]);
 
   const resetMatch = useCallback(() => {
     clearResolveVotes();
@@ -2565,13 +2696,53 @@ const PreSpinControls = () => {
   const plan = preSpinPlan[localLegacySide] ?? createEmptyPlan();
   const mana = fighter.mana;
   const canAct = phase === 'choose' && !isMultiplayer;
-  const predictiveDisabled = !canAct || mana < 1;
-  const recallCost = Math.max(0, 1 - (fighter.perks.includes('recallMastery') ? 1 : 0));
-  const recallDisabled = !canAct || plan.recallUsed || mana < recallCost;
-  const recallLabel = recallCost > 0 ? `Recall Reserve (-${recallCost} mana)` : 'Recall Reserve (free)';
-  const swapCost = Math.max(1, 2 - (fighter.perks.includes('planarSwap') ? 1 : 0));
-  const reserveBonusTotal = plan.reserveBonus + plan.recallBonus;
   const notes = plan.notes.length ? plan.notes.join(' · ') : 'None';
+  const timeTwistDisabled = !canAct || mana < 1 || plan.initiativeSwapped;
+
+  const spells = [
+    {
+      key: 'fireball',
+      label: 'Fireball (spend X mana)',
+      onClick: handleFireballCast,
+      disabled: !canAct || mana < 1,
+      help: 'Spend mana to reduce an enemy lane by X (+1 with Spell Echo).',
+    },
+    {
+      key: 'ice-shard',
+      label: 'Ice Shard (-1 mana)',
+      onClick: handleIceShardCast,
+      disabled: !canAct || mana < 1,
+      help: 'Freeze an enemy lane; its value can no longer change this round.',
+    },
+    {
+      key: 'mirror-image',
+      label: 'Mirror Image (-1 mana)',
+      onClick: handleMirrorImageCast,
+      disabled: !canAct || mana < 1,
+      help: 'Copy the opposing card on a lane you committed to.',
+    },
+    {
+      key: 'arcane-shift',
+      label: 'Arcane Shift (-1 mana)',
+      onClick: handleArcaneShiftCast,
+      disabled: !canAct || mana < 1,
+      help: 'Move a wheel’s pointer by ±1 slice (±2 with Planar Swap).',
+    },
+    {
+      key: 'hex',
+      label: 'Hex (-1 mana)',
+      onClick: handleHexCast,
+      disabled: !canAct || mana < 1,
+      help: 'Reduce the opponent’s reserve sum by 2 (3 with Recall Mastery).',
+    },
+    {
+      key: 'time-twist',
+      label: plan.initiativeSwapped ? 'Time Twist (used)' : 'Time Twist (-1 mana)',
+      onClick: handleTimeTwistCast,
+      disabled: timeTwistDisabled,
+      help: 'Swap initiative for the rest of the round.',
+    },
+  ];
 
   return (
     <div className="space-y-3 text-[12px] text-slate-100">
@@ -2579,48 +2750,22 @@ const PreSpinControls = () => {
         <div className="font-semibold">
           Mana: <span className="tabular-nums">{mana}</span>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={handlePredictiveCast}
-            disabled={predictiveDisabled}
-            className="rounded bg-amber-400/90 px-2 py-1 font-semibold text-slate-900 disabled:opacity-40"
-          >
-            Predictive Cast (-1 mana)
-          </button>
-          <button
-            onClick={handleReserveRecall}
-            disabled={recallDisabled}
-            className="rounded bg-amber-300/90 px-2 py-1 font-semibold text-slate-900 disabled:opacity-40"
-          >
-            {recallLabel}
-          </button>
-        </div>
       </div>
-      <div className="space-y-1">
-        <div className="text-[11px] uppercase tracking-wide text-slate-400">Wheel Overrides</div>
-        <div className="flex flex-wrap gap-2">
-          {[0, 1, 2].map((w) => {
-            const override = plan.vcOverrides[w];
-            const needsMana = !override && mana < swapCost;
-            const disabled = !canAct || needsMana;
-            const label = override ? `Wheel ${w + 1}: ${override}` : `Wheel ${w + 1}: base`;
-            return (
-              <button
-                key={w}
-                onClick={() => handleSwapVC(w)}
-                disabled={disabled}
-                className="rounded border border-amber-400/50 px-2 py-1 text-amber-100 transition hover:border-amber-300 disabled:opacity-40"
-              >
-                Swap {label}
-                {!override ? ` (-${swapCost})` : ' (cycle)'}
-              </button>
-            );
-          })}
-        </div>
+      <div className="space-y-2">
+        {spells.map((spell) => (
+          <div key={spell.key} className="flex flex-col gap-0.5">
+            <button
+              onClick={spell.onClick}
+              disabled={spell.disabled}
+              className="rounded bg-amber-400/90 px-2 py-1 font-semibold text-slate-900 transition disabled:opacity-40"
+            >
+              {spell.label}
+            </button>
+            <span className="text-[11px] text-slate-300">{spell.help}</span>
+          </div>
+        ))}
       </div>
-      <div className="text-[11px] text-slate-300">
-        Reserve bonus: +{reserveBonusTotal} — {notes}
-      </div>
+      <div className="text-[11px] text-slate-300">Active effects: {notes}</div>
       {!canAct && isMultiplayer ? (
         <div className="text-[11px] text-slate-400 italic">
           Mana actions are disabled during multiplayer.
