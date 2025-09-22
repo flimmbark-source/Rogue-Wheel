@@ -882,7 +882,6 @@ export function recordMatchResult(opts: RecordMatchOptions): MatchResultSummary 
 
   // ...existing implementation that updates profile, XP, streak, etc.
   // Use mode/modeId/modeLabel as needed, and apply sharedStatsDelta if provided.
-}
 
   const state = loadStateRaw();
   const profile = state.profile;
