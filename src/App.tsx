@@ -36,7 +36,11 @@ import {
   type Fighter,
   type SplitChoiceMap,
   type Players,
+
+  type WheelArchetype,
+
   type MatchModeId,
+
   LEGACY_FROM_SIDE,
 } from "./game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
@@ -49,6 +53,7 @@ import {
   recordMatchResult,
   type MatchResultSummary,
   type LevelProgress,
+  getWheelLoadout,
 } from "./player/profileStore";
 import { isSplit, fmtNum } from "./game/values";
 
@@ -402,6 +407,7 @@ export default function ThreeWheel_WinsOnly({
       ? `You reached ${winGoal} wins.`
       : `${winnerName ?? remoteName} reached ${winGoal} wins.`;
 
+
   useEffect(() => {
     setInitiative(hostId ? hostLegacySide : localLegacySide);
   }, [hostId, hostLegacySide, localLegacySide]);
@@ -443,6 +449,7 @@ export default function ThreeWheel_WinsOnly({
   useEffect(() => {
     if (phase === "ended") {
       if (!hasRecordedResultRef.current) {
+
         const summary = recordMatchResult({
           didWin: localWon,
           modeId: matchMode.id,
@@ -451,6 +458,7 @@ export default function ThreeWheel_WinsOnly({
           timerSeconds: initialTimerSeconds,
           winMethod: finalWinMethod ?? (matchWinner ? "goal" : undefined),
         });
+
         hasRecordedResultRef.current = true;
         setMatchSummary(summary);
 
@@ -487,6 +495,7 @@ export default function ThreeWheel_WinsOnly({
         setLevelUpFlash(false);
       }
     }
+
   }, [
     phase,
     localWon,
@@ -499,6 +508,7 @@ export default function ThreeWheel_WinsOnly({
     finalWinMethod,
     matchWinner,
   ]);
+
 
   const [handClearance, setHandClearance] = useState<number>(0);
 
@@ -605,30 +615,48 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
   useEffect(() => { if (typeof window !== 'undefined' && !freezeLayout && lockedWheelSize === null) { setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth, handClearance)); } }, [handClearance, freezeLayout, lockedWheelSize]);
 
   // Per-wheel sections & tokens & active
+  const wheelLoadoutRef = useRef<WheelArchetype[] | null>(null);
+  if (!wheelLoadoutRef.current) {
+    try {
+      wheelLoadoutRef.current = getWheelLoadout();
+    } catch {
+      wheelLoadoutRef.current = ["bandit", "sorcerer", "beast"];
+    }
+  }
+
   const wheelRngRef = useRef<() => number>(() => Math.random());
+  const [wheelArchetypes, setWheelArchetypes] = useState<WheelArchetype[]>(
+    wheelLoadoutRef.current ?? ["bandit", "sorcerer", "beast"]
+  );
   const [wheelSections, setWheelSections] = useState<Section[][]>(() => {
     const seeded = createSeededRng(seed);
     wheelRngRef.current = seeded;
-    return [
-      genWheelSections("bandit", seeded),
-      genWheelSections("sorcerer", seeded),
-      genWheelSections("beast", seeded),
-    ];
+    return (wheelLoadoutRef.current ?? ["bandit", "sorcerer", "beast"]).map((arch) =>
+      genWheelSections(arch, seeded)
+    );
   });
 
   const generateWheelSet = useCallback((): Section[][] => {
     const rng = wheelRngRef.current ?? Math.random;
-    return [
-      genWheelSections("bandit", rng),
-      genWheelSections("sorcerer", rng),
-      genWheelSections("beast", rng),
-    ];
+    let loadout: WheelArchetype[];
+    try {
+      loadout = getWheelLoadout();
+    } catch {
+      loadout = ["bandit", "sorcerer", "beast"];
+    }
+    wheelLoadoutRef.current = loadout;
+    setWheelArchetypes(loadout);
+    return loadout.map((arch) => genWheelSections(arch, rng));
   }, []);
 
   useEffect(() => {
-    wheelRngRef.current = createSeededRng(seed);
-    setWheelSections(generateWheelSet());
-  }, [seed, generateWheelSet]);
+    const seeded = createSeededRng(seed);
+    wheelRngRef.current = seeded;
+    const loadout = wheelLoadoutRef.current ?? getWheelLoadout();
+    wheelLoadoutRef.current = loadout;
+    setWheelArchetypes(loadout);
+    setWheelSections(loadout.map((arch) => genWheelSections(arch, seeded)));
+  }, [seed]);
 
   const [tokens, setTokens] = useState<[number, number, number]>([0, 0, 0]);
   const [active] = useState<[boolean, boolean, boolean]>([true, true, true]);
@@ -2249,6 +2277,9 @@ return (
   onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
   aria-label={`Wheel ${i+1}`}
 >
+    <div className="pointer-events-none absolute top-2 left-1/2 -translate-x-1/2 text-[11px] font-semibold uppercase tracking-wide text-white/80">
+      {(wheelArchetypes[i] ?? `wheel-${i + 1}`).replace(/^(\w)/, (c) => c.toUpperCase())}
+    </div>
     <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
     <div
       aria-hidden

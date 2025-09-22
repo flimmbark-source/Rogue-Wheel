@@ -131,6 +131,8 @@ export type VC =
   | "DoubleWin"
   | "SwapWins";
 
+export type WheelArchetype = "bandit" | "sorcerer" | "beast" | "guardian" | "chaos";
+
 export type Section = {
   id: VC;
   color: string;
