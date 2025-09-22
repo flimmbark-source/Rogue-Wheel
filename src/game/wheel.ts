@@ -1,5 +1,6 @@
 // src/game/wheel.ts
 import { SLICES, VC, Section, type WheelArchetype } from "./types";
+import { shuffle } from "./math";
 
 export const VC_META: Record<
   VC,
@@ -21,7 +22,8 @@ export const VC_META: Record<
     icon: "🗃️",
     color: "#0ea5e9",
     short: "RES",
-    explain: "Compare sums of the two cards left in hand.",
+    // Adapted: reflect HUD-based reserve (cards left + bonuses like recall/predictive/echo)
+    explain: "Compare reserve totals (hand leftovers + bonuses).",
   },
   ClosestToTarget: {
     icon: "🎯",
@@ -51,8 +53,6 @@ export const VC_META: Record<
   },
 };
 
-import { shuffle } from "./math";
-
 export function genWheelSections(
   archetype: WheelArchetype = "bandit",
   rng: () => number = Math.random
@@ -73,6 +73,7 @@ export function genWheelSections(
         return shuffle([5, 4, 3, 2, 1], rng);
     }
   })();
+
   const availableKinds: VC[] = [
     "Strongest",
     "Weakest",
@@ -83,6 +84,7 @@ export function genWheelSections(
     "SwapWins",
   ];
   const kinds: VC[] = shuffle(availableKinds, rng).slice(0, lens.length);
+
   let start = 1;
   const sections: Section[] = [];
   for (let i = 0; i < kinds.length; i++) {
