@@ -2,6 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Realtime } from "ably";
 import type { PresenceMessage } from "ably";
 import { TARGET_WINS, type Players, type Side } from "./game/types";
+import {
+  getSharedStats,
+  getCoopObjectives,
+  getLeaderboard,
+  type SharedStats,
+  type CoopObjective,
+  type LeaderboardEntry,
+} from "./player/profileStore";
 
 // ----- Start payload now includes targetWins (wins goal) -----
 type StartMessagePayload = {
@@ -11,6 +19,9 @@ type StartMessagePayload = {
   players: Players;          // { left: {id,name,color}, right: {…} }
   playersArr?: { clientId: string; name: string }[]; // optional: raw list for debugging
   targetWins: number;        // 👈 merged feature: game wins goal
+  sharedStats: SharedStats;
+  leaderboard: LeaderboardEntry[];
+  cooperativeObjectives: CoopObjective[];
 };
 
 type StartPayload = StartMessagePayload & {
@@ -488,6 +499,9 @@ await refreshMembers(chan);
       hostId: members[0].clientId, // first in presence is host
       playersArr: members,         // optional, for debugging/analytics
       targetWins: winsGoal,        // 👈 pass wins goal into the game
+      sharedStats: getSharedStats(),
+      leaderboard: getLeaderboard(),
+      cooperativeObjectives: getCoopObjectives(),
     };
 
     await channelRef.current?.publish("start", payload);

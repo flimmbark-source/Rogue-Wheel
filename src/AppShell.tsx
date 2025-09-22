@@ -6,6 +6,7 @@ import HubRoute from "./HubRoute";
 import MultiplayerRoute from "./MultiplayerRoute";
 import type { Players, Side } from "./game/types";
 import ProfilePage from "./ProfilePage";
+import type { SharedStats, CoopObjective, LeaderboardEntry } from "./player/profileStore";
 
 type MPStartPayload = Parameters<
   NonNullable<React.ComponentProps<typeof MultiplayerRoute>["onStart"]>
@@ -63,7 +64,14 @@ export default function AppShell() {
   let players: Players;
   let localSide: Side;
   let localPlayerId: string;
-  let extraProps: { roomCode?: string; hostId?: string; targetWins?: number } = {};
+  let extraProps: {
+    roomCode?: string;
+    hostId?: string;
+    targetWins?: number;
+    sharedStatsSnapshot?: SharedStats;
+    cooperativeObjectives?: CoopObjective[];
+    leaderboardSnapshot?: LeaderboardEntry[];
+  } = {};
 
   if (view.mode === "mp" && (view.mpPayload ?? mpPayload)) {
     const mp = (view.mpPayload ?? mpPayload)!;
@@ -71,7 +79,14 @@ export default function AppShell() {
     players = mp.players;
     localSide = mp.localSide;
     localPlayerId = mp.players[localSide].id;
-    extraProps = { roomCode: mp.roomCode, hostId: mp.hostId, targetWins: mp.targetWins };
+    extraProps = {
+      roomCode: mp.roomCode,
+      hostId: mp.hostId,
+      targetWins: mp.targetWins,
+      sharedStatsSnapshot: mp.sharedStats,
+      cooperativeObjectives: mp.cooperativeObjectives,
+      leaderboardSnapshot: mp.leaderboard,
+    };
   } else {
     seed = Math.floor(Math.random() * 2 ** 31);
     players = {

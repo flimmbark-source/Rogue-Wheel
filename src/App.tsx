@@ -35,6 +35,7 @@ import {
   type SplitChoiceMap,
   type Players,
   LEGACY_FROM_SIDE,
+  type WheelArchetype,
 } from "./game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
@@ -44,8 +45,17 @@ import {
   refillTo,
   freshFive,
   recordMatchResult,
+  getUnlockedWheelArchetypes,
+  applySharedStatsFromNetwork,
+  applyCoopObjectivesSnapshot,
+  applyLeaderboardSnapshot,
+  getCoopObjectives,
+  getSharedStats,
   type MatchResultSummary,
   type LevelProgress,
+  type SharedStats,
+  type CoopObjective,
+  type LeaderboardEntry,
 } from "./player/profileStore";
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 
@@ -81,6 +91,20 @@ const THEME = {
   textWarm:  '#ead9b9',
 };
 
+const WHEEL_COUNT = 3;
+const normalizeWheelLoadout = (list: WheelArchetype[]): WheelArchetype[] => {
+  const source = list.length ? [...list] : ["bandit"];
+  const out: WheelArchetype[] = [];
+  for (const arch of source) {
+    if (out.length >= WHEEL_COUNT) break;
+    out.push(arch);
+  }
+  while (out.length < WHEEL_COUNT) {
+    out.push(out[out.length - 1] ?? "bandit");
+  }
+  return out.slice(0, WHEEL_COUNT);
+};
+
 // ---------------- Main Component ----------------
 export default function ThreeWheel_WinsOnly({
   localSide,
@@ -90,6 +114,9 @@ export default function ThreeWheel_WinsOnly({
   roomCode,
   hostId,
   targetWins,
+  sharedStatsSnapshot,
+  cooperativeObjectives,
+  leaderboardSnapshot,
   onExit,
 }: {
   localSide: TwoSide;
@@ -99,6 +126,9 @@ export default function ThreeWheel_WinsOnly({
   roomCode?: string;
   hostId?: string;
   targetWins?: number;
+  sharedStatsSnapshot?: SharedStats;
+  cooperativeObjectives?: CoopObjective[];
+  leaderboardSnapshot?: LeaderboardEntry[];
   onExit?: () => void;
 }) {
   const mountedRef = useRef(true);
@@ -119,6 +149,28 @@ export default function ThreeWheel_WinsOnly({
     enemy: players.right.name,
   };
 
+  const [sharedStatsState, setSharedStatsState] = useState<SharedStats>(() => getSharedStats());
+  const [coopObjectivesState, setCoopObjectivesState] = useState<CoopObjective[]>(() => getCoopObjectives());
+  const [wheelLoadout, setWheelLoadout] = useState<WheelArchetype[]>(() => normalizeWheelLoadout(getUnlockedWheelArchetypes()));
+
+  useEffect(() => {
+    if (sharedStatsSnapshot) {
+      setSharedStatsState(applySharedStatsFromNetwork(sharedStatsSnapshot));
+    }
+  }, [sharedStatsSnapshot]);
+
+  useEffect(() => {
+    if (cooperativeObjectives) {
+      setCoopObjectivesState(applyCoopObjectivesSnapshot(cooperativeObjectives));
+    }
+  }, [cooperativeObjectives]);
+
+  useEffect(() => {
+    if (leaderboardSnapshot) {
+      applyLeaderboardSnapshot(leaderboardSnapshot);
+    }
+  }, [leaderboardSnapshot]);
+
   const winGoal =
     typeof targetWins === "number" && Number.isFinite(targetWins)
       ? Math.max(1, Math.min(15, Math.round(targetWins)))
@@ -133,6 +185,12 @@ export default function ThreeWheel_WinsOnly({
   })();
 
   const isMultiplayer = !!roomCode;
+  const isCoopSession = useMemo(
+    () =>
+      isMultiplayer &&
+      (coopObjectivesState.some((o) => o.target > 0) || sharedStatsState.coopWins + sharedStatsState.coopLosses > 0),
+    [isMultiplayer, coopObjectivesState, sharedStatsState.coopWins, sharedStatsState.coopLosses]
+  );
   const ablyRef = useRef<AblyRealtime | null>(null);
   const chanRef = useRef<AblyChannel | null>(null);
 
@@ -230,10 +288,23 @@ export default function ThreeWheel_WinsOnly({
   useEffect(() => {
     if (phase === "ended") {
       if (!hasRecordedResultRef.current) {
-        const summary = recordMatchResult({ didWin: localWon });
+        const coopProgress =
+          localWon && isCoopSession && coopObjectivesState.some((o) => o.progress < o.target) ? 1 : 0;
+        const summary = recordMatchResult({
+          didWin: localWon,
+          mode: isMultiplayer ? "multiplayer" : "solo",
+          wheelArchetypes: wheelLoadout,
+          cooperativeObjectiveProgress: coopProgress,
+        });
         hasRecordedResultRef.current = true;
         setMatchSummary(summary);
 
+        if (summary.unlockedArchetypes?.length) {
+          setWheelLoadout(normalizeWheelLoadout(getUnlockedWheelArchetypes()));
+        }
+        setSharedStatsState(getSharedStats());
+        setCoopObjectivesState(getCoopObjectives());
+        
         if (summary.didWin) {
           setXpDisplay(summary.before);
           setLevelUpFlash(false);
@@ -267,7 +338,16 @@ export default function ThreeWheel_WinsOnly({
         setLevelUpFlash(false);
       }
     }
-  }, [phase, localWon, wins.player, wins.enemy]);
+  }, [
+    phase,
+    localWon,
+    wins.player,
+    wins.enemy,
+    isMultiplayer,
+    wheelLoadout,
+    coopObjectivesState,
+    isCoopSession,
+  ]);
 
   const [handClearance, setHandClearance] = useState<number>(0);
 
@@ -377,21 +457,13 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
   const [wheelSections, setWheelSections] = useState<Section[][]>(() => {
     const seeded = createSeededRng(seed);
     wheelRngRef.current = seeded;
-    return [
-      genWheelSections("bandit", seeded),
-      genWheelSections("sorcerer", seeded),
-      genWheelSections("beast", seeded),
-    ];
+    return wheelLoadout.map((archetype) => genWheelSections(archetype, seeded));
   });
 
   const generateWheelSet = useCallback((): Section[][] => {
     const rng = wheelRngRef.current ?? Math.random;
-    return [
-      genWheelSections("bandit", rng),
-      genWheelSections("sorcerer", rng),
-      genWheelSections("beast", rng),
-    ];
-  }, []);
+    return wheelLoadout.map((archetype) => genWheelSections(archetype, rng));
+  }, [wheelLoadout]);
 
   useEffect(() => {
     wheelRngRef.current = createSeededRng(seed);

@@ -8,7 +8,10 @@ import {
   deleteDeck,
   swapDeckCards,
   expRequiredForLevel,
+  claimChallengeReward,
   type ProfileBundle,
+  type Challenge,
+  type ChallengeReward,
 } from "./player/profileStore";
 import type { Card } from "./game/types";
 
@@ -54,6 +57,17 @@ function FitCard({
   );
 }
 
+function rewardLabel(reward: ChallengeReward): string {
+  if (reward.type === "currency") return `${reward.amount} ${reward.currency}`;
+  if (reward.type === "inventory") {
+    return reward.items.map((item) => `${item.qty}× ${item.cardId}`).join(", ");
+  }
+  return reward.name ?? reward.cosmeticId;
+}
+
+const challengePercent = (challenge: Challenge) =>
+  challenge.target > 0 ? Math.min(1, challenge.progress / challenge.target) : 0;
+
 export default function ProfilePage() {
   // Initialize immediately so we can render without waiting for an effect
   const [bundle, setBundle] = useState<ProfileBundle | null>(() => {
@@ -92,10 +106,23 @@ export default function ProfilePage() {
     );
   }
 
-  const { profile, inventory, decks, active } = bundle;
+  const { profile, inventory, decks, active, challenges, sharedStats, coopObjectives, leaderboard } = bundle;
 
   const expToNext = expRequiredForLevel(profile.level);
   const expPercent = expToNext > 0 ? Math.min(1, profile.exp / expToNext) : 0;
+
+  const currencyEntries = useMemo(
+    () => Object.entries(profile.currencies ?? {} as Record<string, number>),
+    [profile.currencies]
+  );
+  const unlockedWheels = useMemo(
+    () =>
+      Object.entries(profile.unlocks?.wheels ?? {})
+        .filter(([, unlocked]) => Boolean(unlocked))
+        .map(([id]) => id),
+    [profile.unlocks]
+  );
+  const cosmetics = profile.cosmetics ?? [];
 
   // Expand active deck into 10 visible slots (duplicates expanded)
   const deckSlots: (string | null)[] = useMemo(() => {
@@ -136,6 +163,16 @@ export default function ProfilePage() {
     catch (err: any) { alert(err?.message ?? "Could not remove from deck"); }
   };
 
+  const handleClaim = (id: string) => {
+    try {
+      const result = claimChallengeReward(id);
+      if (!result) return;
+      refresh();
+    } catch (err: any) {
+      alert(err?.message ?? "Unable to claim reward");
+    }
+  };
+
   return (
     <div className="p-4 grid gap-4 md:grid-cols-2">
       {/* LEFT: Decks + Active Deck */}
@@ -159,6 +196,50 @@ export default function ProfilePage() {
             />
           </div>
           <div className="mt-1 text-xs text-white/60">Current streak: {profile.winStreak}</div>
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg bg-black/30 p-3 ring-1 ring-white/10">
+            <div className="text-xs font-semibold uppercase tracking-wide text-white/60">Currencies</div>
+            <ul className="mt-2 space-y-1 text-sm">
+              {currencyEntries.length ? (
+                currencyEntries.map(([id, amount]) => (
+                  <li key={id} className="flex items-center justify-between capitalize">
+                    <span>{id}</span>
+                    <span>{amount}</span>
+                  </li>
+                ))
+              ) : (
+                <li className="text-xs text-white/60">No currency yet.</li>
+              )}
+            </ul>
+          </div>
+          <div className="rounded-lg bg-black/30 p-3 ring-1 ring-white/10">
+            <div className="text-xs font-semibold uppercase tracking-wide text-white/60">Unlocked Wheels</div>
+            <div className="mt-2 flex flex-wrap gap-1 text-xs">
+              {unlockedWheels.length ? (
+                unlockedWheels.map((id) => (
+                  <span key={id} className="px-2 py-1 rounded-full bg-white/10 capitalize">
+                    {id}
+                  </span>
+                ))
+              ) : (
+                <span className="text-white/60">Bandit</span>
+              )}
+            </div>
+            {cosmetics.length > 0 && (
+              <div className="mt-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-white/60">Cosmetics</div>
+                <div className="mt-2 flex flex-wrap gap-1 text-xs">
+                  {cosmetics.map((id) => (
+                    <span key={id} className="px-2 py-1 rounded-full bg-indigo-500/20 text-indigo-100/90">
+                      {id}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center justify-between mt-3">
@@ -268,6 +349,184 @@ export default function ProfilePage() {
               </div>
             );
           })}
+        </div>
+      </section>
+
+      <section className="md:col-span-2 rounded-xl p-3 border border-white/20 bg-black/25">
+        <h3 className="text-lg">Challenges</h3>
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <div>
+            <h4 className="text-sm font-semibold text-white/80">Daily</h4>
+            <div className="mt-2 space-y-3">
+              {challenges.daily.length ? (
+                challenges.daily.map((challenge) => {
+                  const pct = challengePercent(challenge);
+                  return (
+                    <div key={challenge.id} className="rounded-lg bg-white/5 p-3 ring-1 ring-white/10">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">{challenge.title}</div>
+                          <div className="text-xs text-white/70 mt-1">{challenge.description}</div>
+                        </div>
+                        <div className="text-xs text-white/60 whitespace-nowrap">
+                          {challenge.progress} / {challenge.target}
+                        </div>
+                      </div>
+                      <div className="mt-2 h-2 w-full rounded-full bg-white/10">
+                        <div
+                          className="h-2 rounded-full bg-emerald-400"
+                          style={{ width: `${Math.min(100, pct * 100)}%` }}
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-xs text-white/70">
+                        <span>Reward: {rewardLabel(challenge.reward)}</span>
+                        <button
+                          className={`px-2 py-1 rounded border ${challenge.claimedAt
+                            ? "border-white/10 text-white/40"
+                            : challenge.completedAt
+                            ? "border-emerald-400 text-emerald-200 hover:bg-emerald-500/20"
+                            : "border-white/15 text-white/50"}`}
+                          onClick={() => handleClaim(challenge.id)}
+                          disabled={!challenge.completedAt || !!challenge.claimedAt}
+                        >
+                          {challenge.claimedAt ? "Claimed" : challenge.completedAt ? "Claim" : "In progress"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-xs text-white/60">No daily challenges available.</p>
+              )}
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-white/80">Weekly</h4>
+            <div className="mt-2 space-y-3">
+              {challenges.weekly.length ? (
+                challenges.weekly.map((challenge) => {
+                  const pct = challengePercent(challenge);
+                  return (
+                    <div key={challenge.id} className="rounded-lg bg-white/5 p-3 ring-1 ring-white/10">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">{challenge.title}</div>
+                          <div className="text-xs text-white/70 mt-1">{challenge.description}</div>
+                        </div>
+                        <div className="text-xs text-white/60 whitespace-nowrap">
+                          {challenge.progress} / {challenge.target}
+                        </div>
+                      </div>
+                      <div className="mt-2 h-2 w-full rounded-full bg-white/10">
+                        <div
+                          className="h-2 rounded-full bg-sky-400"
+                          style={{ width: `${Math.min(100, pct * 100)}%` }}
+                        />
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-xs text-white/70">
+                        <span>Reward: {rewardLabel(challenge.reward)}</span>
+                        <button
+                          className={`px-2 py-1 rounded border ${challenge.claimedAt
+                            ? "border-white/10 text-white/40"
+                            : challenge.completedAt
+                            ? "border-sky-400 text-sky-100 hover:bg-sky-500/20"
+                            : "border-white/15 text-white/50"}`}
+                          onClick={() => handleClaim(challenge.id)}
+                          disabled={!challenge.completedAt || !!challenge.claimedAt}
+                        >
+                          {challenge.claimedAt ? "Claimed" : challenge.completedAt ? "Claim" : "In progress"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-xs text-white/60">No weekly challenges available.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="md:col-span-2 rounded-xl p-3 border border-white/20 bg-black/25">
+        <h3 className="text-lg">Shared Progress</h3>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 md:grid-cols-4 text-sm">
+          <div className="rounded-lg bg-white/5 p-3 ring-1 ring-white/10">
+            <div className="text-xs uppercase text-white/60">Co-op Wins</div>
+            <div className="text-lg font-semibold">{sharedStats.coopWins}</div>
+          </div>
+          <div className="rounded-lg bg-white/5 p-3 ring-1 ring-white/10">
+            <div className="text-xs uppercase text-white/60">Co-op Losses</div>
+            <div className="text-lg font-semibold">{sharedStats.coopLosses}</div>
+          </div>
+          <div className="rounded-lg bg-white/5 p-3 ring-1 ring-white/10">
+            <div className="text-xs uppercase text-white/60">Objectives</div>
+            <div className="text-lg font-semibold">{sharedStats.objectivesCompleted}</div>
+          </div>
+          <div className="rounded-lg bg-white/5 p-3 ring-1 ring-white/10">
+            <div className="text-xs uppercase text-white/60">Rating</div>
+            <div className="text-lg font-semibold">{sharedStats.leaderboardRating}</div>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <h4 className="text-sm font-semibold text-white/80">Cooperative Objectives</h4>
+          <div className="mt-2 space-y-2">
+            {coopObjectives.length ? (
+              coopObjectives.map((objective) => {
+                const pct = objective.target > 0 ? Math.min(1, objective.progress / objective.target) : 0;
+                return (
+                  <div key={objective.id} className="rounded-lg bg-white/5 p-3 ring-1 ring-white/10">
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="font-medium text-white/90">{objective.description}</div>
+                      <div className="text-xs text-white/60">
+                        {objective.progress} / {objective.target}
+                      </div>
+                    </div>
+                    <div className="mt-2 h-2 w-full rounded-full bg-white/10">
+                      <div
+                        className="h-2 rounded-full bg-fuchsia-400"
+                        style={{ width: `${Math.min(100, pct * 100)}%` }}
+                      />
+                    </div>
+                    {objective.reward && (
+                      <div className="mt-2 text-xs text-white/70">
+                        Reward: {rewardLabel(objective.reward)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-xs text-white/60">No cooperative objectives active.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="md:col-span-2 rounded-xl p-3 border border-white/20 bg-black/25">
+        <h3 className="text-lg">Leaderboard Snapshot</h3>
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="text-xs uppercase text-white/50">
+              <tr>
+                <th className="text-left py-1 pr-4">#</th>
+                <th className="text-left py-1 pr-4">Player</th>
+                <th className="text-left py-1 pr-4">Rating</th>
+                <th className="text-left py-1">Wins</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leaderboard.slice(0, 5).map((entry, idx) => (
+                <tr key={entry.playerId} className="border-t border-white/10">
+                  <td className="py-1 pr-4">{idx + 1}</td>
+                  <td className="py-1 pr-4">{entry.name}</td>
+                  <td className="py-1 pr-4">{entry.rating}</td>
+                  <td className="py-1">{entry.victories}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
     </div>

@@ -1,5 +1,5 @@
 // src/game/wheel.ts
-import { SLICES, VC, Section } from "./types";
+import { SLICES, VC, Section, type WheelArchetype } from "./types";
 
 export const VC_META: Record<
   VC,
@@ -14,15 +14,20 @@ export const VC_META: Record<
 
 import { shuffle } from "./math";
 
+const ARCHETYPE_SEGMENTS: Record<WheelArchetype, number[]> = {
+  bandit: [5, 4, 3, 2, 1],
+  sorcerer: [5, 5, 2, 2, 1],
+  beast: [6, 3, 3, 2, 1],
+  guardian: [4, 4, 3, 3, 2],
+  chaos: [7, 3, 2, 2, 2],
+};
+
 export function genWheelSections(
-  archetype: "bandit" | "sorcerer" | "beast" = "bandit",
+  archetype: WheelArchetype = "bandit",
   rng: () => number = Math.random
 ): Section[] {
-  const lens = (() => {
-    if (archetype === "bandit") return shuffle([5, 4, 3, 2, 1], rng);
-    if (archetype === "sorcerer") return shuffle([5, 5, 2, 2, 1], rng);
-    return shuffle([6, 3, 3, 2, 1], rng);
-  })();
+  const baseLens = ARCHETYPE_SEGMENTS[archetype] ?? ARCHETYPE_SEGMENTS.bandit;
+  const lens = shuffle(baseLens, rng);
   const kinds: VC[] = shuffle([
     "Strongest",
     "Weakest",
