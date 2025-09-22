@@ -7,10 +7,12 @@ import {
   renameDeck,
   deleteDeck,
   swapDeckCards,
+  unlockSorcererPerk,
   expRequiredForLevel,
   type ProfileBundle,
 } from "./player/profileStore";
-import type { Card } from "./game/types";
+import type { Card, SorcererPerk } from "./game/types";
+import { SORCERER_PERKS } from "./game/types";
 
 /** Map our string cardId → runtime Card for StSCard preview. */
 function cardFromId(cardId: string): Card {
@@ -54,6 +56,25 @@ function FitCard({
   );
 }
 
+const PERK_INFO: Record<SorcererPerk, { title: string; description: string }> = {
+  arcaneOverflow: {
+    title: "Arcane Overflow",
+    description: "Start each battle with +1 mana.",
+  },
+  spellEcho: {
+    title: "Spell Echo",
+    description: "Predictive casts grant +3 reserve instead of +2.",
+  },
+  planarSwap: {
+    title: "Planar Swap",
+    description: "VC swaps cost 1 less mana (minimum 1).",
+  },
+  recallMastery: {
+    title: "Recall Mastery",
+    description: "Reserve recalls are free and pull up to two cards when possible.",
+  },
+};
+
 export default function ProfilePage() {
   // Initialize immediately so we can render without waiting for an effect
   const [bundle, setBundle] = useState<ProfileBundle | null>(() => {
@@ -93,6 +114,7 @@ export default function ProfilePage() {
   }
 
   const { profile, inventory, decks, active } = bundle;
+  const unlockedPerks = profile.sorcererPerks ?? [];
 
   const expToNext = expRequiredForLevel(profile.level);
   const expPercent = expToNext > 0 ? Math.min(1, profile.exp / expToNext) : 0;
@@ -159,6 +181,40 @@ export default function ProfilePage() {
             />
           </div>
           <div className="mt-1 text-xs text-white/60">Current streak: {profile.winStreak}</div>
+        </div>
+
+        <h3 className="text-lg mt-4">Sorcerer Perks</h3>
+        <div className="mt-2 space-y-2">
+          {SORCERER_PERKS.map((perk) => {
+            const info = PERK_INFO[perk as SorcererPerk];
+            const unlocked = unlockedPerks.includes(perk as SorcererPerk);
+            return (
+              <div
+                key={perk}
+                className="flex items-start justify-between gap-3 rounded-lg border border-white/20 bg-black/30 px-3 py-2"
+              >
+                <div>
+                  <div className="font-semibold text-sm">{info.title}</div>
+                  <div className="text-xs opacity-80 max-w-xs">{info.description}</div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (unlocked) return;
+                    unlockSorcererPerk(perk as SorcererPerk);
+                    refresh();
+                  }}
+                  disabled={unlocked}
+                  className={`text-xs px-2 py-1 rounded border transition ${
+                    unlocked
+                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200 cursor-default'
+                      : 'border-amber-400/60 bg-amber-400/80 text-slate-900 hover:bg-amber-300'
+                  }`}
+                >
+                  {unlocked ? 'Unlocked' : 'Unlock'}
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         <div className="flex items-center justify-between mt-3">

@@ -54,11 +54,22 @@ export type Section = {
   target?: number;
 };
 
+export const SORCERER_PERKS = [
+  "arcaneOverflow",
+  "spellEcho",
+  "planarSwap",
+  "recallMastery",
+] as const;
+
+export type SorcererPerk = (typeof SORCERER_PERKS)[number];
+
 export type Fighter = {
   name: string;
   deck: Card[];
   hand: Card[];
   discard: Card[];
+  mana: number;
+  perks: SorcererPerk[];
 };
 
 /** Helpful 2P maps (optional, but convenient) */
