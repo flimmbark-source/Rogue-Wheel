@@ -37,20 +37,6 @@ export const VC_META: Record<
     short: "INIT",
     explain: "Initiative holder wins.",
   },
-  DoubleWin: {
-    icon: "✨",
-    color: "#fb7185",
-    short: "DBL",
-    explain: "Higher value wins and awards 2 round wins.",
-    effect: "Winner gains two wins instead of one.",
-  },
-  SwapWins: {
-    icon: "🔄",
-    color: "#22d3ee",
-    short: "SWAP",
-    explain: "Lower value wins; after scoring, round tallies swap sides.",
-    effect: "Round win tallies trade places before the round is scored.",
-  },
 };
 
 export function genWheelSections(
@@ -80,8 +66,6 @@ export function genWheelSections(
     "ReserveSum",
     "ClosestToTarget",
     "Initiative",
-    "DoubleWin",
-    "SwapWins",
   ];
   const kinds: VC[] = shuffle(availableKinds, rng).slice(0, lens.length);
 

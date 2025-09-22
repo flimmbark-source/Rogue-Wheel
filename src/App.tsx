@@ -731,8 +731,15 @@ const storeReserveReport = useCallback(
   const [revealedDuringChoose, setRevealedDuringChoose] = useState<{ player: number[]; enemy: number[] }>({ player: [], enemy: [] });
   const revealUsedRef = useRef<{ player: boolean; enemy: boolean }>({ player: false, enemy: false });
 
-  // Reference popover
+  // Reference + spell popovers
   const [showRef, setShowRef] = useState(false);
+  const [showSpells, setShowSpells] = useState(false);
+
+  useEffect(() => {
+    if (phase !== "choose") {
+      setShowSpells(false);
+    }
+  }, [phase]);
 
   const appendLog = (s: string) => setLog((prev) => [s, ...prev].slice(0, 60));
   const START_LOG = "A Shade Bandit eyes your purse...";
@@ -1384,8 +1391,6 @@ case "ReserveSum": {
         }
 
         case "Initiative": winner = initiative; detail = `Initiative -> ${winner}`; break;
-        case "DoubleWin": if (pVal === eVal) tie = true; else winner = pVal > eVal ? "player" : "enemy"; detail = `Double win ${pVal} vs ${eVal}`; break;
-        case "SwapWins": if (pVal === eVal) tie = true; else winner = pVal < eVal ? "player" : "enemy"; detail = `Swap wins ${pVal} vs ${eVal}`; break;
         default: tie = true; detail = `Slice 0: no section`; break;
 
       }
@@ -1428,17 +1433,12 @@ case "ReserveSum": {
 const hudColors: [string | null, string | null, string | null] = [null, null, null];
 const roundWins: Record<LegacySide, number> = { player: 0, enemy: 0 };
 const manaGains: Record<LegacySide, number> = { player: 0, enemy: 0 };
-let swapCount = 0;
 
 outcomes.forEach((o) => {
   const wheelLabel = `Wheel ${o.wheel + 1}`;
 
   if (o.tie) {
     appendLog(`${wheelLabel} tie: ${o.detail} — no win.`);
-    if (o.section.id === "SwapWins") {
-      swapCount += 1;
-      appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
-    }
     return;
   }
 
@@ -1446,11 +1446,7 @@ outcomes.forEach((o) => {
 
   hudColors[o.wheel] = HUD_COLORS[o.winner];
 
-  let awarded = 1;
-  if (o.section.id === "DoubleWin") {
-    awarded = 2;
-  }
-  roundWins[o.winner] += awarded;
+  roundWins[o.winner] += 1;
 
   if (MANA_VC_REWARD.includes(o.section.id)) {
     manaGains[o.winner] += 1;
@@ -1458,24 +1454,8 @@ outcomes.forEach((o) => {
 
   appendLog(`${wheelLabel} win -> ${o.winner} (${o.detail}).`);
 
-  if (o.section.id === "DoubleWin") {
-    appendLog(`✨ ${wheelLabel}: ${namesByLegacy[o.winner]} claims two wins from this slice!`);
-  }
-  if (o.section.id === "SwapWins") {
-    swapCount += 1;
-    appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
-  }
+  
 }); // <— exactly one closing brace + parenthesis here
-      
-      if (swapCount > 0) {
-        const before = `${roundWins.player}-${roundWins.enemy}`;
-        if (swapCount % 2 === 1) {
-          [roundWins.player, roundWins.enemy] = [roundWins.enemy, roundWins.player];
-          appendLog(`🔄 Swap effect: tallies trade places (${before} → ${roundWins.player}-${roundWins.enemy}).`);
-        } else {
-          appendLog(`🔄 Swap effect triggered ${swapCount} times: tallies return to ${before}.`);
-        }
-      }
 
       if (!mountedRef.current) return;
 
@@ -2594,12 +2574,10 @@ const PreSpinControls = () => {
   const notes = plan.notes.length ? plan.notes.join(' · ') : 'None';
 
   return (
-    <div
-      className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-100 shadow-sm"
-    >
+    <div className="space-y-3 text-[12px] text-slate-100">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          Mana: <span className="font-semibold tabular-nums">{mana}</span>
+        <div className="font-semibold">
+          Mana: <span className="tabular-nums">{mana}</span>
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -2618,30 +2596,33 @@ const PreSpinControls = () => {
           </button>
         </div>
       </div>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {[0, 1, 2].map((w) => {
-          const override = plan.vcOverrides[w];
-          const needsMana = !override && mana < swapCost;
-          const disabled = !canAct || needsMana;
-          const label = override ? `Wheel ${w + 1}: ${override}` : `Wheel ${w + 1}: base`;
-          return (
-            <button
-              key={w}
-              onClick={() => handleSwapVC(w)}
-              disabled={disabled}
-              className="rounded border border-amber-400/60 bg-transparent px-2 py-1 text-amber-100 transition disabled:opacity-40"
-            >
-              Swap {label}
-              {!override ? ` (-${swapCost})` : ' (cycle)'}
-            </button>
-          );
-        })}
+      <div className="space-y-1">
+        <div className="text-[11px] uppercase tracking-wide text-slate-400">Wheel Overrides</div>
+        <div className="flex flex-wrap gap-2">
+          {[0, 1, 2].map((w) => {
+            const override = plan.vcOverrides[w];
+            const needsMana = !override && mana < swapCost;
+            const disabled = !canAct || needsMana;
+            const label = override ? `Wheel ${w + 1}: ${override}` : `Wheel ${w + 1}: base`;
+            return (
+              <button
+                key={w}
+                onClick={() => handleSwapVC(w)}
+                disabled={disabled}
+                className="rounded border border-amber-400/50 px-2 py-1 text-amber-100 transition hover:border-amber-300 disabled:opacity-40"
+              >
+                Swap {label}
+                {!override ? ` (-${swapCost})` : ' (cycle)'}
+              </button>
+            );
+          })}
+        </div>
       </div>
-      <div className="mt-2 text-[11px] text-amber-200/80">
+      <div className="text-[11px] text-slate-300">
         Reserve bonus: +{reserveBonusTotal} — {notes}
       </div>
       {!canAct && isMultiplayer ? (
-        <div className="mt-2 text-[11px] text-amber-200/70 italic">
+        <div className="text-[11px] text-slate-400 italic">
           Mana actions are disabled during multiplayer.
         </div>
       ) : null}
@@ -2705,26 +2686,63 @@ const PreSpinControls = () => {
           <div><span className="opacity-70">Phase</span> <span className="font-semibold">{phase}</span></div>
           <div><span className="opacity-70">Goal</span> <span className="font-semibold">First to {winGoal} wins</span></div>
         </div>
-        <div className="flex items-center gap-2 relative">
-          <button onClick={() => setShowRef((v) => !v)} className="px-2.5 py-0.5 rounded bg-slate-700 text-white border border-slate-600 hover:bg-slate-600">Reference</button>
-          {showRef && (
-            <div className="absolute top-[110%] right-0 w-80 rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50">
-              <div className="flex items-center justify-between mb-1"><div className="font-semibold">Reference</div><button onClick={() => setShowRef(false)} className="text-xl leading-none text-slate-300 hover:text-white">×</button></div>
-              <div className="text-[12px] space-y-2">
-                <div>Place <span className="font-semibold">1 card next to each wheel</span>, then <span className="font-semibold">press the Resolve button</span>. Where the <span className="font-semibold">token stops</span> decides the winnning rule, and the player who matches it gets <span className="font-semibold">1 win</span>. First to <span className="font-semibold">{winGoal}</span> wins takes the match.</div>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>💥 Strongest — higher value wins</li>
-                  <li>🦊 Weakest — lower value wins</li>
-                  <li>🗃️ Reserve — compare the two cards left in hand</li>
-                  <li>🎯 Closest — value closest to target wins</li>
-                  <li>⚑ Initiative — initiative holder wins</li>
-                  <li>✨ Double Win — higher value wins and counts double</li>
-                  <li>🔄 Swap Wins — lower value wins, then the round tallies swap sides</li>
-                  <li><span className="font-semibold">0 Start</span> — no one wins</li>
-                </ul>
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <button
+              onClick={() => setShowRef((v) => !v)}
+              className="px-2.5 py-0.5 rounded bg-slate-700 text-white border border-slate-600 hover:bg-slate-600"
+            >
+              Reference
+            </button>
+            {showRef && (
+              <div className="absolute top-[110%] right-0 w-80 rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-semibold">Reference</div>
+                  <button
+                    onClick={() => setShowRef(false)}
+                    className="text-xl leading-none text-slate-300 hover:text-white"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="text-[12px] space-y-2">
+                  <div>
+                    Place <span className="font-semibold">1 card next to each wheel</span>, then <span className="font-semibold">press the Resolve button</span>. Where the <span className="font-semibold">token stops</span> decides the winnning rule, and the player who matches it gets <span className="font-semibold">1 win</span>. First to <span className="font-semibold">{winGoal}</span> wins takes the match.
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>💥 Strongest — higher value wins</li>
+                    <li>🦊 Weakest — lower value wins</li>
+                    <li>🗃️ Reserve — compare the two cards left in hand</li>
+                    <li>🎯 Closest — value closest to target wins</li>
+                    <li>⚑ Initiative — initiative holder wins</li>
+                    <li><span className="font-semibold">0 Start</span> — no one wins</li>
+                  </ul>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => setShowSpells((v) => !v)}
+              className="px-2.5 py-0.5 rounded bg-slate-700 text-white border border-slate-600 hover:bg-slate-600"
+            >
+              Spells
+            </button>
+            {showSpells && (
+              <div className="absolute top-[110%] right-0 w-80 rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-semibold">Spells</div>
+                  <button
+                    onClick={() => setShowSpells(false)}
+                    className="text-xl leading-none text-slate-300 hover:text-white"
+                  >
+                    ×
+                  </button>
+                </div>
+                <PreSpinControls />
+              </div>
+            )}
+          </div>
           {phase === "choose" && (
             <div className="flex flex-col items-end gap-1">
               <button
@@ -2761,7 +2779,6 @@ const PreSpinControls = () => {
       </div>
 
       {/* HUD */}
-      <div className="mt-1"><PreSpinControls /></div>
       <div className="relative z-10"><HUDPanels /></div>
 
       {/* Wheels center */}
