@@ -1081,16 +1081,6 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       const roundWins: Record<LegacySide, number> = { player: 0, enemy: 0 };
       let swapCount = 0;
       outcomes.forEach((o) => 
-        const wheelLabel = `Wheel ${o.wheel + 1}`;
-        if (o.tie) {
-          appendLog(`${wheelLabel} tie: ${o.detail} — no win.`);
-          if (o.section.id === "SwapWins") {
-            swapCount += 1;
-            appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
-
-          }
-          return;
-        }
 
         if (!o.winner) return;
 
