@@ -16,8 +16,6 @@ import {
   DEFAULT_MATCH_MODE_ID,
   resolveMatchMode,
   type MatchModeId,
-  type Players,
-  type Side,
 } from "./game/types";
 
 // ----- Start payload now includes match settings -----

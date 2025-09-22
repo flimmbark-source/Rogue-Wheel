@@ -18,18 +18,7 @@ export type UnlockState = {
   wheels: Record<WheelArchetype, boolean>;
   modes: { coop: boolean; leaderboard: boolean };
 };
-export type Profile = {
-  id: string;
-  displayName: string;
-  mmr: number;
-  createdAt: number;
-  level: number;
-  exp: number;
-  winStreak: number;
-  currencies: CurrencyLedger;
-  unlocks: UnlockState;
-  cosmetics: string[];
-};
+
 export type ChallengeFrequency = "daily" | "weekly";
 export type ChallengeKind = "win_matches" | "coop_victories";
 export type ChallengeReward =
@@ -965,7 +954,6 @@ export function recordMatchResult(opts: RecordMatchOptions): MatchResultSummary 
 
 export function getSorcererPerks(): SorcererPerk[] {
   const state = loadStateRaw();
-  const profile = state.profile;
   const sanitized = sanitizePerks(profile?.sorcererPerks ?? []);
   if (!arraysEqual(profile?.sorcererPerks ?? [], sanitized)) {
     profile.sorcererPerks = sanitized;
@@ -976,7 +964,6 @@ export function getSorcererPerks(): SorcererPerk[] {
 
 export function unlockSorcererPerk(perk: SorcererPerk): SorcererPerk[] {
   const state = loadStateRaw();
-  const profile = state.profile;
   const current = sanitizePerks(profile?.sorcererPerks ?? []);
   if (!current.includes(perk) && isSorcererPerk(perk)) {
     current.push(perk);
