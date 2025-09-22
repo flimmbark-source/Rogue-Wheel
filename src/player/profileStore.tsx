@@ -168,10 +168,10 @@ const SEED_DECK: Deck = {
     { cardId: "basic_3", qty: 1 },
     { cardId: "basic_4", qty: 1 },
     { cardId: "basic_5", qty: 1 },
-    { cardId: "trick_decoy", qty: 1 },
-    { cardId: "trick_oddshift_right", qty: 1 },
-    { cardId: "trick_parity_flip", qty: 1 },
-    { cardId: "trick_echo", qty: 1 },
+    { cardId: "basic_6", qty: 1 },
+    { cardId: "basic_7", qty: 1 },
+    { cardId: "basic_8", qty: 1 },
+    { cardId: "basic_9", qty: 1 },
   ],
 };
 
