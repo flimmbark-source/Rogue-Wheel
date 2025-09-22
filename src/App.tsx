@@ -85,6 +85,7 @@ export default function ThreeWheel_WinsOnly({
     matchSummary,
     xpDisplay,
     levelUpFlash,
+    handClearance,
     wheelSize,
     wheelSections,
     tokens,
@@ -131,260 +132,271 @@ export default function ThreeWheel_WinsOnly({
     handleExitClick,
   } = actions;
 
+  const [showRef, setShowRef] = useState(false);
+
+  type SlotView = { side: LegacySide; card: Card | null; name: string };
+
   const renderWheelPanel = (i: number) => {
-  const pc = assign.player[i];
-  const ec = assign.enemy[i];
+    const pc = assign.player[i];
+    const ec = assign.enemy[i];
 
-  const leftSlot = { side: "player" as const, card: pc, name: namesByLegacy.player };
-  const rightSlot = { side: "enemy" as const, card: ec, name: namesByLegacy.enemy };
+    const leftSlot: SlotView = { side: "player", card: pc, name: namesByLegacy.player };
+    const rightSlot: SlotView = { side: "enemy", card: ec, name: namesByLegacy.enemy };
 
-  const ws = Math.round(lockedWheelSize ?? wheelSize);
+    const ws = Math.round(lockedWheelSize ?? wheelSize);
 
-  const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
-  const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
+    const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
+    const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
 
-  const shouldShowLeftCard =
-    !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
-  const shouldShowRightCard =
-    !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
+    const shouldShowLeftCard =
+      !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
+    const shouldShowRightCard =
+      !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
 
-  // --- layout numbers that must match the classes below ---
-  const slotW    = 80;   // w-[80px] on both slots
-  const gapX     = 16;   // gap-2 => 8px, two gaps between three items => 16
-  const paddingX = 16;   // p-2 => 8px left + 8px right
-  const borderX  = 4;    // border-2 => 2px left + 2px right
-  const EXTRA_H  = 16;   // extra breathing room inside the panel (change to tweak height)
+    // --- layout numbers that must match the classes below ---
+    const slotW = 80; // w-[80px] on both slots
+    const gapX = 16; // gap-2 => 8px, two gaps between three items => 16
+    const paddingX = 16; // p-2 => 8px left + 8px right
+    const borderX = 4; // border-2 => 2px left + 2px right
+    const EXTRA_H = 16; // extra breathing room inside the panel (change to tweak height)
 
-  // panel width (border-box) so wheel is visually centered
-  const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
+    // panel width (border-box) so wheel is visually centered
+    const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
 
-  const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
-    if (!slot.card) return null;
-    const card = slot.card;
-    const interactable = slot.side === localLegacySide && phase === "choose";
+    const renderSlotCard = (slot: SlotView, isSlotSelected: boolean) => {
+      if (!slot.card) return null;
+      const card = slot.card;
+      const interactable = slot.side === localLegacySide && phase === "choose";
 
-    const handlePick = () => {
-      if (!interactable) return;
-      if (selectedCardId) {
-        tapAssignIfSelected();
-      } else {
+      const handlePick = () => {
+        if (!interactable) return;
+        if (selectedCardId) {
+          tapAssignIfSelected();
+        } else {
+          setSelectedCardId(card.id);
+        }
+      };
+
+      const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
+        if (!interactable) return;
         setSelectedCardId(card.id);
+        setDragCardId(card.id);
+        try {
+          e.dataTransfer.setData("text/plain", card.id);
+        } catch {}
+        e.dataTransfer.effectAllowed = "move";
+      };
+
+      const handleDragEnd = () => {
+        setDragCardId(null);
+        setDragOverWheel(null);
+      };
+
+      const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+        if (!interactable) return;
+        e.stopPropagation();
+        startPointerDrag(card, e);
+      };
+
+      return (
+        <StSCard
+          card={card}
+          size="sm"
+          disabled={!interactable}
+          selected={isSlotSelected}
+          onPick={handlePick}
+          draggable={interactable}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onPointerDown={handlePointerDown}
+        />
+      );
+    };
+
+    const onZoneDragOver = (e: React.DragEvent) => {
+      e.preventDefault();
+      if (dragCardId && active[i]) setDragOverWheel(i);
+    };
+    const onZoneLeave = () => {
+      if (dragCardId) setDragOverWheel(null);
+    };
+    const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
+      if (!id || !active[i]) return;
+      const intendedSide = targetSide ?? localLegacySide;
+      if (intendedSide !== localLegacySide) {
+        setDragOverWheel(null);
+        setDragCardId(null);
+        return;
       }
-    };
 
-    const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
-      if (!interactable) return;
-      setSelectedCardId(card.id);
-      setDragCardId(card.id);
-      try { e.dataTransfer.setData("text/plain", card.id); } catch {}
-      e.dataTransfer.effectAllowed = "move";
-    };
-
-    const handleDragEnd = () => {
-      setDragCardId(null);
+      const isLocalPlayer = localLegacySide === "player";
+      const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
+      const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as
+        | Card
+        | undefined;
+      const card = fromHand || fromSlots || null;
+      if (card) assignToWheelLocal(i, card as Card);
       setDragOverWheel(null);
+      setDragCardId(null);
+    };
+    const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
+      e.preventDefault();
+      handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
     };
 
-    const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (!interactable) return;
-      e.stopPropagation();
-      startPointerDrag(card, e);
+    const tapAssignIfSelected = () => {
+      if (!selectedCardId) return;
+      const isLocalPlayer = localLegacySide === "player";
+      const card =
+        (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === selectedCardId) ||
+        (isLocalPlayer ? assign.player : assign.enemy).find((c) => c?.id === selectedCardId) ||
+        null;
+      if (card) assignToWheelLocal(i, card as Card);
     };
+
+    const panelShadow = "0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)";
 
     return (
-      <StSCard
-        card={card}
-        size="sm"
-        disabled={!interactable}
-        selected={isSlotSelected}
-        onPick={handlePick}
-        draggable={interactable}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onPointerDown={handlePointerDown}
-      />
-    );
-  };
-
-  const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
-  const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
-  const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
-    if (!id || !active[i]) return;
-    const intendedSide = targetSide ?? localLegacySide;
-    if (intendedSide !== localLegacySide) {
-      setDragOverWheel(null);
-      setDragCardId(null);
-      return;
-    }
-
-    const isLocalPlayer = localLegacySide === "player";
-    const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
-    const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as Card | undefined;
-    const card = fromHand || fromSlots || null;
-    if (card) assignToWheelLocal(i, card as Card);
-    setDragOverWheel(null);
-    setDragCardId(null);
-  };
-  const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
-    e.preventDefault();
-    handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
-  };
-
-  const tapAssignIfSelected = () => {
-    if (!selectedCardId) return;
-    const isLocalPlayer = localLegacySide === "player";
-    const card =
-      (isLocalPlayer ? player.hand : enemy.hand).find(c => c.id === selectedCardId) ||
-      (isLocalPlayer ? assign.player : assign.enemy).find(c => c?.id === selectedCardId) ||
-      null;
-    if (card) assignToWheelLocal(i, card as Card);
-  };
-
-  const panelShadow = '0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)';
-
-  return (
-    <div
-      className="relative rounded-xl border p-2 shadow flex-none"
-      style={{
-        width: panelW,
-        height: ws + EXTRA_H,
-        background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
-        borderColor: THEME.panelBorder,
-        borderWidth: 2,
-        boxShadow: panelShadow,
-        contain: 'paint',
-        backfaceVisibility: 'hidden',
-        transform: 'translateZ(0)',
-        isolation: 'isolate'
-      }}
-    >
-  {/* ADD: winner dots (don’t affect layout) */}
-  { (phase === "roundEnd" || phase === "ended") && (
-    <>
-      {/* Player dot (top-left) */}
-      <span
-        aria-label={`Wheel ${i+1} player result`}
-        className="absolute top-1 left-1 rounded-full border"
+      <div
+        className="relative rounded-xl border p-2 shadow flex-none"
         style={{
-          width: 10,
-          height: 10,
-          background: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : 'transparent',
-          borderColor: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : THEME.panelBorder,
-          boxShadow: '0 0 0 1px rgba(0,0,0,0.4)'
+          width: panelW,
+          height: ws + EXTRA_H,
+          background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
+          borderColor: THEME.panelBorder,
+          borderWidth: 2,
+          boxShadow: panelShadow,
+          contain: "paint",
+          backfaceVisibility: "hidden",
+          transform: "translateZ(0)",
+          isolation: "isolate",
         }}
-      />
+      >
+        {(phase === "roundEnd" || phase === "ended") && (
+          <>
+            <span
+              aria-label={`Wheel ${i + 1} player result`}
+              className="absolute top-1 left-1 rounded-full border"
+              style={{
+                width: 10,
+                height: 10,
+                background: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : "transparent",
+                borderColor: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : THEME.panelBorder,
+                boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
+              }}
+            />
+            <span
+              aria-label={`Wheel ${i + 1} enemy result`}
+              className="absolute top-1 right-1 rounded-full border"
+              style={{
+                width: 10,
+                height: 10,
+                background: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : "transparent",
+                borderColor: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : THEME.panelBorder,
+                boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
+              }}
+            />
+          </>
+        )}
 
-      {/* Enemy dot (top-right) */}
-      <span
-        aria-label={`Wheel ${i+1} enemy result`}
-        className="absolute top-1 right-1 rounded-full border"
-        style={{
-          width: 10,
-          height: 10,
-          background: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : 'transparent',
-          borderColor: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : THEME.panelBorder,
-          boxShadow: '0 0 0 1px rgba(0,0,0,0.4)'
-        }}
-      />
-    </>
-  )}
-
-  {/* the row: slots + centered wheel */}
-  <div
-    className="flex items-center justify-center gap-2"
-    style={{ height: (ws + EXTRA_H) /* removed the - 3 */ }}
-  >
-        {/* Player slot */}
-        <div
-          data-drop="slot"
-          data-idx={i}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, "player")}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (leftSlot.side !== localLegacySide) return;
-            if (selectedCardId) {
-              // If a hand card is already selected, assign it here (this also swaps)
-              tapAssignIfSelected();
-            } else if (leftSlot.card) {
-              // 🔸 Arm this placed card for swapping (select it)
-              setSelectedCardId(leftSlot.card.id);
-            }
-          }}
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{
-            backgroundColor: dragOverWheel === i || isLeftSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-            borderColor:     dragOverWheel === i || isLeftSelected ? THEME.brass          : THEME.slotBorder,
-            boxShadow: isLeftSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
-          }}
-          aria-label={`Wheel ${i+1} left slot`}
-        >
-          {shouldShowLeftCard
-            ? renderSlotCard(leftSlot, isLeftSelected)
-            : <div className="text-[11px] opacity-80 text-center">
+        <div className="flex items-center justify-center gap-2" style={{ height: ws + EXTRA_H }}>
+          <div
+            data-drop="slot"
+            data-idx={i}
+            onDragOver={onZoneDragOver}
+            onDragEnter={onZoneDragOver}
+            onDragLeave={onZoneLeave}
+            onDrop={(e) => onZoneDrop(e, "player")}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (leftSlot.side !== localLegacySide) return;
+              if (selectedCardId) {
+                tapAssignIfSelected();
+              } else if (leftSlot.card) {
+                setSelectedCardId(leftSlot.card.id);
+              }
+            }}
+            className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+            style={{
+              backgroundColor:
+                dragOverWheel === i || isLeftSelected ? "rgba(182,138,78,.12)" : THEME.slotBg,
+              borderColor: dragOverWheel === i || isLeftSelected ? THEME.brass : THEME.slotBorder,
+              boxShadow: isLeftSelected ? "0 0 0 1px rgba(251,191,36,0.7)" : "none",
+            }}
+            aria-label={`Wheel ${i + 1} left slot`}
+          >
+            {shouldShowLeftCard ? (
+              renderSlotCard(leftSlot, isLeftSelected)
+            ) : (
+              <div className="text-[11px] opacity-80 text-center">
                 {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
-              </div>}
-        </div>
+              </div>
+            )}
+          </div>
 
-  {/* Wheel face (fixed width equals wheel size; centers wheel exactly) */}
-  <div
-  data-drop="wheel"
-  data-idx={i}
-  className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
-  style={{ width: ws, height: ws }}
-  onDragOver={onZoneDragOver}
-  onDragEnter={onZoneDragOver}
-  onDragLeave={onZoneLeave}
-  onDrop={onZoneDrop}
-  onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
-  aria-label={`Wheel ${i+1}`}
->
-    <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
-    <div
-      aria-hidden
-      className="pointer-events-none absolute inset-0 rounded-full"
-      style={{ boxShadow: dragOverWheel === i ? '0 0 0 2px rgba(251,191,36,0.7) inset' : 'none' }}
-    />
-  </div>
-    
-        {/* Enemy slot */}
-        <div
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{
-            backgroundColor: dragOverWheel === i || isRightSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-            borderColor:     dragOverWheel === i || isRightSelected ? THEME.brass          : THEME.slotBorder,
-            boxShadow: isRightSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
-          }}
-          aria-label={`Wheel ${i+1} right slot`}
-          data-drop="slot"
-          data-idx={i}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, "enemy")}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (rightSlot.side !== localLegacySide) return;
-            if (selectedCardId) {
+          <div
+            data-drop="wheel"
+            data-idx={i}
+            className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
+            style={{ width: ws, height: ws }}
+            onDragOver={onZoneDragOver}
+            onDragEnter={onZoneDragOver}
+            onDragLeave={onZoneLeave}
+            onDrop={onZoneDrop}
+            onClick={(e) => {
+              e.stopPropagation();
               tapAssignIfSelected();
-            } else if (rightSlot.card) {
-              setSelectedCardId(rightSlot.card.id);
-            }
-          }}
-        >
-          {shouldShowRightCard
-            ? renderSlotCard(rightSlot, isRightSelected)
-            : <div className="text-[11px] opacity-60 text-center">
+            }}
+            aria-label={`Wheel ${i + 1}`}
+          >
+            <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 rounded-full"
+              style={{
+                boxShadow:
+                  dragOverWheel === i ? "0 0 0 2px rgba(251,191,36,0.7) inset" : "none",
+              }}
+            />
+          </div>
+
+          <div
+            className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+            style={{
+              backgroundColor:
+                dragOverWheel === i || isRightSelected ? "rgba(182,138,78,.12)" : THEME.slotBg,
+              borderColor: dragOverWheel === i || isRightSelected ? THEME.brass : THEME.slotBorder,
+              boxShadow: isRightSelected ? "0 0 0 1px rgba(251,191,36,0.7)" : "none",
+            }}
+            aria-label={`Wheel ${i + 1} right slot`}
+            data-drop="slot"
+            data-idx={i}
+            onDragOver={onZoneDragOver}
+            onDragEnter={onZoneDragOver}
+            onDragLeave={onZoneLeave}
+            onDrop={(e) => onZoneDrop(e, "enemy")}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (rightSlot.side !== localLegacySide) return;
+              if (selectedCardId) {
+                tapAssignIfSelected();
+              } else if (rightSlot.card) {
+                setSelectedCardId(rightSlot.card.id);
+              }
+            }}
+          >
+            {shouldShowRightCard ? (
+              renderSlotCard(rightSlot, isRightSelected)
+            ) : (
+              <div className="text-[11px] opacity-60 text-center">
                 {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
-              </div>}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
-
+    );
+  };
   const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
     const [liftPx, setLiftPx] = useState<number>(18);

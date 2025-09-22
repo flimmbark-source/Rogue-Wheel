@@ -1,6 +1,6 @@
 // src/ui/Hand.tsx
 import React from "react";
-import type { Card, Side } from "../game/types";
+import type { Card, Side } from "../src/game/types";
 
 export default function Hand({
   side,
