@@ -2,6 +2,50 @@
 export const SLICES = 16 as const;
 export const TARGET_WINS = 7 as const;
 
+export type MatchModeId = "short" | "standard" | "marathon";
+
+export type MatchModeConfig = {
+  id: MatchModeId;
+  name: string;
+  description: string;
+  targetWins: number;
+  timerSeconds?: number | null;
+};
+
+export const DEFAULT_MATCH_MODE_ID: MatchModeId = "standard";
+
+export const MATCH_MODE_PRESETS: Record<MatchModeId, MatchModeConfig> = {
+  short: {
+    id: "short",
+    name: "Short",
+    description: "Quick race to three wins with a brisk timer.",
+    targetWins: 3,
+    timerSeconds: 180,
+  },
+  standard: {
+    id: "standard",
+    name: "Standard",
+    description: "Classic target of seven wins and no clock.",
+    targetWins: TARGET_WINS,
+    timerSeconds: null,
+  },
+  marathon: {
+    id: "marathon",
+    name: "Marathon",
+    description: "Extended match to eleven wins with a long clock.",
+    targetWins: 11,
+    timerSeconds: 1200,
+  },
+};
+
+export function resolveMatchMode(id: string | null | undefined): MatchModeConfig {
+  if (!id) return MATCH_MODE_PRESETS[DEFAULT_MATCH_MODE_ID];
+  if (id in MATCH_MODE_PRESETS) {
+    return MATCH_MODE_PRESETS[id as MatchModeId];
+  }
+  return MATCH_MODE_PRESETS[DEFAULT_MATCH_MODE_ID];
+}
+
 /** New canonical sides for 2P */
 export type Side = "left" | "right";
 

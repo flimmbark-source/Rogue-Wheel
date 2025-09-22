@@ -4,7 +4,7 @@ import type { Realtime } from "ably";
 import App from "./App";
 import HubRoute from "./HubRoute";
 import MultiplayerRoute from "./MultiplayerRoute";
-import type { Players, Side } from "./game/types";
+import type { MatchModeId, Players, Side } from "./game/types";
 import ProfilePage from "./ProfilePage";
 
 type MPStartPayload = Parameters<
@@ -63,7 +63,13 @@ export default function AppShell() {
   let players: Players;
   let localSide: Side;
   let localPlayerId: string;
-  let extraProps: { roomCode?: string; hostId?: string; targetWins?: number } = {};
+  let extraProps: {
+    roomCode?: string;
+    hostId?: string;
+    targetWins?: number;
+    modeId?: MatchModeId;
+    timerSeconds?: number | null;
+  } = {};
 
   if (view.mode === "mp" && (view.mpPayload ?? mpPayload)) {
     const mp = (view.mpPayload ?? mpPayload)!;
@@ -71,7 +77,13 @@ export default function AppShell() {
     players = mp.players;
     localSide = mp.localSide;
     localPlayerId = mp.players[localSide].id;
-    extraProps = { roomCode: mp.roomCode, hostId: mp.hostId, targetWins: mp.targetWins };
+    extraProps = {
+      roomCode: mp.roomCode,
+      hostId: mp.hostId,
+      targetWins: mp.targetWins,
+      modeId: mp.modeId,
+      timerSeconds: mp.timerSeconds,
+    };
   } else {
     seed = Math.floor(Math.random() * 2 ** 31);
     players = {
