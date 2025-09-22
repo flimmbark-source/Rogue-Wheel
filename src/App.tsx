@@ -2409,6 +2409,17 @@ return (
     );
   };
 
+const ManaIcon = ({ className = '' }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    className={`fill-current ${className}`.trim()}
+    aria-hidden
+    focusable="false"
+  >
+    <path d="M12 2c-4 5.2-6 8.8-6 12a6 6 0 0012 0c0-3.2-2-6.8-6-12z" />
+  </svg>
+);
+
 const HUDPanels = () => {
   const rsP = reserveSums ? reserveSums.player : null;
   const rsE = reserveSums ? reserveSums.enemy : null;
@@ -2466,7 +2477,8 @@ const HUDPanels = () => {
             <span className="text-base font-extrabold tabular-nums">{win}</span>
           </div>
           <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-            <span className="opacity-80">Mana</span>
+            <ManaIcon className="h-4 w-4 text-sky-300" />
+            <span className="sr-only">Mana</span>
             <span className="text-base font-extrabold tabular-nums">{mana}</span>
           </div>
           <div
