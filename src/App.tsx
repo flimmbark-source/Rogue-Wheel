@@ -60,16 +60,37 @@ import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 // components
 import CanvasWheel, { WheelHandle } from "./components/CanvasWheel";
 import StSCard from "./components/StSCard";
-import {
-  getLearnedSpellsForFighter,
-  type SpellDefinition,
-} from "./game/spells";
+import { getSpellDefinitions, type SpellDefinition } from "./game/spells";
 
 type AblyRealtime = InstanceType<typeof Realtime>;
 type AblyChannel = ReturnType<AblyRealtime["channels"]["get"]>;
 
 // keep your local alias
 type LegacySide = "player" | "enemy";
+
+type SideState<T> = Record<LegacySide, T>;
+type WheelSideState<T> = [SideState<T>, SideState<T>, SideState<T>];
+
+const createWheelSideState = <T,>(value: T): WheelSideState<T> => [
+  { player: value, enemy: value },
+  { player: value, enemy: value },
+  { player: value, enemy: value },
+];
+
+const createWheelLockState = (): [boolean, boolean, boolean] => [
+  false,
+  false,
+  false,
+];
+
+const createPointerShiftState = (): [number, number, number] => [0, 0, 0];
+
+const createReservePenaltyState = (): SideState<number> => ({
+  player: 0,
+  enemy: 0,
+});
+
+type PendingSpellDescriptor = { side: LegacySide; spell: SpellDefinition };
 
 // your existing MPIntent union (merged from conflict)
 type MPIntent =
@@ -213,8 +234,44 @@ const effectiveGameMode: GameMode =
     hostId ? hostLegacySide : localLegacySide
   );
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
-  const [mana, setMana] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
+  const [manaPools, setManaPools] = useState<SideState<number>>({ player: 0, enemy: 0 });
   const [round, setRound] = useState(1);
+
+  const [pendingSpell, setPendingSpell] = useState<PendingSpellDescriptor | null>(null);
+  const [wheelDamage, setWheelDamage] = useState<WheelSideState<number>>(() =>
+    createWheelSideState(0)
+  );
+  const [wheelMirror, setWheelMirror] = useState<WheelSideState<boolean>>(() =>
+    createWheelSideState(false)
+  );
+  const [wheelLocks, setWheelLocks] = useState<[boolean, boolean, boolean]>(
+    createWheelLockState
+  );
+  const [reservePenalties, setReservePenalties] = useState<SideState<number>>(
+    createReservePenaltyState
+  );
+  const [pointerShifts, setPointerShifts] = useState<[number, number, number]>(
+    createPointerShiftState
+  );
+  const [initiativeOverride, setInitiativeOverride] = useState<LegacySide | null>(null);
+
+  const resetRoundTransientState = useCallback(() => {
+    setPendingSpell(null);
+    setWheelDamage(createWheelSideState(0));
+    setWheelMirror(createWheelSideState(false));
+    setWheelLocks(createWheelLockState());
+    setReservePenalties(createReservePenaltyState());
+    setPointerShifts(createPointerShiftState());
+    setInitiativeOverride(null);
+  }, [
+    setPendingSpell,
+    setWheelDamage,
+    setWheelMirror,
+    setWheelLocks,
+    setReservePenalties,
+    setPointerShifts,
+    setInitiativeOverride,
+  ]);
 
   const [archetypeSelections, setArchetypeSelections] = useState<
     Record<LegacySide, ArchetypeId | null>
@@ -614,22 +671,35 @@ const storeReserveReport = useCallback(
   const START_LOG = "A Shade Bandit eyes your purse...";
   const [log, setLog] = useState<string[]>([START_LOG]);
 
-  const playerMana = useMemo(() => {
-    const maybe = (player as Fighter & { mana?: unknown }).mana;
-    return typeof maybe === "number" && Number.isFinite(maybe) ? maybe : 0;
-  }, [player]);
+  const spellDefinitionsBySide = useMemo(
+    () => ({
+      player: getSpellDefinitions(archetypeSpellIdsBySide.player),
+      enemy: getSpellDefinitions(archetypeSpellIdsBySide.enemy),
+    }),
+    [archetypeSpellIdsBySide]
+  );
 
-const playerSpells = useMemo(() => {
-  if (!isGrimoireMode) return [] as SpellDefinition[];
-  return getLearnedSpellsForFighter(player);
-}, [isGrimoireMode, player]);
+  const localSpellDefinitions = useMemo(
+    () =>
+      isGrimoireMode
+        ? spellDefinitionsBySide[localLegacySide]
+        : ([] as SpellDefinition[]),
+    [isGrimoireMode, localLegacySide, spellDefinitionsBySide]
+  );
 
+  const localMana = manaPools[localLegacySide];
 
-useEffect(() => {
-  if (!isGrimoireMode && showGrimoire) {
-    setShowGrimoire(false);
-  }
-}, [isGrimoireMode, showGrimoire]);
+  useEffect(() => {
+    if (!isGrimoireMode && showGrimoire) {
+      setShowGrimoire(false);
+    }
+  }, [isGrimoireMode, showGrimoire]);
+
+  useEffect(() => {
+    if (!isGrimoireMode) {
+      setPendingSpell(null);
+    }
+  }, [isGrimoireMode, setPendingSpell]);
 
 
   useEffect(() => {
@@ -664,10 +734,11 @@ useEffect(() => {
   const handleSpellActivate = useCallback(
     (spell: SpellDefinition) => {
       if (gameMode !== "grimoire") return;
+      setPendingSpell({ side: localLegacySide, spell });
       spellCastRequestRef.current(spell);
       setShowGrimoire(false);
     },
-    [gameMode]
+    [gameMode, localLegacySide]
   );
 
   const canReveal = useMemo(() => {
@@ -1007,7 +1078,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setTokens(finalTokens);
 
       let pWins = wins.player, eWins = wins.enemy;
-      let pMana = mana.player, eMana = mana.enemy;
+      let pMana = manaPools.player, eMana = manaPools.enemy;
       let hudColors: [string | null, string | null, string | null] = [null, null, null];
       const roundWinsCount: Record<LegacySide, number> = { player: 0, enemy: 0 };
       outcomes.forEach((o) => {
@@ -1048,8 +1119,9 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
       setWheelHUD(hudColors);
       setWins({ player: pWins, enemy: eWins });
-      setMana({ player: pMana, enemy: eMana });
+      setManaPools({ player: pMana, enemy: eMana });
       setReserveSums({ player: pReserve, enemy: eReserve });
+      resetRoundTransientState();
       clearAdvanceVotes();
       setPhase("roundEnd");
       if (pWins >= winGoal || eWins >= winGoal) {
@@ -1100,6 +1172,8 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setPhase("choose");
       setRound((r) => r + 1);
 
+      resetRoundTransientState();
+
       return true;
     },
     [
@@ -1121,6 +1195,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setWheelHUD,
       setWheelSections,
       setRound,
+      resetRoundTransientState,
       wheelRefs
     ]
   );
@@ -1308,7 +1383,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     setInitiative(hostId ? hostLegacySide : localLegacySide);
 
     setWins({ player: 0, enemy: 0 });
-    setMana({ player: 0, enemy: 0 });
+    setManaPools({ player: 0, enemy: 0 });
     setRound(1);
     setPhase("choose");
 
@@ -1343,6 +1418,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
     wheelRngRef.current = createSeededRng(seed);
     setWheelSections(generateWheelSet());
+    resetRoundTransientState();
   }, [
     clearAdvanceVotes,
     clearRematchVotes,
@@ -1367,13 +1443,14 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     setReserveSums,
     setRound,
     setSelectedCardId,
-    setMana,
+    setManaPools,
     setTokens,
     setWheelHUD,
     setWheelSections,
     setWins,
     _setDragOverWheel,
-    wheelRefs
+    wheelRefs,
+    resetRoundTransientState
   ]);
 
   useEffect(() => {
@@ -1984,10 +2061,10 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
   };
 
 const HUDPanels = ({
-  mana,
+  manaPools,
   isGrimoireMode,
 }: {
-  mana: { player: number; enemy: number };
+  manaPools: { player: number; enemy: number };
   isGrimoireMode: boolean;
 }) => {
   const rsP = reserveSums ? reserveSums.player : null;
@@ -1998,7 +2075,7 @@ const HUDPanels = ({
     const color = isPlayer ? (players.left.color ?? HUD_COLORS.player) : (players.right.color ?? HUD_COLORS.enemy);
     const name = isPlayer ? players.left.name : players.right.name;
     const win = isPlayer ? wins.player : wins.enemy;
-    const manaCount = isPlayer ? mana.player : mana.enemy;
+    const manaCount = isPlayer ? manaPools.player : manaPools.enemy;
     const rs = isPlayer ? rsP : rsE;
     const hasInit = initiative === side;
     const isReserveVisible =
@@ -2276,16 +2353,16 @@ const HUDPanels = ({
                         <span aria-hidden className="text-sky-300">🔹</span>
                         <span>Mana</span>
                       </span>
-                      <span className="font-semibold text-slate-100">{playerMana}</span>
+                      <span className="font-semibold text-slate-100">{localMana}</span>
                     </div>
-                    {playerSpells.length === 0 ? (
+                    {localSpellDefinitions.length === 0 ? (
                       <div className="italic text-slate-400">No spells learned yet.</div>
                     ) : (
                       <ul className="space-y-1">
-                        {playerSpells.map((spell) => {
+                        {localSpellDefinitions.map((spell) => {
                           const allowedPhases = spell.allowedPhases ?? ["choose"];
                           const phaseAllowed = allowedPhases.includes(phase);
-                          const canAfford = playerMana >= spell.cost;
+                          const canAfford = localMana >= spell.cost;
                           const disabled = !phaseAllowed || !canAfford;
                           return (
                             <li key={spell.id}>
@@ -2369,7 +2446,7 @@ const HUDPanels = ({
       </div>
 
       {/* HUD */}
-      <div className="relative z-10"><HUDPanels mana={mana} isGrimoireMode={isGrimoireMode} /></div>
+      <div className="relative z-10"><HUDPanels manaPools={manaPools} isGrimoireMode={isGrimoireMode} /></div>
 
       {/* Wheels center */}
       <div className="relative z-0" style={{ paddingBottom: handClearance }}>

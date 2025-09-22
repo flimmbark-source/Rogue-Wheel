@@ -1,9 +1,8 @@
-import type { Fighter, Phase } from "./types";
-
-export type SpellArchetype = "wanderer" | "bandit" | "sorcerer" | "beast";
+import type { SpellId } from "./archetypes";
+import type { Phase } from "./types";
 
 export type SpellDefinition = {
-  id: string;
+  id: SpellId;
   name: string;
   cost: number;
   description: string;
@@ -11,147 +10,112 @@ export type SpellDefinition = {
   allowedPhases?: Phase[];
 };
 
-const SPELLBOOK: Record<SpellArchetype, SpellDefinition[]> = {
-  wanderer: [
-    {
-      id: "spark-bolt",
-      name: "Spark Bolt",
-      cost: 1,
-      description: "Send a jolt through a visible enemy card, reducing its value by 1.",
-      icon: "⚡",
-      allowedPhases: ["choose"],
-    },
-    {
-      id: "lightstep",
-      name: "Lightstep",
-      cost: 2,
-      description: "Swap one of your assigned cards with another in hand.",
-      icon: "🚶",
-      allowedPhases: ["choose"],
-    },
-    {
-      id: "aether-wash",
-      name: "Aether Wash",
-      cost: 3,
-      description: "Return all cards from discard to hand, then redraw down to five.",
-      icon: "💧",
-      allowedPhases: ["roundEnd"],
-    },
-  ],
-  bandit: [
-    {
-      id: "smokescreen",
-      name: "Smokescreen",
-      cost: 1,
-      description: "Obscure one enemy slot so it cannot be targeted this round.",
-      icon: "💨",
-      allowedPhases: ["choose"],
-    },
-    {
-      id: "blade-flurry",
-      name: "Blade Flurry",
-      cost: 2,
-      description: "Increase the value of one of your revealed cards by 2 for this round.",
-      icon: "🗡️",
-      allowedPhases: ["showEnemy", "anim"],
-    },
-    {
-      id: "cut-purse",
-      name: "Cut Purse",
-      cost: 3,
-      description: "Steal 2 mana from the opponent if they have any remaining.",
-      icon: "🪙",
-      allowedPhases: ["choose"],
-    },
-  ],
-  sorcerer: [
-    {
-      id: "scry",
-      name: "Scry",
-      cost: 1,
-      description: "Peek at the top card of your deck and optionally draw it.",
-      icon: "🔮",
-      allowedPhases: ["choose"],
-    },
-    {
-      id: "arcane-shift",
-      name: "Arcane Shift",
-      cost: 2,
-      description: "Change the victory condition of the current wheel to Closest to Target.",
-      icon: "🌀",
-      allowedPhases: ["choose"],
-    },
-    {
-      id: "mana-surge",
-      name: "Mana Surge",
-      cost: 3,
-      description: "Refresh 2 mana and draw a card.",
-      icon: "✨",
-      allowedPhases: ["roundEnd"],
-    },
-  ],
-  beast: [
-    {
-      id: "feral-roar",
-      name: "Feral Roar",
-      cost: 1,
-      description: "Force the opponent to reroll their chosen card on a wheel.",
-      icon: "🦁",
-      allowedPhases: ["choose"],
-    },
-    {
-      id: "pack-hunt",
-      name: "Pack Hunt",
-      cost: 2,
-      description: "Duplicate one of your assigned cards for this resolution.",
-      icon: "🐺",
-      allowedPhases: ["showEnemy"],
-    },
-    {
-      id: "alpha-claim",
-      name: "Alpha Claim",
-      cost: 3,
-      description: "Seize initiative for the next round.",
-      icon: "👑",
-      allowedPhases: ["roundEnd"],
-    },
-  ],
+export const SPELL_CATALOGUE: Record<SpellId, SpellDefinition> = {
+  smokeBomb: {
+    id: "smokeBomb",
+    name: "Smoke Bomb",
+    cost: 1,
+    description: "Obscure an enemy slot so it cannot be targeted until the round resets.",
+    icon: "💨",
+    allowedPhases: ["choose"],
+  },
+  shadowStep: {
+    id: "shadowStep",
+    name: "Shadow Step",
+    cost: 2,
+    description: "Swap one of your assigned cards with another wheel slot you control.",
+    icon: "🕳️",
+    allowedPhases: ["choose"],
+  },
+  cutpurse: {
+    id: "cutpurse",
+    name: "Cutpurse",
+    cost: 2,
+    description: "Steal 1 mana from the opponent if they have any remaining this round.",
+    icon: "🪙",
+    allowedPhases: ["choose"],
+  },
+  ambush: {
+    id: "ambush",
+    name: "Ambush",
+    cost: 3,
+    description: "Mark a wheel to deal 2 bonus damage if you win it during resolution.",
+    icon: "🗡️",
+    allowedPhases: ["showEnemy", "anim"],
+  },
+  timeWarp: {
+    id: "timeWarp",
+    name: "Time Warp",
+    cost: 3,
+    description: "Shift every wheel pointer forward by 2 before resolution.",
+    icon: "⏳",
+    allowedPhases: ["choose"],
+  },
+  arcaneShield: {
+    id: "arcaneShield",
+    name: "Arcane Shield",
+    cost: 2,
+    description: "Mirror the opponent's revealed value on a wheel during resolution.",
+    icon: "🛡️",
+    allowedPhases: ["showEnemy", "anim"],
+  },
+  manaSurge: {
+    id: "manaSurge",
+    name: "Mana Surge",
+    cost: 2,
+    description: "Refresh 2 mana and draw a replacement card at round end.",
+    icon: "✨",
+    allowedPhases: ["roundEnd"],
+  },
+  scry: {
+    id: "scry",
+    name: "Scry",
+    cost: 1,
+    description: "Peek at the next card in your deck; optionally swap it with one in hand.",
+    icon: "🔮",
+    allowedPhases: ["choose"],
+  },
+  feralRoar: {
+    id: "feralRoar",
+    name: "Feral Roar",
+    cost: 1,
+    description: "Force the opponent to reroll one of their assigned cards before reveal.",
+    icon: "🦁",
+    allowedPhases: ["choose"],
+  },
+  pounce: {
+    id: "pounce",
+    name: "Pounce",
+    cost: 2,
+    description: "Move one of your cards to an empty wheel slot and add +1 to its value.",
+    icon: "🐾",
+    allowedPhases: ["choose"],
+  },
+  packTactics: {
+    id: "packTactics",
+    name: "Pack Tactics",
+    cost: 3,
+    description: "Duplicate one of your wheel results when determining reserve totals.",
+    icon: "🐺",
+    allowedPhases: ["showEnemy", "anim"],
+  },
+  regenerate: {
+    id: "regenerate",
+    name: "Regenerate",
+    cost: 2,
+    description: "Gain 1 mana and heal 1 damage on each wheel you control this round.",
+    icon: "🌿",
+    allowedPhases: ["roundEnd"],
+  },
 };
 
-const ARCHETYPES: SpellArchetype[] = ["wanderer", "bandit", "sorcerer", "beast"];
-
-function isSpellArchetype(value: unknown): value is SpellArchetype {
-  return typeof value === "string" && (ARCHETYPES as string[]).includes(value);
+export function getSpellDefinition(spellId: SpellId): SpellDefinition | undefined {
+  return SPELL_CATALOGUE[spellId];
 }
 
-export function inferSpellArchetypeFromFighter(fighter: Fighter): SpellArchetype {
-  const maybeArchetype = (fighter as Fighter & { archetype?: unknown }).archetype;
-  if (isSpellArchetype(maybeArchetype)) {
-    return maybeArchetype;
-  }
-
-  const normalized = fighter.name?.toLowerCase?.() ?? "";
-  if (normalized.includes("bandit")) return "bandit";
-  if (normalized.includes("sorcerer")) return "sorcerer";
-  if (normalized.includes("beast")) return "beast";
-  return "wanderer";
+export function getSpellDefinitions(spellIds: SpellId[]): SpellDefinition[] {
+  return spellIds
+    .map((spellId) => getSpellDefinition(spellId))
+    .filter((spell): spell is SpellDefinition => Boolean(spell));
 }
 
-export function getSpellbookForArchetype(archetype: SpellArchetype): SpellDefinition[] {
-  return SPELLBOOK[archetype] ?? [];
-}
-
-export function getLearnedSpellsForFighter(fighter: Fighter): SpellDefinition[] {
-  const archetype = inferSpellArchetypeFromFighter(fighter);
-  const book = getSpellbookForArchetype(archetype);
-  const learned = (fighter as Fighter & { learnedSpells?: unknown }).learnedSpells;
-
-  if (Array.isArray(learned) && learned.length > 0) {
-    const allowed = new Set(learned.filter((id): id is string => typeof id === "string"));
-    if (allowed.size > 0) {
-      return book.filter((spell) => allowed.has(spell.id));
-    }
-  }
-
-  return book;
-}
