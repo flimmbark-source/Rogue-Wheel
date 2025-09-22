@@ -136,27 +136,11 @@ type MPIntent =
   | { type: "archetypeReady"; side: LegacySide; ready: boolean }
   | { type: "archetypeReadyAck"; side: LegacySide; ready: boolean }
   | { type: "spellSelect"; side: LegacySide; spellId: string | null }
-  | {
-      type: "spellTarget";
-      side: LegacySide;
-      spellId: string;
-      target: SpellTargetIntentPayload | null;
-    }
-  | {
-      type: "spellFireballCost";
-      side: LegacySide;
-      spellId: string;
-      cost: number;
-    }
-  | {
-      type: "spellResolve";
-      side: LegacySide;
-      spellId: string;
-      manaAfter: number;
-      payload?: SpellResolutionIntentPayload | null;
-    };
+  | { type: "spellTarget"; side: LegacySide; spellId: string; target: SpellTargetIntentPayload | null }
+  | { type: "spellFireballCost"; side: LegacySide; spellId: string; cost: number }
+  | { type: "spellResolve"; side: LegacySide; spellId: string; manaAfter: number; payload?: SpellResolutionIntentPayload | null }
+  | { type: "spellState"; side: LegacySide; lane: number; state: LaneSpellState };
 
-  { type: "spellState"; side: LegacySide; lane: number; state: LaneSpellState };
 
 
 // ---------------- Constants ----------------
@@ -244,7 +228,7 @@ export default function ThreeWheel_WinsOnly({
     return false;
   }, [players.left.id, players.left.name, players.right.id, players.right.name]);
 
-  c// raw value from players.* (or undefined)
+  // raw value from players.* (or undefined)
 const rawGameMode =
   (players as Players & { gameMode?: unknown }).gameMode ??
   (players.left as Players["left"] & { gameMode?: unknown }).gameMode ??
@@ -1064,38 +1048,25 @@ const storeReserveReport = useCallback(
     };
   }, [showRef, showGrimoire]);
 
-  const handleSpellActivate = useCallback(
-    (spell: SpellDefinition) => {
-      if (gameMode !== "grimoire") return;
-setPendingSpell({ side: localLegacySide, spell }); // local pending state
-syncLocalSpellSelection(spell.id);                  // sync to peer/remote UI
-spellCastRequestRef.current(spell);
-setShowGrimoire(false);
-  );
+const handleSpellActivate = useCallback(
+  (spell: SpellDefinition) => {
+    if (effectiveGameMode !== "grimoire") return;
+    setPendingSpell({ side: localLegacySide, spell });
+    syncLocalSpellSelection(spell.id);
+    spellCastRequestRef.current(spell);
+    setShowGrimoire(false);
+  },
+  [effectiveGameMode, localLegacySide, setPendingSpell, syncLocalSpellSelection]
+);
 
-  const canReveal = useMemo(() => {
-    if (!archetypeGateOpen) return false;
-    const lane = localLegacySide === "player" ? assign.player : assign.enemy;
-    return lane.every((c, i) => !active[i] || !!c);
-  }, [gameMode, localLegacySide, setPendingSpell, syncLocalSpellSelection]);
-
+const canReveal = useMemo(() => {
+  if (!archetypeGateOpen) return false;
+  const lane = localLegacySide === "player" ? assign.player : assign.enemy;
+  return lane.every((c, i) => !active[i] || !!c);
+}, [archetypeGateOpen, assign, active, localLegacySide]);
+    
   // Wheel refs for imperative token updates
   const wheelRefs = [useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null)];
-
-  const resetRoundTransientState = useCallback(
-    (opts?: { includePointerReset?: boolean }) => {
-      pendingSpellRef.current = null;
-      wheelModifiersRef.current = [null, null, null] as [string | null, string | null, string | null];
-      reservePenaltyRef.current = { player: 0, enemy: 0 };
-      pointerShiftRef.current = [0, 0, 0];
-      initiativeOverrideRef.current = null;
-
-      if (opts?.includePointerReset) {
-        wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
-      }
-    },
-    [wheelRefs]
-  );
 
   // ---- Assignment helpers (batched) ----
   const assignToWheelFor = useCallback(
@@ -1715,12 +1686,12 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     };
     return { ...prev, [msg.side]: next };
   });
-  setMana((prev) => {
-    const nextMana = msg.manaAfter;
-    if (typeof nextMana !== "number" || !Number.isFinite(nextMana)) return prev;
-    if (prev[msg.side] === nextMana) return prev;
-    return { ...prev, [msg.side]: nextMana };
-  });
+  setManaPools((prev) => {
+  const nextMana = msg.manaAfter;
+  if (typeof nextMana !== "number" || !Number.isFinite(nextMana)) return prev;
+  if (prev[msg.side] === nextMana) return prev;
+  return { ...prev, [msg.side]: nextMana };
+});
   break; // ✅ end the spellResolve case
 }
 
@@ -1728,13 +1699,11 @@ case "spellState": {
   if (msg.side === localLegacySide) break;
   if (typeof msg.lane !== "number" || !msg.state) break;
   applyRemoteLaneSpellState(msg.lane, msg.state);
-break;
+  break;
 }
-
 default:
   break;
 }
-
 }, [
       assignToWheelFor,
       clearAssignFor,
