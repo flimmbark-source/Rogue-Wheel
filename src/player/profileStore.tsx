@@ -51,13 +51,32 @@ function uid(prefix = "id") {
 }
 
 // ===== Seed data (keep numbers only to match Card { type:'normal', number:n }) =====
-const SEED_INVENTORY: InventoryItem[] = [];
+const SEED_INVENTORY: InventoryItem[] = [
+  { cardId: "trick_decoy", qty: 1 },
+  { cardId: "trick_oddshift_right", qty: 1 },
+  { cardId: "trick_parity_flip", qty: 1 },
+  { cardId: "trick_swap_edges", qty: 1 },
+  { cardId: "trick_steal_center", qty: 1 },
+  { cardId: "trick_echo", qty: 1 },
+  { cardId: "trick_reveal", qty: 1 },
+];
 
 const SEED_DECK: Deck = {
   id: uid("deck"),
   name: "Starter Deck",
   isActive: true,
-  cards: Array.from({ length: 10 }, (_, n) => ({ cardId: `basic_${n}`, qty: 1 })),
+  cards: [
+    { cardId: "basic_0", qty: 1 },
+    { cardId: "basic_1", qty: 1 },
+    { cardId: "basic_2", qty: 1 },
+    { cardId: "basic_3", qty: 1 },
+    { cardId: "basic_4", qty: 1 },
+    { cardId: "basic_5", qty: 1 },
+    { cardId: "trick_decoy", qty: 1 },
+    { cardId: "trick_oddshift_right", qty: 1 },
+    { cardId: "trick_parity_flip", qty: 1 },
+    { cardId: "trick_echo", qty: 1 },
+  ],
 };
 
 function seed(): LocalState {
@@ -300,14 +319,86 @@ export function addToInventory(items: SwapItem[]) {
 // sequential card ids for the runtime deck
 const nextCardId = (() => { let i = 1; return () => `C${i++}`; })();
 
+type TaggedCardDefinition = Omit<Card, "id"> & { number?: number };
+
+const TAGGED_LIBRARY: Record<string, TaggedCardDefinition> = {
+  trick_decoy: {
+    name: "Smoke Decoy",
+    type: "normal",
+    number: 0,
+    tags: ["decoy"],
+    hint: "Counts as zero when seen.",
+    meta: { decoy: { display: "??", reserveValue: 0 } },
+  },
+  trick_oddshift_right: {
+    name: "Oddshift Engine",
+    type: "normal",
+    number: 3,
+    tags: ["oddshift"],
+    hint: "Slides right if its value is odd.",
+    meta: { oddshift: { direction: 1 } },
+  },
+  trick_parity_flip: {
+    name: "Parity Flip",
+    type: "normal",
+    number: 2,
+    tags: ["parityflip"],
+    hint: "Flip both numbers' parity here.",
+    meta: { parityflip: { target: "both", amount: 1 } },
+  },
+  trick_swap_edges: {
+    name: "Edge Swap",
+    type: "normal",
+    number: 1,
+    tags: ["swap"],
+    hint: "Swap this lane with the far edge.",
+    meta: { swap: { with: 2 } },
+  },
+  trick_steal_center: {
+    name: "Center Heist",
+    type: "normal",
+    number: 1,
+    tags: ["steal"],
+    hint: "Trade with the foe's center card.",
+    meta: { steal: { from: 1 } },
+  },
+  trick_echo: {
+    name: "Reserve Echo",
+    type: "normal",
+    number: 0,
+    tags: ["echoreserve"],
+    hint: "Copy rival reserve for this round.",
+    meta: { echoreserve: { mode: "copy-opponent" } },
+  },
+  trick_reveal: {
+    name: "Silent Scout",
+    type: "normal",
+    number: 1,
+    tags: ["reveal"],
+    hint: "Reveal a foe placement once per match.",
+    meta: { reveal: {} },
+  },
+};
+
 /**
  * Supported cardId formats:
+ *  - Known trick ids defined in TAGGED_LIBRARY
  *  - "basic_N" where N is 0..9  → normal card with number N
  *  - "neg_X" where X is a number (e.g., -2) → normal card with number X
  *  - "num_X" explicit number alias
  * Anything else falls back to number 0.
  */
-function cardFromId(cardId: string): Card {
+export function cardFromId(cardId: string, opts?: { preview?: boolean }): Card {
+  const tagged = TAGGED_LIBRARY[cardId];
+  if (tagged) {
+    const id = opts?.preview ? `preview_${cardId}` : nextCardId();
+    return {
+      ...tagged,
+      id,
+      name: tagged.name,
+    };
+  }
+
   let num = 0;
   const mBasic = /^basic_(\d+)$/.exec(cardId);
   const mNeg   = /^neg_(-?\d+)$/.exec(cardId);
@@ -318,7 +409,7 @@ function cardFromId(cardId: string): Card {
   else if (mNum) num = parseInt(mNum[1], 10);
 
   return {
-    id: nextCardId(),
+    id: opts?.preview ? `preview_${cardId}` : nextCardId(),
     name: `${num}`,
     type: "normal",
     number: num,

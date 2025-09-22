@@ -9,17 +9,8 @@ import {
   swapDeckCards,
   expRequiredForLevel,
   type ProfileBundle,
+  cardFromId,
 } from "./player/profileStore";
-import type { Card } from "./game/types";
-
-/** Map our string cardId → runtime Card for StSCard preview. */
-function cardFromId(cardId: string): Card {
-  const mBasic = /^basic_(\d+)$/.exec(cardId);
-  const mNeg = /^neg_(-?\d+)$/.exec(cardId);
-  const mNum = /^num_(-?\d+)$/.exec(cardId);
-  const num = mBasic ? +mBasic[1] : mNeg ? +mNeg[1] : mNum ? +mNum[1] : 0;
-  return { id: `preview_${cardId}`, name: `${num}`, type: "normal", number: num, tags: [] };
-}
 
 /** Scales its child to fit the available width while preserving aspect. */
 function FitCard({
@@ -214,7 +205,7 @@ export default function ProfilePage() {
               {cardId ? (
                 <FitCard>
                   <StSCard
-                    card={cardFromId(cardId)}
+                    card={cardFromId(cardId, { preview: true })}
                     size="md"
                     draggable
                     onDragStart={(e) => setDrag(e, { from: "deck", cardId })}
@@ -253,7 +244,7 @@ export default function ProfilePage() {
                 <div className="aspect-[3/4] w-full max-w-[180px] p-1 rounded-lg ring-1 ring-white/10 bg-white/5 grid place-items-center">
                   <FitCard>
                     <StSCard
-                      card={cardFromId(i.cardId)}
+                      card={cardFromId(i.cardId, { preview: true })}
                       size="md"
                       disabled={avail <= 0}
                       draggable
