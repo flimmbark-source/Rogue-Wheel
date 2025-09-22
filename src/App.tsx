@@ -32,6 +32,7 @@ import {
   type Side as TwoSide,
   type Card,
   type Section,
+  type VC,
   type Fighter,
   type SplitChoiceMap,
   type Players,
@@ -70,16 +71,60 @@ type MPIntent =
   | { type: "rematch"; side: LegacySide }
   | { type: "reserve"; side: LegacySide; reserve: number; round: number };
 
+// ==== Merged: Mana/Recall planning + Combo evaluation ====
+
+/** Pre-spin plan for bonuses and VC overrides (from mana/recall interactions). */
+type PreSpinPlan = {
+  reserveBonus: number;
+  recallBonus: number;
+  notes: string[];
+  vcOverrides: Partial<Record<number, VC>>;
+  recallUsed: boolean;
+};
+
+const createEmptyPlan = (): PreSpinPlan => ({
+  reserveBonus: 0,
+  recallBonus: 0,
+  notes: [],
+  vcOverrides: {},
+  recallUsed: false,
+});
+
+/** VC swap sequence and which VCs grant mana rewards. */
+const VC_SWAP_SEQUENCE: VC[] = ["Strongest", "Weakest", "ReserveSum", "ClosestToTarget", "Initiative"];
+const MANA_VC_REWARD: VC[] = ["ReserveSum", "Initiative"];
+
+/** Reserve HUD breakdown for UI. */
+type ReserveHUD = {
+  total: number;
+  base: number;
+  bonus: number;
+  notes: string[];
+};
+
+/** Per-lane combo results (bonuses + notes) used by wheels. */
 type ComboLaneResult = {
   laneBonus: number[];
   laneNotes: string[][];
 };
 
-function evaluateCombos(assignments: { player: (Card | null)[]; enemy: (Card | null)[] }):
-  Record<LegacySide, ComboLaneResult> {
+/**
+ * Evaluate link/number-match combos for each side and lane.
+ * Produces additional step bonuses and human-readable lane notes.
+ */
+function evaluateCombos(assignments: {
+  player: (Card | null)[];
+  enemy: (Card | null)[];
+}): Record<LegacySide, ComboLaneResult> {
   const base: Record<LegacySide, ComboLaneResult> = {
-    player: { laneBonus: Array(assignments.player.length).fill(0), laneNotes: Array.from({ length: assignments.player.length }, () => [] as string[]) },
-    enemy: { laneBonus: Array(assignments.enemy.length).fill(0), laneNotes: Array.from({ length: assignments.enemy.length }, () => [] as string[]) },
+    player: {
+      laneBonus: Array(assignments.player.length).fill(0),
+      laneNotes: Array.from({ length: assignments.player.length }, () => [] as string[]),
+    },
+    enemy: {
+      laneBonus: Array(assignments.enemy.length).fill(0),
+      laneNotes: Array.from({ length: assignments.enemy.length }, () => [] as string[]),
+    },
   };
 
   (Object.keys(base) as LegacySide[]).forEach((side) => {
@@ -90,31 +135,36 @@ function evaluateCombos(assignments: { player: (Card | null)[]; enemy: (Card | n
     const byCard = new Map<string, { card: Card; lanes: number[] }>();
     const byNumber = new Map<number, { cards: Card[]; lanes: number[] }>();
 
+    // Group by exact card (for multi-lane links) and by number (for number matches)
     slots.forEach((card, laneIdx) => {
       if (!card) return;
+
       if (!byCard.has(card.id)) byCard.set(card.id, { card, lanes: [] });
       byCard.get(card.id)!.lanes.push(laneIdx);
 
-if (typeof card.number === "number") {
-  if (!byNumber.has(card.number)) byNumber.set(card.number, { cards: [], lanes: [] });
-  const entry = byNumber.get(card.number)!;
-  entry.cards.push(card);
-  entry.lanes.push(laneIdx);
-}
+      // Safe property check: only treat cards with a numeric value as "number" combos
+      if (typeof card.number === "number") {
+        if (!byNumber.has(card.number)) byNumber.set(card.number, { cards: [], lanes: [] });
+        const entry = byNumber.get(card.number)!;
+        entry.cards.push(card);
+        entry.lanes.push(laneIdx);
+      }
     });
 
+    // Multi-lane same-card link bonus
     byCard.forEach(({ card, lanes }) => {
       if (!card.multiLane || lanes.length <= 1) return;
       const descriptor = card.linkDescriptors?.find((d) => d.kind === "lane");
       const bonus = descriptor?.bonusSteps ?? 2;
       const label = descriptor?.label ?? "Lane link";
-      lanes.forEach((laneIdx) => {
-        if (laneIdx >= laneBonus.length) return;
-        laneBonus[laneIdx] += bonus;
-        laneNotes[laneIdx].push(`${label} +${bonus}`);
+      lanes.forEach((i) => {
+        if (i >= laneBonus.length) return;
+        laneBonus[i] += bonus;
+        laneNotes[i].push(`${label} +${bonus}`);
       });
     });
 
+    // Same-number across lanes bonus
     byNumber.forEach(({ cards, lanes }, number) => {
       if (lanes.length <= 1) return;
       const descriptor = cards
@@ -122,16 +172,17 @@ if (typeof card.number === "number") {
         .find((d): d is NonNullable<typeof d> => !!d);
       const bonus = descriptor?.bonusSteps ?? 1;
       const label = descriptor?.label ?? `Match ${fmtNum(number)}`;
-      lanes.forEach((laneIdx) => {
-        if (laneIdx >= laneBonus.length) return;
-        laneBonus[laneIdx] += bonus;
-        laneNotes[laneIdx].push(`${label} +${bonus}`);
+      lanes.forEach((i) => {
+        if (i >= laneBonus.length) return;
+        laneBonus[i] += bonus;
+        laneNotes[i].push(`${label} +${bonus}`);
       });
     });
   });
 
   return base;
 }
+
 
 // ---------------- Constants ----------------
 const MIN_WHEEL = 160;
@@ -591,6 +642,11 @@ function startPointerDrag(card: Card, e: React.PointerEvent) {
   }, [assign]);
   const comboSummary = useMemo(() => evaluateCombos(assign), [assign]);
 
+  const [preSpinPlan, setPreSpinPlan] = useState<Record<LegacySide, PreSpinPlan>>({
+    player: createEmptyPlan(),
+    enemy: createEmptyPlan(),
+  });
+
 const reserveReportsRef = useRef<
   Record<LegacySide, { reserve: number; round: number } | null>
 >({
@@ -625,12 +681,14 @@ const storeReserveReport = useCallback(
 
   const broadcastLocalReserve = useCallback(() => {
     const lane = localLegacySide === "player" ? assignRef.current.player : assignRef.current.enemy;
-    const reserve = computeReserveSum(localLegacySide, lane);
+    const plan = preSpinPlan[localLegacySide] ?? createEmptyPlan();
+    const reserveCtx = computeReserveContext(localLegacySide, lane, plan);
+    const reserve = reserveCtx.total;
     const updated = storeReserveReport(localLegacySide, reserve, round);
     if (isMultiplayer && updated) {
       sendIntent({ type: "reserve", side: localLegacySide, reserve, round });
     }
-  }, [isMultiplayer, localLegacySide, round, sendIntent, storeReserveReport, player, enemy]);
+  }, [isMultiplayer, localLegacySide, preSpinPlan, round, sendIntent, storeReserveReport, player, enemy]);
 
 
   // Drag state + tap-to-assign selected id
@@ -838,11 +896,38 @@ function autoPickEnemy(): (Card | null)[] {
   return picks;
 }
 
-function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
-  const hand = who === "player" ? player.hand : enemy.hand;
-  const usedIds = new Set((used.filter(Boolean) as Card[]).map((c) => c.id));
-  const left = hand.filter((c) => !usedIds.has(c.id));
-  return left.slice(0, 2).reduce((a, c) => a + cardReserveValue(c), 0);
+function computeReserveContext(
+  who: LegacySide,
+  used: (Card | null)[],
+  plan: PreSpinPlan = createEmptyPlan()
+): ReserveHUD {
+  const fighter = who === "player" ? player : enemy;
+
+  // Cards left in hand (not used this round)
+  const usedIds = new Set((used.filter(Boolean) as Card[]).map(c => c.id));
+  const left = fighter.hand.filter(c => !usedIds.has(c.id));
+
+  // Base = sum of first two numeric cards (your original rule of thumb)
+  const baseCards = left.slice(0, 2);
+  const base = baseCards.reduce((acc, card) => acc + (typeof card.number === "number" ? card.number : 0), 0);
+
+  // Planned bonuses
+  const reserveBonus = Math.max(0, plan.reserveBonus);
+  const recallBonus  = Math.max(0, plan.recallBonus);
+
+  // HUD notes (de-duped)
+  const noteSet = new Set(plan.notes);
+  if (reserveBonus > 0 && plan.notes.length === 0) {
+    noteSet.add(`Arcane +${reserveBonus}`);
+  }
+  if (recallBonus > 0 && !plan.notes.some(n => n.toLowerCase().includes("recall"))) {
+    noteSet.add(`Recall +${recallBonus}`);
+  }
+
+  const bonus = reserveBonus + recallBonus;
+  const total = base + bonus;
+
+  return { base, bonus, total, notes: Array.from(noteSet) };
 }
 
   useEffect(() => {
@@ -853,7 +938,7 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
 function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
   const playedIds = new Set(played.map((c) => c.id));
   const next: Fighter = {
-    name: f.name,
+    ...f,
     deck: [...f.deck],
     hand: f.hand.filter((c) => !playedIds.has(c.id)), // keep reserves in hand
     discard: [...f.discard, ...played],
@@ -1098,57 +1183,108 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     const remotePlayed = remoteLegacySide === "player"
       ? played.map((pe) => pe.p)
       : played.map((pe) => pe.e);
+// ==== Merged: reserve context (mana/recall) + echo interactions + outcome ====
 
-    const localReserveBase = computeReserveSum(localLegacySide, localPlayed);
-    let remoteReserveBase: number;
-    let usedRemoteReport = false;
+const localPlan = preSpinPlan[localLegacySide] ?? createEmptyPlan();
+const remotePlan = preSpinPlan[remoteLegacySide] ?? createEmptyPlan();
 
-    if (!isMultiplayer) {
-      remoteReserveBase = computeReserveSum(remoteLegacySide, remotePlayed);
-    } else {
-      const report = reserveReportsRef.current[remoteLegacySide];
-      if (report && report.round === round) {
-        remoteReserveBase = report.reserve;
-        usedRemoteReport = true;
-      } else {
-        remoteReserveBase = computeReserveSum(remoteLegacySide, remotePlayed);
+// Build reserve contexts (base/bonus/total/notes) for each side
+const localReserveCtx = computeReserveContext(localLegacySide, localPlayed, localPlan);
+
+let remoteReserveCtx: ReserveHUD;
+let usedRemoteReport = false;
+
+if (!isMultiplayer) {
+  remoteReserveCtx = computeReserveContext(remoteLegacySide, remotePlayed, remotePlan);
+} else {
+  const report = reserveReportsRef.current[remoteLegacySide];
+  if (report && report.round === round) {
+    // Use the reported total from the other client (don’t recalc to avoid desync)
+    remoteReserveCtx = { base: report.reserve, bonus: 0, total: report.reserve, notes: [] };
+    usedRemoteReport = true;
+  } else {
+    remoteReserveCtx = computeReserveContext(remoteLegacySide, remotePlayed, remotePlan);
+  }
+}
+
+// Apply echo-reserve effects on top of the contexts (mirror/bonus/copy-opponent)
+const reserveCtxBySide: Record<LegacySide, ReserveHUD> = {
+  player: localLegacySide === "player" ? { ...localReserveCtx } : { ...remoteReserveCtx },
+  enemy:  localLegacySide === "enemy"  ? { ...localReserveCtx } : { ...remoteReserveCtx },
+};
+
+for (const action of echoActions) {
+  const me = action.side;
+  const opp = OPPOSITE_SIDE[me];
+
+  const mine = reserveCtxBySide[me];
+  const theirs = reserveCtxBySide[opp];
+
+  switch (action.mode) {
+    case "mirror": {
+      // bump my total to at least opponent total
+      if (mine.total < theirs.total) {
+        const inc = theirs.total - mine.total;
+        mine.total += inc;
+        mine.bonus += inc;
       }
+      mine.notes.push("Echo: mirror opponent reserve");
+      effectLogs.push(`${namesByLegacy[me]}'s reserve mirrors the foe.`);
+      break;
     }
-
-    const reserveBySide: Record<LegacySide, number> = { player: 0, enemy: 0 };
-    reserveBySide[localLegacySide] = localReserveBase;
-    reserveBySide[remoteLegacySide] = remoteReserveBase;
-
-    for (const action of echoActions) {
-      const opponent = OPPOSITE_SIDE[action.side];
-      switch (action.mode) {
-        case "mirror":
-          reserveBySide[action.side] = Math.max(reserveBySide[action.side], reserveBySide[opponent]);
-          effectLogs.push(`${namesByLegacy[action.side]}'s reserve mirrors the foe.`);
-          break;
-        case "bonus":
-          reserveBySide[action.side] = reserveBySide[action.side] + action.bonus;
-          effectLogs.push(`${namesByLegacy[action.side]} gains ${action.bonus} reserve.`);
-          break;
-        default:
-          reserveBySide[action.side] = reserveBySide[opponent];
-          effectLogs.push(`${namesByLegacy[action.side]} echoes the opponent's reserve.`);
-          break;
-      }
+    case "bonus": {
+      mine.total += action.bonus;
+      mine.bonus += action.bonus;
+      mine.notes.push(`Echo: +${action.bonus} reserve`);
+      effectLogs.push(`${namesByLegacy[me]} gains ${action.bonus} reserve.`);
+      break;
     }
-
-    storeReserveReport(localLegacySide, reserveBySide[localLegacySide], round);
-    if (!isMultiplayer || !usedRemoteReport) {
-      storeReserveReport(remoteLegacySide, reserveBySide[remoteLegacySide], round);
+    default: {
+      // copy-opponent
+      const delta = Math.max(0, theirs.total - mine.base); // informational only
+      mine.total = theirs.total;
+      // We don’t change base; treat the change as “bonus” so HUD can show the delta
+      mine.bonus = mine.total - mine.base;
+      mine.notes.push("Echo: copy opponent reserve");
+      effectLogs.push(`${namesByLegacy[me]} echoes the opponent's reserve.`);
+      break;
     }
+  }
+}
 
-    const pReserve = reserveBySide.player;
-    const eReserve = reserveBySide.enemy;
-    setReserveSums({ player: pReserve, enemy: eReserve });
+// Persist reports for both sides
+storeReserveReport(localLegacySide, localReserveCtx.total, round);
+if (!isMultiplayer || !usedRemoteReport) {
+  const remoteTotal =
+    localLegacySide === "player" ? reserveCtxBySide.enemy.total : reserveCtxBySide.player.total;
+  storeReserveReport(remoteLegacySide, remoteTotal, round);
+}
 
+// Map back to player/enemy for HUD (relative to legacy sides)
+const playerReserveCtx = reserveCtxBySide.player;
+const enemyReserveCtx  = reserveCtxBySide.enemy;
+const pReserveTotal    = playerReserveCtx.total;
+const eReserveTotal    = enemyReserveCtx.total;
 
-    effectLogs.forEach((msg) => appendLog(msg));
-    type Outcome = { steps: number; targetSlice: number; section: Section; winner: LegacySide | null; tie: boolean; wheel: number; detail: string; comboNotes: string[] };
+// 🔸 Show full contexts (with notes) during showEnemy/anim immediately
+setReserveSums({ player: playerReserveCtx, enemy: enemyReserveCtx });
+
+// keep any accumulated effect logs
+effectLogs.forEach((msg) => appendLog(msg));
+
+type Outcome = {
+  steps: number;
+  targetSlice: number;
+  section: Section;
+  winner: LegacySide | null;
+  tie: boolean;
+  wheel: number;
+  detail: string;
+  /** Optional VC override from pre-spin planning (e.g., mana/recall effects) */
+  override: VC | null;
+  /** (If you already include combo notes in details elsewhere, you can add them here) */
+  comboNotes?: string[];
+};
 
     const outcomes: Outcome[] = [];
     const combosForResolve = evaluateCombos({
@@ -1158,7 +1294,6 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
     for (let w = 0; w < 3; w++) {
       const secList = wheelSections[w];
-
       const baseP = (played[w].p?.number ?? 0);
       const baseE = (played[w].e?.number ?? 0);
       const bonusP = combosForResolve.player.laneBonus[w] ?? 0;
@@ -1167,7 +1302,21 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       const eVal = baseE + bonusE;
       const steps = (((pVal % SLICES) + (eVal % SLICES)) % SLICES + SLICES) % SLICES;
       const targetSlice = (tokens[w] + steps) % SLICES;
-      const section = secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) || ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
+      let section =
+        secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) ||
+        ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
+
+      const playerOverride = preSpinPlan.player.vcOverrides[w];
+      const enemyOverride = preSpinPlan.enemy.vcOverrides[w];
+      let override: VC | null = null;
+      if (playerOverride && enemyOverride) {
+        override = initiative === "player" ? playerOverride : enemyOverride;
+      } else {
+        override = playerOverride ?? enemyOverride ?? null;
+      }
+      if (override) {
+        section = { ...section, id: override };
+      }
 
       const comboNotes = [
         ...((combosForResolve.player.laneNotes[w] ?? []).map((note) => `${namesByLegacy.player}: ${note}`)),
@@ -1177,21 +1326,25 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       let winner: LegacySide | null = null; let tie = false; let detail = "";
 
       switch (section.id) {
-        case "Strongest":
-          if (pVal === eVal) tie = true;
-          else winner = pVal > eVal ? "player" : "enemy";
-          detail = `Strongest ${pVal} vs ${eVal}`;
-          break;
-        case "Weakest":
-          if (pVal === eVal) tie = true;
-          else winner = pVal < eVal ? "player" : "enemy";
-          detail = `Weakest ${pVal} vs ${eVal}`;
-          break;
-        case "ReserveSum":
-          if (pReserve === eReserve) tie = true;
-          else winner = pReserve > eReserve ? "player" : "enemy";
-          detail = `Reserve ${pReserve} vs ${eReserve}`;
-          break;
+case "Strongest":
+  if (pVal === eVal) tie = true;
+  else winner = pVal > eVal ? "player" : "enemy";
+  detail = `Strongest ${pVal} vs ${eVal}`;
+  break;
+
+case "Weakest":
+  if (pVal === eVal) tie = true;
+  else winner = pVal < eVal ? "player" : "enemy";
+  detail = `Weakest ${pVal} vs ${eVal}`;
+  break;
+
+case "ReserveSum": {
+  // use totals from the ReserveHUD contexts (mana/recall-aware)
+  if (pReserveTotal === eReserveTotal) tie = true;
+  else winner = pReserveTotal > eReserveTotal ? "player" : "enemy";
+  detail = `Reserve ${pReserveTotal} vs ${eReserveTotal}`;
+  break;
+}
         case "ClosestToTarget": {
           const t = targetSlice === 0 ? (section.target ?? 0) : targetSlice;
           const pd = Math.abs(pVal - t);
@@ -1211,7 +1364,13 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       if (comboNotes.length) {
         detail = `${detail} | ${comboNotes.join("; ")}`;
       }
-      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail, comboNotes });
+
+      if (override) {
+        detail = `[${override}] ${detail}`;
+      }
+
+      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail, override, comboNotes });
+
     }
 
     const animateSpins = async () => {
@@ -1238,42 +1397,48 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       // Single commit after all wheels have finished
       setTokens(finalTokens);
 
-      const hudColors: [string | null, string | null, string | null] = [
-        null,
-        null,
-        null,
-      ];
-      const roundWins: Record<LegacySide, number> = { player: 0, enemy: 0 };
-      let swapCount = 0;
-      outcomes.forEach((o) => {
-        const wheelLabel = `Wheel ${o.wheel + 1}`;
-        if (o.tie) {
-          appendLog(`${wheelLabel} tie: ${o.detail} — no win.`);
-          if (o.section.id === "SwapWins") {
-            swapCount += 1;
-            appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
-          }
-          return;
-        }
+const hudColors: [string | null, string | null, string | null] = [null, null, null];
+const roundWins: Record<LegacySide, number> = { player: 0, enemy: 0 };
+const manaGains: Record<LegacySide, number> = { player: 0, enemy: 0 };
+let swapCount = 0;
 
-        if (!o.winner) return;
+outcomes.forEach((o) => {
+  const wheelLabel = `Wheel ${o.wheel + 1}`;
 
-        hudColors[o.wheel] = HUD_COLORS[o.winner];
-        let awarded = 1;
-        if (o.section.id === "DoubleWin") {
-          awarded = 2;
-        }
-        roundWins[o.winner] += awarded;
-        appendLog(`${wheelLabel} win -> ${o.winner} (${o.detail}).`);
-        if (o.section.id === "DoubleWin") {
-          appendLog(`✨ ${wheelLabel}: ${namesByLegacy[o.winner]} claims two wins from this slice!`);
-        }
-        if (o.section.id === "SwapWins") {
-          swapCount += 1;
-          appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
-        }
-      });
+  if (o.tie) {
+    appendLog(`${wheelLabel} tie: ${o.detail} — no win.`);
+    if (o.section.id === "SwapWins") {
+      swapCount += 1;
+      appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
+    }
+    return;
+  }
 
+  if (!o.winner) return;
+
+  hudColors[o.wheel] = HUD_COLORS[o.winner];
+
+  let awarded = 1;
+  if (o.section.id === "DoubleWin") {
+    awarded = 2;
+  }
+  roundWins[o.winner] += awarded;
+
+  if (MANA_VC_REWARD.includes(o.section.id)) {
+    manaGains[o.winner] += 1;
+  }
+
+  appendLog(`${wheelLabel} win -> ${o.winner} (${o.detail}).`);
+
+  if (o.section.id === "DoubleWin") {
+    appendLog(`✨ ${wheelLabel}: ${namesByLegacy[o.winner]} claims two wins from this slice!`);
+  }
+  if (o.section.id === "SwapWins") {
+    swapCount += 1;
+    appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
+  }
+}); // <— exactly one closing brace + parenthesis here
+      
       if (swapCount > 0) {
         const before = `${roundWins.player}-${roundWins.enemy}`;
         if (swapCount % 2 === 1) {
@@ -1307,48 +1472,70 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setInitiative(nextInitiative);
       appendLog(initiativeLog);
 
+      if (roundWinsCount.player >= 2) {
+        manaGains.player += 1;
+        appendLog(`${namesByLegacy.player} weaves a combo and gains bonus mana!`);
+      }
+      if (roundWinsCount.enemy >= 2) {
+        manaGains.enemy += 1;
+        appendLog(`${namesByLegacy.enemy} weaves a combo and gains bonus mana!`);
+      }
+
+      if (manaGains.player > 0) {
+        setPlayer((prev) => ({ ...prev, mana: prev.mana + manaGains.player }));
+        appendLog(`${namesByLegacy.player} gains ${manaGains.player} mana.`);
+      }
+      if (manaGains.enemy > 0) {
+        setEnemy((prev) => ({ ...prev, mana: prev.mana + manaGains.enemy }));
+        appendLog(`${namesByLegacy.enemy} gains ${manaGains.enemy} mana.`);
+      }
+
       setWheelHUD(hudColors);
       setWins({ player: pWins, enemy: eWins });
-      setReserveSums({ player: pReserve, enemy: eReserve });
+      setReserveSums({ player: playerReserveCtx, enemy: enemyReserveCtx });
       clearAdvanceVotes();
-      let winner: LegacySide | null = null;
-      let method: "goal" | "timer" | null = null;
-      if (pWins >= winGoal || eWins >= winGoal) {
-        winner = pWins >= winGoal ? "player" : "enemy";
-        method = "goal";
-      } else {
-        const timerNow = timerRemainingRef.current ?? remainingTimer ?? initialTimerSeconds;
-        if (initialTimerSeconds !== null && (timerNow ?? 0) <= 0 && pWins !== eWins) {
-          winner = pWins > eWins ? "player" : "enemy";
-          method = "timer";
-        }
-      }
+// Compute winner/method once
+let winner: LegacySide | null = null;
+let method: "goal" | "timer" | null = null;
 
-      if (winner && method) {
-        clearRematchVotes();
-        setFinalWinMethod(method);
-        setPhase("ended");
-        if (method === "timer") {
-          const leadLog =
-            winner === localLegacySide
-              ? `Time expired — you led ${pWins}-${eWins}.`
-              : `Time expired — ${namesByLegacy[winner]} led ${pWins}-${eWins}.`;
-          appendLog(leadLog);
-        } else {
-          appendLog(
-            winner === localLegacySide
-              ? "You win the match!"
-              : `${namesByLegacy[remoteLegacySide]} wins the match!`
-          );
-        }
-      } else {
-        setPhase("roundEnd");
-      }
-    };
-
-    animateSpins();
+if (pWins >= winGoal || eWins >= winGoal) {
+  winner = pWins >= winGoal ? "player" : "enemy";
+  method = "goal";
+} else {
+  const timerNow = timerRemainingRef.current ?? remainingTimer ?? initialTimerSeconds;
+  if (initialTimerSeconds !== null && (timerNow ?? 0) <= 0 && pWins !== eWins) {
+    winner = pWins > eWins ? "player" : "enemy";
+    method = "timer";
   }
+}
 
+// Handle outcome once
+if (winner && method) {
+  clearRematchVotes();
+  setFinalWinMethod(method);
+  setPhase("ended");
+
+  if (method === "timer") {
+    const leadLog =
+      winner === localLegacySide
+        ? `Time expired — you led ${pWins}-${eWins}.`
+        : `Time expired — ${namesByLegacy[winner]} led ${pWins}-${eWins}.`;
+    appendLog(leadLog);
+  } else {
+    appendLog(
+      winner === localLegacySide
+        ? "You win the match!"
+        : `${namesByLegacy[remoteLegacySide]} wins the match!`
+    );
+  }
+} else {
+  // No match end: reset mana/recall planning for the next round
+  setPreSpinPlan({ player: createEmptyPlan(), enemy: createEmptyPlan() });
+  setPhase("roundEnd");
+}
+};   
+animateSpins();    // <-- CALL IT
+}    
   const nextRoundCore = useCallback(
     (opts?: { force?: boolean }) => {
       const allow = opts?.force || phase === "roundEnd";
@@ -1371,6 +1558,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
       setWheelSections(generateWheelSet());
       setAssign({ player: [null, null, null], enemy: [null, null, null] });
+      setPreSpinPlan({ player: createEmptyPlan(), enemy: createEmptyPlan() });
 
       setSelectedCardId(null);
       setDragCardId(null);
@@ -1541,6 +1729,141 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     nextRound();
   }, [advanceVotes, isMultiplayer, nextRound, phase]);
 
+  const handlePredictiveCast = useCallback(() => {
+    if (phase !== "choose") return;
+    if (isMultiplayer) {
+      appendLog("Mana actions are disabled during multiplayer matches.");
+      return;
+    }
+    const fighter = localLegacySide === "player" ? player : enemy;
+    const cost = 1;
+    if (fighter.mana < cost) {
+      appendLog(`${namesByLegacy[localLegacySide]} lacks the mana to cast a prediction.`);
+      return;
+    }
+    const bonus = 2 + (fighter.perks.includes("spellEcho") ? 1 : 0);
+    setPreSpinPlan((prev) => {
+      const current = prev[localLegacySide] ?? createEmptyPlan();
+      const nextPlan: PreSpinPlan = {
+        ...current,
+        reserveBonus: current.reserveBonus + bonus,
+        notes: [...current.notes, `Predictive +${bonus}`],
+      };
+      return { ...prev, [localLegacySide]: nextPlan };
+    });
+    if (localLegacySide === "player") {
+      setPlayer((prev) => ({ ...prev, mana: prev.mana - cost }));
+    } else {
+      setEnemy((prev) => ({ ...prev, mana: prev.mana - cost }));
+    }
+    appendLog(`${namesByLegacy[localLegacySide]} casts a predictive ward (+${bonus} reserve).`);
+    setTimeout(() => broadcastLocalReserve(), 0);
+  }, [appendLog, broadcastLocalReserve, enemy, isMultiplayer, localLegacySide, namesByLegacy, phase, player]);
+
+  const handleReserveRecall = useCallback(() => {
+    if (phase !== "choose") return;
+    if (isMultiplayer) {
+      appendLog("Mana actions are disabled during multiplayer matches.");
+      return;
+    }
+    const fighter = localLegacySide === "player" ? player : enemy;
+    const plan = preSpinPlan[localLegacySide];
+    if (plan?.recallUsed) {
+      appendLog("Reserve recall already used this round.");
+      return;
+    }
+    const discardValues = fighter.discard
+      .filter((c) => isNormal(c) && typeof c.number === "number")
+      .map((c) => c.number as number)
+      .sort((a, b) => b - a);
+    if (!discardValues.length) {
+      appendLog("No discarded spells to recall.");
+      return;
+    }
+    const recallCount = fighter.perks.includes("recallMastery") ? Math.min(2, discardValues.length) : 1;
+    const selected = discardValues.slice(0, recallCount);
+    const bonus = selected.reduce((sum, value) => sum + value, 0);
+    if (bonus <= 0) {
+      appendLog("Your discarded spells hold no arcane charge.");
+      return;
+    }
+    const baseCost = 1;
+    const discount = fighter.perks.includes("recallMastery") ? 1 : 0;
+    const cost = Math.max(0, baseCost - discount);
+    if (fighter.mana < cost) {
+      appendLog(`${namesByLegacy[localLegacySide]} lacks the mana to recall reserves.`);
+      return;
+    }
+    setPreSpinPlan((prev) => {
+      const current = prev[localLegacySide] ?? createEmptyPlan();
+      const nextPlan: PreSpinPlan = {
+        ...current,
+        recallUsed: true,
+        recallBonus: current.recallBonus + bonus,
+        notes: [...current.notes, `Recall +${bonus}`],
+      };
+      return { ...prev, [localLegacySide]: nextPlan };
+    });
+    if (cost > 0) {
+      if (localLegacySide === "player") {
+        setPlayer((prev) => ({ ...prev, mana: prev.mana - cost }));
+      } else {
+        setEnemy((prev) => ({ ...prev, mana: prev.mana - cost }));
+      }
+    }
+    appendLog(`${namesByLegacy[localLegacySide]} recalls reserves (+${bonus}).`);
+    setTimeout(() => broadcastLocalReserve(), 0);
+  }, [appendLog, broadcastLocalReserve, enemy, isMultiplayer, localLegacySide, namesByLegacy, phase, player, preSpinPlan]);
+
+  const handleSwapVC = useCallback(
+    (wheelIndex: number) => {
+      if (phase !== "choose") return;
+      if (isMultiplayer) {
+        appendLog("Mana actions are disabled during multiplayer matches.");
+        return;
+      }
+      const fighter = localLegacySide === "player" ? player : enemy;
+      const currentPlan = preSpinPlan[localLegacySide] ?? createEmptyPlan();
+      const currentOverride = currentPlan.vcOverrides[wheelIndex];
+      if (!currentOverride) {
+        const baseCost = 2;
+        const discount = fighter.perks.includes("planarSwap") ? 1 : 0;
+        const cost = Math.max(1, baseCost - discount);
+        if (fighter.mana < cost) {
+          appendLog(`${namesByLegacy[localLegacySide]} lacks the mana to reshape that wheel.`);
+          return;
+        }
+        const nextOverride = VC_SWAP_SEQUENCE[0];
+        setPreSpinPlan((prev) => {
+          const cur = prev[localLegacySide] ?? createEmptyPlan();
+          const overrides = { ...cur.vcOverrides, [wheelIndex]: nextOverride };
+          return { ...prev, [localLegacySide]: { ...cur, vcOverrides: overrides } };
+        });
+        if (localLegacySide === "player") {
+          setPlayer((prev) => ({ ...prev, mana: prev.mana - cost }));
+        } else {
+          setEnemy((prev) => ({ ...prev, mana: prev.mana - cost }));
+        }
+        appendLog(`${namesByLegacy[localLegacySide]} fixes wheel ${wheelIndex + 1} to ${nextOverride}.`);
+      } else {
+        const idx = VC_SWAP_SEQUENCE.indexOf(currentOverride);
+        const nextOverride = idx === -1 || idx === VC_SWAP_SEQUENCE.length - 1 ? null : VC_SWAP_SEQUENCE[idx + 1];
+        setPreSpinPlan((prev) => {
+          const cur = prev[localLegacySide] ?? createEmptyPlan();
+          const overrides = { ...cur.vcOverrides };
+          if (nextOverride) overrides[wheelIndex] = nextOverride; else delete overrides[wheelIndex];
+          return { ...prev, [localLegacySide]: { ...cur, vcOverrides: overrides } };
+        });
+        appendLog(
+          nextOverride
+            ? `${namesByLegacy[localLegacySide]} cycles wheel ${wheelIndex + 1} to ${nextOverride}.`
+            : `${namesByLegacy[localLegacySide]} lets wheel ${wheelIndex + 1} return to fate.`
+        );
+      }
+    },
+    [appendLog, isMultiplayer, localLegacySide, namesByLegacy, phase, player, preSpinPlan, enemy]
+  );
+
   const resetMatch = useCallback(() => {
     clearResolveVotes();
     clearAdvanceVotes();
@@ -1583,6 +1906,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     setRevealedDuringChoose({ player: [], enemy: [] });
     revealUsedRef.current = { player: false, enemy: false };
     setWheelHUD([null, null, null]);
+    setPreSpinPlan({ player: createEmptyPlan(), enemy: createEmptyPlan() });
 
     setLog([START_LOG]);
 
@@ -2098,10 +2422,14 @@ const HUDPanels = () => {
     const name = isPlayer ? players.left.name : players.right.name;
     const win = isPlayer ? wins.player : wins.enemy;
     const rs = isPlayer ? rsP : rsE;
+    const mana = isPlayer ? player.mana : enemy.mana;
     const hasInit = initiative === side;
     const isReserveVisible =
       (phase === 'showEnemy' || phase === 'anim' || phase === 'roundEnd' || phase === 'ended') &&
       rs !== null;
+    const reserveTooltip = rs
+      ? `Reserve total ${rs.total} (base ${rs.base}${rs.bonus ? `, bonus ${rs.bonus}` : ''})${rs.notes.length ? ` — ${rs.notes.join(', ')}` : ''}`
+      : undefined;
 
     return (
       <div className="flex h-full flex-col items-center w-full">
@@ -2126,6 +2454,10 @@ const HUDPanels = () => {
             <span className="opacity-80">Wins</span>
             <span className="text-base font-extrabold tabular-nums">{win}</span>
           </div>
+          <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+            <span className="opacity-80">Mana</span>
+            <span className="text-base font-extrabold tabular-nums">{mana}</span>
+          </div>
           <div
             className={`ml-2 hidden sm:flex rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap transition-opacity ${
               isReserveVisible ? 'opacity-100 visible' : 'opacity-0 invisible'
@@ -2137,9 +2469,12 @@ const HUDPanels = () => {
               borderColor: THEME.slotBorder,
               color: THEME.textWarm,
             }}
-            title={rs !== null ? `Reserve: ${rs}` : undefined}
+            title={reserveTooltip}
           >
-            Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
+            Reserve: <span className="font-bold tabular-nums">{rs?.total ?? 0}</span>
+            {rs && rs.bonus > 0 ? (
+              <span className="ml-1 text-[10px] text-amber-200/90">(+{rs.bonus})</span>
+            ) : null}
           </div>
 
           {/* Initiative flag — absolute, no extra height */}
@@ -2166,12 +2501,21 @@ const HUDPanels = () => {
                 borderColor: THEME.slotBorder,
                 color: THEME.textWarm,
               }}
-              title={rs !== null ? `Reserve: ${rs}` : undefined}
+              title={reserveTooltip}
             >
-              Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
+              Reserve: <span className="font-bold tabular-nums">{rs?.total ?? 0}</span>
+              {rs && rs.bonus > 0 ? (
+                <span className="ml-1 text-[10px] text-amber-200/90">(+{rs.bonus})</span>
+              ) : null}
             </div>
           </div>
         )}
+
+        {isReserveVisible && rs?.notes.length ? (
+          <div className="mt-1 text-[10px] text-amber-200/80 text-center sm:text-left">
+            {rs.notes.join(' · ')}
+          </div>
+        ) : null}
 
         {/* (removed) old outside flag that was pushing layout down */}
         {/* {hasInit && <span className="mt-1" aria-label="Has initiative">⚑</span>} */}
@@ -2201,6 +2545,75 @@ const HUDPanels = () => {
           <Panel side="enemy" />
         </div>
       </div>
+    </div>
+  );
+};
+
+const PreSpinControls = () => {
+  const fighter = localLegacySide === 'player' ? player : enemy;
+  const plan = preSpinPlan[localLegacySide] ?? createEmptyPlan();
+  const mana = fighter.mana;
+  const canAct = phase === 'choose' && !isMultiplayer;
+  const predictiveDisabled = !canAct || mana < 1;
+  const recallCost = Math.max(0, 1 - (fighter.perks.includes('recallMastery') ? 1 : 0));
+  const recallDisabled = !canAct || plan.recallUsed || mana < recallCost;
+  const recallLabel = recallCost > 0 ? `Recall Reserve (-${recallCost} mana)` : 'Recall Reserve (free)';
+  const swapCost = Math.max(1, 2 - (fighter.perks.includes('planarSwap') ? 1 : 0));
+  const reserveBonusTotal = plan.reserveBonus + plan.recallBonus;
+  const notes = plan.notes.length ? plan.notes.join(' · ') : 'None';
+
+  return (
+    <div
+      className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-100 shadow-sm"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          Mana: <span className="font-semibold tabular-nums">{mana}</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handlePredictiveCast}
+            disabled={predictiveDisabled}
+            className="rounded bg-amber-400/90 px-2 py-1 font-semibold text-slate-900 disabled:opacity-40"
+          >
+            Predictive Cast (-1 mana)
+          </button>
+          <button
+            onClick={handleReserveRecall}
+            disabled={recallDisabled}
+            className="rounded bg-amber-300/90 px-2 py-1 font-semibold text-slate-900 disabled:opacity-40"
+          >
+            {recallLabel}
+          </button>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {[0, 1, 2].map((w) => {
+          const override = plan.vcOverrides[w];
+          const needsMana = !override && mana < swapCost;
+          const disabled = !canAct || needsMana;
+          const label = override ? `Wheel ${w + 1}: ${override}` : `Wheel ${w + 1}: base`;
+          return (
+            <button
+              key={w}
+              onClick={() => handleSwapVC(w)}
+              disabled={disabled}
+              className="rounded border border-amber-400/60 bg-transparent px-2 py-1 text-amber-100 transition disabled:opacity-40"
+            >
+              Swap {label}
+              {!override ? ` (-${swapCost})` : ' (cycle)'}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2 text-[11px] text-amber-200/80">
+        Reserve bonus: +{reserveBonusTotal} — {notes}
+      </div>
+      {!canAct && isMultiplayer ? (
+        <div className="mt-2 text-[11px] text-amber-200/70 italic">
+          Mana actions are disabled during multiplayer.
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -2317,6 +2730,7 @@ const HUDPanels = () => {
       </div>
 
       {/* HUD */}
+      <div className="mt-1"><PreSpinControls /></div>
       <div className="relative z-10"><HUDPanels /></div>
 
       {/* Wheels center */}

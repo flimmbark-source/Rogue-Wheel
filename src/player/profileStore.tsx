@@ -2,7 +2,10 @@
 // to match your existing game types/functions.
 
 import { shuffle } from "../game/math";
-import type { Card, Fighter, MatchModeId } from "../game/types";
+
+import type { Card, Fighter, SorcererPerk } from "../game/types";
+import { SORCERER_PERKS } from "../game/types";
+
 
 // ===== Local persistence types (module-scoped) =====
 type CardId = string;
@@ -17,14 +20,27 @@ export type Profile = {
   level: number;
   exp: number;
   winStreak: number;
+  sorcererPerks: SorcererPerk[];
 };
 type LocalState = { version: number; profile: Profile; inventory: InventoryItem[]; decks: Deck[] };
 
 // ===== Storage/config =====
 const KEY = "rw:single:state";
-const VERSION = 2;
+const VERSION = 3;
 const MAX_DECK_SIZE = 10;
 const MAX_COPIES_PER_DECK = 2;
+
+const isSorcererPerk = (perk: unknown): perk is SorcererPerk =>
+  typeof perk === "string" && (SORCERER_PERKS as readonly string[]).includes(perk as SorcererPerk);
+
+const unique = <T,>(arr: T[]) => arr.filter((value, index) => arr.indexOf(value) === index);
+
+const arraysEqual = <T,>(a: T[], b: T[]) => a.length === b.length && a.every((value, index) => value === b[index]);
+
+const sanitizePerks = (perks: unknown): SorcererPerk[] => {
+  if (!Array.isArray(perks)) return [];
+  return unique(perks.filter(isSorcererPerk));
+};
 
 type SafeStorage = Pick<Storage, "getItem" | "setItem"> | null;
 
@@ -90,6 +106,7 @@ function seed(): LocalState {
       level: 1,
       exp: 0,
       winStreak: 0,
+      sorcererPerks: [],
     },
     inventory: SEED_INVENTORY,
     decks: [SEED_DECK],
@@ -132,6 +149,19 @@ function loadStateRaw(): LocalState {
         if (typeof s.profile.winStreak !== "number") s.profile.winStreak = 0;
       }
       saveState(s);
+    }
+    if (s.version < 3) {
+      s.version = 3;
+      if (!s.profile) {
+        s.profile = seed().profile;
+      }
+      s.profile.sorcererPerks = sanitizePerks(s.profile.sorcererPerks);
+      saveState(s);
+    }
+    if (!Array.isArray(s.profile?.sorcererPerks)) {
+      s.profile.sorcererPerks = [];
+    } else {
+      s.profile.sorcererPerks = sanitizePerks(s.profile.sorcererPerks);
     }
     return s;
   } catch {
@@ -271,12 +301,52 @@ export function recordMatchResult(options: RecordMatchOptions): MatchResultSumma
   };
 }
 
+export function getSorcererPerks(): SorcererPerk[] {
+  const state = loadStateRaw();
+  const profile = state.profile;
+  const sanitized = sanitizePerks(profile?.sorcererPerks ?? []);
+  if (!arraysEqual(profile?.sorcererPerks ?? [], sanitized)) {
+    profile.sorcererPerks = sanitized;
+    saveState(state);
+  }
+  return [...sanitized];
+}
+
+export function unlockSorcererPerk(perk: SorcererPerk): SorcererPerk[] {
+  const state = loadStateRaw();
+  const profile = state.profile;
+  const current = sanitizePerks(profile?.sorcererPerks ?? []);
+  if (!current.includes(perk) && isSorcererPerk(perk)) {
+    current.push(perk);
+    profile.sorcererPerks = current;
+    saveState(state);
+  } else if (!arraysEqual(profile.sorcererPerks ?? [], current)) {
+    profile.sorcererPerks = current;
+    saveState(state);
+  }
+  return [...current];
+}
+
+export function hasSorcererPerk(perk: SorcererPerk): boolean {
+  return getSorcererPerks().includes(perk);
+}
+
 // ===== Public profile/deck management API (used by UI) =====
 export type ProfileBundle = { profile: Profile; inventory: InventoryItem[]; decks: Deck[]; active: Deck | undefined };
 
 export function getProfileBundle(): ProfileBundle {
   const s = loadStateRaw();
-  return { profile: s.profile, inventory: s.inventory, decks: s.decks, active: findActive(s) };
+  const perks = sanitizePerks(s.profile?.sorcererPerks ?? []);
+  if (!arraysEqual(s.profile?.sorcererPerks ?? [], perks)) {
+    s.profile.sorcererPerks = perks;
+    saveState(s);
+  }
+  return {
+    profile: { ...s.profile, sorcererPerks: [...perks] },
+    inventory: s.inventory,
+    decks: s.decks,
+    active: findActive(s),
+  };
 }
 export function createDeck(name = "New Deck") {
   const s = loadStateRaw();
@@ -460,8 +530,8 @@ function cardFromId(cardId: string): Card {
 }
 
 // ====== Build a runtime deck (Card[]) from the ACTIVE profile deck ======
-export function buildActiveDeckAsCards(): Card[] {
-  const { active } = getProfileBundle();
+export function buildActiveDeckAsCards(bundle?: ProfileBundle): Card[] {
+  const active = bundle?.active ?? getProfileBundle().active;
   if (!active || !active.cards?.length) return starterDeck(); // fallback
 
   const pool: Card[] = [];
@@ -501,11 +571,14 @@ export function freshFive(f: Fighter): Fighter {
   const pool = shuffle([...f.deck, ...f.hand, ...f.discard]);
   const hand = pool.slice(0, 5);
   const deck = pool.slice(5);
-  return { name: f.name, hand, deck, discard: [] };
+  return { ...f, hand, deck, discard: [] };
 }
 
 /** Make a fighter using the ACTIVE profile deck (draw 5 to start). */
 export function makeFighter(name: string): Fighter {
-  const deck = buildActiveDeckAsCards();
-  return refillTo({ name, deck, hand: [], discard: [] }, 5);
+  const bundle = getProfileBundle();
+  const deck = buildActiveDeckAsCards(bundle);
+  const perks = bundle.profile?.sorcererPerks ?? [];
+  const baseMana = perks.includes("arcaneOverflow") ? 1 : 0;
+  return refillTo({ name, deck, hand: [], discard: [], mana: baseMana, perks }, 5);
 }
