@@ -27,6 +27,16 @@ export type Players = Record<Side, PlayerCore>;
 
 export type TagId = "oddshift" | "parityflip" | "echoreserve";
 
+export type LinkKind = "lane" | "numberMatch";
+
+export type CardLinkDescriptor = {
+  kind: LinkKind;
+  key: string;
+  label: string;
+  bonusSteps: number;
+  description?: string;
+};
+
 export type CardType = "normal" | "split";
 
 export type Card = {
@@ -37,6 +47,8 @@ export type Card = {
   leftValue?: number;   // when type === "split"
   rightValue?: number;  // when type === "split"
   tags: TagId[];
+  multiLane?: boolean;
+  linkDescriptors?: CardLinkDescriptor[];
 };
 
 export type VC =
