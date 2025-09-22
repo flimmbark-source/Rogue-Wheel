@@ -234,9 +234,10 @@ const effectiveGameMode: GameMode =
     hostId ? hostLegacySide : localLegacySide
   );
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
-  const [manaPools, setManaPools] = useState<SideState<number>>({ player: 0, enemy: 0 });
-  const [round, setRound] = useState(1);
-
+  const [manaPools, setManaPools] = useState<SideState<number>>({
+    player: 0,
+    enemy: 0,
+  });
   const [pendingSpell, setPendingSpell] = useState<PendingSpellDescriptor | null>(null);
   const [wheelDamage, setWheelDamage] = useState<WheelSideState<number>>(() =>
     createWheelSideState(0)
@@ -253,7 +254,10 @@ const effectiveGameMode: GameMode =
   const [pointerShifts, setPointerShifts] = useState<[number, number, number]>(
     createPointerShiftState
   );
-  const [initiativeOverride, setInitiativeOverride] = useState<LegacySide | null>(null);
+  const [initiativeOverride, setInitiativeOverride] = useState<LegacySide | null>(
+    null
+  );
+  const [round, setRound] = useState(1);
 
   const resetRoundTransientState = useCallback(() => {
     setPendingSpell(null);
@@ -693,13 +697,10 @@ const storeReserveReport = useCallback(
     if (!isGrimoireMode && showGrimoire) {
       setShowGrimoire(false);
     }
-  }, [isGrimoireMode, showGrimoire]);
-
-  useEffect(() => {
     if (!isGrimoireMode) {
       setPendingSpell(null);
     }
-  }, [isGrimoireMode, setPendingSpell]);
+  }, [isGrimoireMode, setPendingSpell, showGrimoire]);
 
 
   useEffect(() => {
@@ -738,7 +739,7 @@ const storeReserveReport = useCallback(
       spellCastRequestRef.current(spell);
       setShowGrimoire(false);
     },
-    [gameMode, localLegacySide]
+    [gameMode, localLegacySide, setPendingSpell]
   );
 
   const canReveal = useMemo(() => {
@@ -1448,9 +1449,9 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     setWheelHUD,
     setWheelSections,
     setWins,
+    resetRoundTransientState,
     _setDragOverWheel,
-    wheelRefs,
-    resetRoundTransientState
+    wheelRefs
   ]);
 
   useEffect(() => {
@@ -1715,6 +1716,13 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
   const pc = assign.player[i];
   const ec = assign.enemy[i];
 
+  const damageState = wheelDamage[i];
+  const mirrorState = wheelMirror[i];
+  const lockState = wheelLocks[i];
+  const pointerShift = pointerShifts[i];
+  const playerPenalty = reservePenalties.player;
+  const enemyPenalty = reservePenalties.enemy;
+
   const leftSlot = { side: "player" as const, card: pc, name: namesByLegacy.player };
   const rightSlot = { side: "enemy" as const, card: ec, name: namesByLegacy.enemy };
 
@@ -1838,6 +1846,15 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
         transform: 'translateZ(0)',
         isolation: 'isolate'
       }}
+      data-wheel-locked={lockState ? "true" : "false"}
+      data-pointer-shift={pointerShift}
+      data-player-damage={damageState.player}
+      data-enemy-damage={damageState.enemy}
+      data-player-mirror={mirrorState.player ? "true" : "false"}
+      data-enemy-mirror={mirrorState.enemy ? "true" : "false"}
+      data-player-reserve-penalty={playerPenalty}
+      data-enemy-reserve-penalty={enemyPenalty}
+      data-initiative-override={initiativeOverride ?? ""}
     >
   {/* ADD: winner dots (don’t affect layout) */}
   { (phase === "roundEnd" || phase === "ended") && (
@@ -2268,6 +2285,8 @@ const HUDPanels = ({
   data-mana-enabled={grimoireAttrValue}
   data-spells-enabled={grimoireAttrValue}
   data-archetypes-enabled={grimoireAttrValue}
+  data-pending-spell={pendingSpell ? pendingSpell.spell.id : ""}
+  data-local-mana={localMana}
 >
   {showArchetypeModal && renderArchetypeModal()}
 

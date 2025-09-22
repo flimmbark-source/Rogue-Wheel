@@ -10,7 +10,7 @@ export type SpellDefinition = {
   allowedPhases?: Phase[];
 };
 
-export const SPELL_CATALOGUE: Record<SpellId, SpellDefinition> = {
+const SPELL_CATALOGUE: Record<SpellId, SpellDefinition> = {
   smokeBomb: {
     id: "smokeBomb",
     name: "Smoke Bomb",
