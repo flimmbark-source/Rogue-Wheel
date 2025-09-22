@@ -63,25 +63,6 @@ export default memo(function StSCard({
     : null;
 
   // ----- Link descriptor badges (from Experimental) -----
-  const laneDescriptor = card.linkDescriptors?.find((d) => d.kind === "lane");
-  const matchDescriptor = card.linkDescriptors?.find((d) => d.kind === "numberMatch");
-
-  const linkBadges =
-    (card.multiLane || (card.linkDescriptors?.length ?? 0) > 0) && !faceDown ? (
-      <>
-        {card.multiLane && (
-          <span className="px-1 py-px rounded-sm bg-amber-500/80 text-[9px] font-semibold text-stone-900 shadow">
-            {(laneDescriptor?.label ?? "Link").slice(0, 8)}
-          </span>
-        )}
-        {card.linkDescriptors?.some((d) => d.kind === "numberMatch") && (
-          <span className="px-1 py-px rounded-sm bg-emerald-500/80 text-[9px] font-semibold text-stone-900 shadow">
-            {(matchDescriptor?.label ?? "Match").slice(0, 8)}
-          </span>
-        )}
-      </>
-    ) : null;
-
   // ----- Title / value / hint -----
   const cardTitle = faceDown ? "Hidden" : card.name;
   const metaDisplay = card.meta?.decoy?.display;
@@ -113,13 +94,6 @@ export default memo(function StSCard({
 
     return <div className="text-3xl font-extrabold text-white/90">—</div>;
   };
-
-  const hintText =
-    !faceDown && showHint && card.hint ? (
-      <div className="absolute bottom-1.5 left-1.5 right-1.5 text-[10px] font-medium leading-tight text-white/85 opacity-85">
-        {card.hint}
-      </div>
-    ) : null;
 
   return (
     <button
@@ -161,17 +135,13 @@ export default memo(function StSCard({
           <div className="text-[10px] font-semibold uppercase tracking-wide text-white/70 truncate text-left">
             {cardTitle}
           </div>
-          <div className="flex flex-wrap gap-1 items-center justify-end">
-            {tagBadges}
-            {linkBadges}
-          </div>
+          <div className="flex flex-wrap gap-1 items-center justify-end">{tagBadges}</div>
         </div>
 
         {/* Main value */}
         <div className="mt-2 flex flex-1 items-center justify-center">{renderValue()}</div>
 
         {/* Hint */}
-        {hintText}
       </div>
     </button>
   );
