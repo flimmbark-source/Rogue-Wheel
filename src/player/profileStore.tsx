@@ -120,11 +120,15 @@ const COOP_OBJECTIVE_PERIOD_MS = WEEK_MS;
 const isSorcererPerk = (perk: unknown): perk is SorcererPerk =>
   typeof perk === "string" && (SORCERER_PERKS as readonly string[]).includes(perk as SorcererPerk);
 
-const unique = <T,>(arr: T[]) => arr.filter((value, index) => arr.indexOf(value) === index);
+function unique<T>(arr: T[]): T[] {
+  return arr.filter((value, index) => arr.indexOf(value) === index);
+}
 
-const arraysEqual = <T,>(a: T[], b: T[]) => a.length === b.length && a.every((value, index) => value === b[index]);
+function arraysEqual<T>(a: T[], b: T[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
 
-const sanitizePerks = (perks: unknown): SorcererPerk[] => {
+function sanitizePerks(perks: unknown): SorcererPerk[] {
   if (!Array.isArray(perks)) return [];
   return unique(perks.filter(isSorcererPerk));
 };
@@ -599,6 +603,7 @@ function seed(): LocalState {
       modes: { ...DEFAULT_UNLOCKS.modes },
     },
     cosmetics: [...DEFAULT_COSMETICS],
+    sorcererPerks: [], // ← important
   };
 
   const challenges = seedChallengeBoard(profile, now);
@@ -608,16 +613,7 @@ function seed(): LocalState {
 
   return {
     version: VERSION,
-    profile: {
-      id: uid("user"),
-      displayName: "Local Player",
-      mmr: 1000,
-      createdAt: Date.now(),
-      level: 1,
-      exp: 0,
-      winStreak: 0,
-      sorcererPerks: [],
-    },
+    profile,                 // ← use the profile we just built
     inventory: SEED_INVENTORY,
     decks: [SEED_DECK],
     challenges,
@@ -626,6 +622,7 @@ function seed(): LocalState {
     leaderboard,
   };
 }
+
 
 // ===== Load/save =====
 function migrateState(raw: any): LocalState {
@@ -742,20 +739,15 @@ function loadStateRaw(): LocalState {
   try {
 const parsed = JSON.parse(raw) as LocalState | any;
 
-// Run the newer schema migrator if present, but be defensive.
 let s: LocalState;
 try {
-  // If migrateState handles versions/currencies/etc., prefer it.
   s = migrateState(parsed) as LocalState;
 } catch {
-  // Fallback to raw if migrateState throws for any reason.
   s = parsed as LocalState;
 }
 
-// Ensure we always have a version field.
 if (!(s as any).version) (s as any).version = VERSION;
 
-// Legacy upgrades for very old saves, in case migrateState didn't cover them.
 if (s.version < 2) {
   s.version = 2;
   if (!s.profile) {
@@ -769,20 +761,18 @@ if (s.version < 2) {
 
 if (s.version < 3) {
   s.version = 3;
-  if (!s.profile) {
-    s.profile = seed().profile;
-  }
+  if (!s.profile) s.profile = seed().profile;
   s.profile.sorcererPerks = sanitizePerks(s.profile.sorcererPerks);
 }
 
-// Final safety: perks must be an array and sanitized.
+// Final safety: perks must be an array and sanitized on profile
 if (!Array.isArray(s.profile?.sorcererPerks)) {
   s.profile = s.profile ?? seed().profile;
   s.profile.sorcererPerks = [];
 }
 s.profile.sorcererPerks = sanitizePerks(s.profile.sorcererPerks);
 
-// Persist once after all migrations/sanitization.
+// Persist after migration
 saveState(s);
 return s;
 
@@ -1005,15 +995,18 @@ export function hasSorcererPerk(perk: SorcererPerk): boolean {
 }
 
 // ===== Public profile/deck management API (used by UI) =====
-export type ProfileBundle = {
-  profile: Profile;
-  inventory: InventoryItem[];
-  decks: Deck[];
-  active: Deck | undefined;
-  challenges: ChallengeBoard;
-  sharedStats: SharedStats;
-  coopObjectives: CoopObjective[];
-  leaderboard: LeaderboardEntry[];
+export type Profile = {
+  id: string;
+  displayName: string;
+  mmr: number;
+  createdAt: number;
+  level: number;
+  exp: number;
+  winStreak: number;
+  currencies: CurrencyLedger;
+  unlocks: UnlockState;
+  cosmetics: string[];
+  sorcererPerks: SorcererPerk[]; // ← add this
 };
 
 export function getProfileBundle(): ProfileBundle {
@@ -1361,19 +1354,31 @@ function buildDescriptorsForNumber(num: number) {
   return { multiLane, linkDescriptors };
 }
 
-function cardFromId(cardId: string): Card {
+function cardFromId(cardId: string, opts?: { preview?: boolean }): Card {
+  // Known special/trick cards
+  const tagged = TAGGED_LIBRARY[cardId];
+  if (tagged) {
+    const id = opts?.preview ? `preview_${cardId}` : nextCardId();
+    const { number = 0, ...rest } = tagged;
+    const descriptors = buildDescriptorsForNumber(number);
+    return {
+      id,
+      number,
+      ...rest,
+      ...descriptors,
+    };
+  }
 
+  // Numeric formats
   let num = 0;
   const mBasic = /^basic_(\d+)$/.exec(cardId);
-  const mNeg   = /^neg_(-?\d+)$/.exec(cardId);
-  const mNum   = /^num_(-?\d+)$/.exec(cardId);
-
+  const mNeg = /^neg_(-?\d+)$/.exec(cardId);
+  const mNum = /^num_(-?\d+)$/.exec(cardId);
   if (mBasic) num = parseInt(mBasic[1], 10);
   else if (mNeg) num = parseInt(mNeg[1], 10);
   else if (mNum) num = parseInt(mNum[1], 10);
 
   const descriptors = buildDescriptorsForNumber(num);
-
   return {
     id: opts?.preview ? `preview_${cardId}` : nextCardId(),
     name: `${num}`,
@@ -1383,6 +1388,7 @@ function cardFromId(cardId: string): Card {
     ...descriptors,
   };
 }
+
 
 // ====== Build a runtime deck (Card[]) from the ACTIVE profile deck ======
 export function buildActiveDeckAsCards(bundle?: ProfileBundle): Card[] {
