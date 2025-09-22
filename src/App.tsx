@@ -398,9 +398,6 @@ export default function ThreeWheel_WinsOnly({
   const winnerName = matchWinner ? namesByLegacy[matchWinner] : null;
   const localName = namesByLegacy[localLegacySide];
   const remoteName = namesByLegacy[remoteLegacySide];
-
-  const matchMode: "solo" | "coop" | "versus" = isMultiplayer ? "versus" : "solo";
-
   const finalOutcomeMessage =
     finalWinMethod === "timer"
       ? localWon
