@@ -28,12 +28,14 @@ import { motion } from "framer-motion";
 import {
   SLICES,
   TARGET_WINS,
+  resolveMatchMode,
   type Side as TwoSide,
   type Card,
   type Section,
   type Fighter,
   type SplitChoiceMap,
   type Players,
+  type MatchModeId,
   LEGACY_FROM_SIDE,
 } from "./game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
@@ -153,6 +155,8 @@ export default function ThreeWheel_WinsOnly({
   roomCode,
   hostId,
   targetWins,
+  modeId,
+  timerSeconds: timerSecondsProp,
   onExit,
 }: {
   localSide: TwoSide;
@@ -162,6 +166,8 @@ export default function ThreeWheel_WinsOnly({
   roomCode?: string;
   hostId?: string;
   targetWins?: number;
+  modeId?: MatchModeId;
+  timerSeconds?: number | null;
   onExit?: () => void;
 }) {
   const mountedRef = useRef(true);
@@ -182,10 +188,33 @@ export default function ThreeWheel_WinsOnly({
     enemy: players.right.name,
   };
 
-  const winGoal =
+  const sanitizedTargetWins =
     typeof targetWins === "number" && Number.isFinite(targetWins)
-      ? Math.max(1, Math.min(15, Math.round(targetWins)))
-      : TARGET_WINS;
+      ? Math.max(1, Math.min(25, Math.round(targetWins)))
+      : null;
+
+  const sanitizedTimerSeconds =
+    typeof timerSecondsProp === "number" && Number.isFinite(timerSecondsProp) && timerSecondsProp > 0
+      ? Math.max(1, Math.round(timerSecondsProp))
+      : null;
+
+  const matchMode = useMemo(() => {
+    const base = resolveMatchMode(modeId ?? null);
+    const wins = sanitizedTargetWins ?? base.targetWins ?? TARGET_WINS;
+    const timer =
+      sanitizedTimerSeconds !== null
+        ? sanitizedTimerSeconds
+        : typeof base.timerSeconds === "number" && base.timerSeconds > 0
+        ? Math.round(base.timerSeconds)
+        : null;
+    return { ...base, targetWins: wins, timerSeconds: timer };
+  }, [modeId, sanitizedTargetWins, sanitizedTimerSeconds]);
+
+  const winGoal = matchMode.targetWins;
+  const initialTimerSeconds =
+    typeof matchMode.timerSeconds === "number" && matchMode.timerSeconds > 0
+      ? matchMode.timerSeconds
+      : null;
 
 
   const hostLegacySide: LegacySide = (() => {
@@ -207,6 +236,9 @@ export default function ThreeWheel_WinsOnly({
   );
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
   const [round, setRound] = useState(1);
+  const [remainingTimer, setRemainingTimer] = useState<number | null>(initialTimerSeconds);
+  const timerRemainingRef = useRef<number | null>(initialTimerSeconds);
+  const [finalWinMethod, setFinalWinMethod] = useState<"goal" | "timer" | null>(null);
 
   // Freeze layout during resolution
   const [freezeLayout, setFreezeLayout] = useState(false);
@@ -277,23 +309,83 @@ export default function ThreeWheel_WinsOnly({
   const [levelUpFlash, setLevelUpFlash] = useState(false);
   const hasRecordedResultRef = useRef(false);
 
+  const timerExpired =
+    initialTimerSeconds !== null && (remainingTimer ?? initialTimerSeconds) <= 0;
+
   const matchWinner: LegacySide | null =
-    wins.player >= winGoal ? "player" : wins.enemy >= winGoal ? "enemy" : null;
+    wins.player >= winGoal
+      ? "player"
+      : wins.enemy >= winGoal
+      ? "enemy"
+      : timerExpired && wins.player !== wins.enemy
+      ? wins.player > wins.enemy
+        ? "player"
+        : "enemy"
+      : null;
   const localWinsCount = localLegacySide === "player" ? wins.player : wins.enemy;
   const remoteWinsCount = localLegacySide === "player" ? wins.enemy : wins.player;
   const localWon = matchWinner ? matchWinner === localLegacySide : false;
   const winnerName = matchWinner ? namesByLegacy[matchWinner] : null;
   const localName = namesByLegacy[localLegacySide];
   const remoteName = namesByLegacy[remoteLegacySide];
+  const finalOutcomeMessage =
+    finalWinMethod === "timer"
+      ? localWon
+        ? "You led when the clock expired."
+        : `${winnerName ?? remoteName} led when the clock expired.`
+      : localWon
+      ? `You reached ${winGoal} wins.`
+      : `${winnerName ?? remoteName} reached ${winGoal} wins.`;
 
   useEffect(() => {
     setInitiative(hostId ? hostLegacySide : localLegacySide);
   }, [hostId, hostLegacySide, localLegacySide]);
 
   useEffect(() => {
+    setRemainingTimer(initialTimerSeconds);
+    timerRemainingRef.current = initialTimerSeconds;
+  }, [initialTimerSeconds, seed]);
+
+  useEffect(() => {
+    timerRemainingRef.current = remainingTimer;
+  }, [remainingTimer]);
+
+  useEffect(() => {
+    if (initialTimerSeconds === null) return;
+    const currentRemaining = timerRemainingRef.current ?? initialTimerSeconds;
+    if (currentRemaining === null || currentRemaining <= 0) return;
+    if (phase === "ended") return;
+
+    let prev = Date.now();
+    const id = window.setInterval(() => {
+      setRemainingTimer((prevSecs) => {
+        if (prevSecs === null) return prevSecs;
+        if (prevSecs <= 0) return 0;
+        const now = Date.now();
+        const diff = Math.max(1, Math.floor((now - prev) / 1000));
+        prev = now;
+        const next = Math.max(0, prevSecs - diff);
+        timerRemainingRef.current = next;
+        return next;
+      });
+    }, 1000);
+
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [initialTimerSeconds, phase]);
+
+  useEffect(() => {
     if (phase === "ended") {
       if (!hasRecordedResultRef.current) {
-        const summary = recordMatchResult({ didWin: localWon });
+        const summary = recordMatchResult({
+          didWin: localWon,
+          modeId: matchMode.id,
+          modeLabel: matchMode.name,
+          targetWins: winGoal,
+          timerSeconds: initialTimerSeconds,
+          winMethod: finalWinMethod ?? (matchWinner ? "goal" : undefined),
+        });
         hasRecordedResultRef.current = true;
         setMatchSummary(summary);
 
@@ -330,7 +422,18 @@ export default function ThreeWheel_WinsOnly({
         setLevelUpFlash(false);
       }
     }
-  }, [phase, localWon, wins.player, wins.enemy]);
+  }, [
+    phase,
+    localWon,
+    wins.player,
+    wins.enemy,
+    matchMode.id,
+    matchMode.name,
+    winGoal,
+    initialTimerSeconds,
+    finalWinMethod,
+    matchWinner,
+  ]);
 
   const [handClearance, setHandClearance] = useState<number>(0);
 
@@ -979,16 +1082,38 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setWins({ player: pWins, enemy: eWins });
       setReserveSums({ player: pReserve, enemy: eReserve });
       clearAdvanceVotes();
-      setPhase("roundEnd");
+      let winner: LegacySide | null = null;
+      let method: "goal" | "timer" | null = null;
       if (pWins >= winGoal || eWins >= winGoal) {
+        winner = pWins >= winGoal ? "player" : "enemy";
+        method = "goal";
+      } else {
+        const timerNow = timerRemainingRef.current ?? remainingTimer ?? initialTimerSeconds;
+        if (initialTimerSeconds !== null && (timerNow ?? 0) <= 0 && pWins !== eWins) {
+          winner = pWins > eWins ? "player" : "enemy";
+          method = "timer";
+        }
+      }
+
+      if (winner && method) {
         clearRematchVotes();
+        setFinalWinMethod(method);
         setPhase("ended");
-        const localWins = localLegacySide === "player" ? pWins : eWins;
-        appendLog(
-          localWins >= winGoal
-            ? "You win the match!"
-            : `${namesByLegacy[remoteLegacySide]} wins the match!`
-        );
+        if (method === "timer") {
+          const leadLog =
+            winner === localLegacySide
+              ? `Time expired — you led ${pWins}-${eWins}.`
+              : `Time expired — ${namesByLegacy[winner]} led ${pWins}-${eWins}.`;
+          appendLog(leadLog);
+        } else {
+          appendLog(
+            winner === localLegacySide
+              ? "You win the match!"
+              : `${namesByLegacy[remoteLegacySide]} wins the match!`
+          );
+        }
+      } else {
+        setPhase("roundEnd");
       }
     };
 
@@ -1194,6 +1319,10 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
     reserveReportsRef.current = { player: null, enemy: null };
 
+    setFinalWinMethod(null);
+    setRemainingTimer(initialTimerSeconds);
+    timerRemainingRef.current = initialTimerSeconds;
+
     wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
 
     setFreezeLayout(false);
@@ -1232,6 +1361,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     clearAdvanceVotes,
     clearRematchVotes,
     clearResolveVotes,
+    initialTimerSeconds,
     generateWheelSet,
     hostId,
     hostLegacySide,
@@ -1253,6 +1383,8 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     setWheelHUD,
     setWheelSections,
     setWins,
+    setFinalWinMethod,
+    setRemainingTimer,
     _setDragOverWheel,
     wheelRefs
   ]);
@@ -1699,6 +1831,20 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 const HUDPanels = () => {
   const rsP = reserveSums ? reserveSums.player : null;
   const rsE = reserveSums ? reserveSums.enemy : null;
+  const timerSecondsRemaining = remainingTimer ?? initialTimerSeconds ?? 0;
+  const timerCritical =
+    initialTimerSeconds !== null && timerSecondsRemaining > 0
+      ? timerSecondsRemaining <= Math.max(15, Math.floor(initialTimerSeconds * 0.1))
+      : false;
+  const timerClass = timerExpired
+    ? "border-rose-500/80 bg-rose-600/20 text-rose-100"
+    : timerCritical
+    ? "border-amber-400/80 bg-amber-500/20 text-amber-100"
+    : "border-white/20 bg-black/40 text-slate-100";
+  const timerDisplay =
+    initialTimerSeconds !== null
+      ? formatTimerForDisplay(timerSecondsRemaining)
+      : "Off";
 
   const Panel = ({ side }: { side: LegacySide }) => {
     const isPlayer = side === 'player';
@@ -1789,6 +1935,18 @@ const HUDPanels = () => {
 
   return (
     <div className="w-full flex flex-col items-center">
+      <div className="mb-3 flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm">
+        <span className="rounded-full border border-white/20 bg-black/40 px-3 py-1 text-slate-100">
+          Mode: <span className="font-semibold">{matchMode.name}</span>
+        </span>
+        <span className="rounded-full border border-white/20 bg-black/40 px-3 py-1 text-slate-100">
+          Target: <span className="tabular-nums font-semibold">{winGoal}</span> wins
+        </span>
+        <span className={`rounded-full border px-3 py-1 font-mono text-sm sm:text-base ${timerClass}`}>
+          Timer: {timerDisplay}
+        </span>
+      </div>
+
       <div className="grid w-full max-w-[900px] grid-cols-2 items-stretch gap-2 overflow-x-hidden">
         <div className="min-w-0 w-full max-w-[420px] mx-auto h-full">
           <Panel side="player" />
@@ -1983,11 +2141,7 @@ const HUDPanels = () => {
             {localWon ? "Victory" : "Defeat"}
           </div>
 
-          <div className="text-sm text-slate-200">
-            {localWon
-              ? `You reached ${winGoal} wins.`
-              : `${winnerName ?? remoteName} reached ${winGoal} wins.`}
-          </div>
+          <div className="text-sm text-slate-200">{finalOutcomeMessage}</div>
 
           <div className="rounded-md border border-slate-700 bg-slate-800/80 px-4 py-3 text-sm text-slate-100">
             <div className="font-semibold tracking-wide uppercase text-xs text-slate-400">Final Score</div>
@@ -1997,6 +2151,23 @@ const HUDPanels = () => {
               <span className="text-slate-500">—</span>
               <span className="px-2 py-0.5 rounded bg-slate-900/60 text-slate-200 tabular-nums">{remoteWinsCount}</span>
               <span className="text-rose-300">{remoteName}</span>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-slate-700 bg-slate-800/70 px-4 py-3 text-sm text-slate-200">
+            <div className="font-semibold uppercase tracking-wide text-xs text-slate-400">Match Settings</div>
+            <div className="mt-2 space-y-1">
+              <div>
+                {matchMode.name} · first to {winGoal} wins
+                {initialTimerSeconds
+                  ? ` · ${formatTimerForDisplay(initialTimerSeconds)} timer`
+                  : " · No timer"}
+              </div>
+              <div className="text-xs text-slate-300/80">
+                {finalWinMethod === "timer"
+                  ? "Decided by highest score when the clock expired."
+                  : "Decided by reaching the win target."}
+              </div>
             </div>
           </div>
 
@@ -2056,7 +2227,30 @@ const HUDPanels = () => {
   
       </div>
     );
+}
+
+function formatTimerForDisplay(seconds: number | null | undefined): string {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) {
+    return "No timer";
   }
+  const total = Math.floor(seconds);
+  if (total <= 0) {
+    return "0:00";
+  }
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
+  }
+  const mins = Math.floor(total / 60);
+  if (mins > 0) {
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  }
+  return `${secs}s`;
+}
 
 // ---------------- Dev Self-Tests (lightweight) ----------------
 if (typeof window !== 'undefined') {

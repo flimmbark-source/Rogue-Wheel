@@ -2,7 +2,7 @@
 // to match your existing game types/functions.
 
 import { shuffle } from "../game/math";
-import type { Card, Fighter } from "../game/types";
+import type { Card, Fighter, MatchModeId } from "../game/types";
 
 // ===== Local persistence types (module-scoped) =====
 type CardId = string;
@@ -172,9 +172,24 @@ export type MatchResultSummary = {
   after: LevelProgress;
   segments: LevelProgressSegment[];
   levelUps: number;
+  modeId?: MatchModeId;
+  modeLabel?: string;
+  targetWins?: number;
+  timerSeconds?: number | null;
+  winMethod?: "goal" | "timer";
 };
 
-export function recordMatchResult({ didWin }: { didWin: boolean }): MatchResultSummary {
+type RecordMatchOptions = {
+  didWin: boolean;
+  modeId?: MatchModeId;
+  modeLabel?: string;
+  targetWins?: number;
+  timerSeconds?: number | null;
+  winMethod?: "goal" | "timer";
+};
+
+export function recordMatchResult(options: RecordMatchOptions): MatchResultSummary {
+  const { didWin, modeId, modeLabel, targetWins, timerSeconds, winMethod } = options;
   const state = loadStateRaw();
   const profile = state.profile;
   const before = toLevelProgress(profile);
@@ -229,6 +244,11 @@ export function recordMatchResult({ didWin }: { didWin: boolean }): MatchResultS
     after,
     segments,
     levelUps,
+    modeId,
+    modeLabel,
+    targetWins,
+    timerSeconds: timerSeconds ?? null,
+    winMethod,
   };
 }
 
