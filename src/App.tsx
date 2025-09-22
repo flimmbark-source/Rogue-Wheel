@@ -11,7 +11,6 @@ import React, {
 } from "react";
 import { Realtime } from "ably";
 import { motion } from "framer-motion";
-import type { GameMode } from "./gameModes";
 
 
 /**
@@ -129,7 +128,7 @@ export default function ThreeWheel_WinsOnly({
   };
 
 
-  const isGrimoireMode = useMemo(() => {
+  const hasGrimoireMarker = useMemo(() => {
     const markerValues = [
       players.left.id,
       players.right.id,
@@ -160,11 +159,15 @@ export default function ThreeWheel_WinsOnly({
     return false;
   }, [players.left.id, players.left.name, players.right.id, players.right.name]);
 
-  const rawGameMode =
-    (players as Players & { gameMode?: unknown }).gameMode ??
-    (players.left as Players["left"] & { gameMode?: unknown }).gameMode ??
-    (players.right as Players["right"] & { gameMode?: unknown }).gameMode;
-  const gameMode: GameMode = rawGameMode === "grimoire" ? "grimoire" : "classic";
+  c// raw value from players.* (or undefined)
+const rawGameMode =
+  (players as Players & { gameMode?: unknown }).gameMode ??
+  (players.left as Players["left"] & { gameMode?: unknown }).gameMode ??
+  (players.right as Players["right"] & { gameMode?: unknown }).gameMode;
+
+// USE THIS instead of 'const gameMode = ...'
+const effectiveGameMode: GameMode =
+  rawGameMode === "grimoire" ? "grimoire" : (gameMode ?? "classic");
 
 
   const winGoal =
@@ -181,7 +184,7 @@ export default function ThreeWheel_WinsOnly({
   })();
 
   const isMultiplayer = !!roomCode;
-  const isGrimoireMode = gameMode === "grimoire";
+  const isGrimoireMode = effectiveGameMode === "grimoire" || hasGrimoireMarker;
   const ablyRef = useRef<AblyRealtime | null>(null);
   const chanRef = useRef<AblyChannel | null>(null);
 
