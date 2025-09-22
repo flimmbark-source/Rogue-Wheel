@@ -896,32 +896,38 @@ function autoPickEnemy(): (Card | null)[] {
   return picks;
 }
 
-function computeReserveContext(who: LegacySide, used: (Card | null)[], plan: PreSpinPlan = createEmptyPlan()): ReserveHUD {
+function computeReserveContext(
+  who: LegacySide,
+  used: (Card | null)[],
+  plan: PreSpinPlan = createEmptyPlan()
+): ReserveHUD {
   const fighter = who === "player" ? player : enemy;
-  const usedIds = new Set((used.filter(Boolean) as Card[]).map((c) => c.id));
-  const left = hand.filter((c) => !usedIds.has(c.id));
+
+  // Cards left in hand (not used this round)
+  const usedIds = new Set((used.filter(Boolean) as Card[]).map(c => c.id));
+  const left = fighter.hand.filter(c => !usedIds.has(c.id));
+
+  // Base = sum of first two numeric cards (your original rule of thumb)
   const baseCards = left.slice(0, 2);
-  const base = baseCards.reduce((acc, card) => acc + (isNormal(card) ? card.number ?? 0 : 0), 0);
+  const base = baseCards.reduce((acc, card) => acc + (typeof card.number === "number" ? card.number : 0), 0);
+
+  // Planned bonuses
   const reserveBonus = Math.max(0, plan.reserveBonus);
-  const recallBonus = Math.max(0, plan.recallBonus);
+  const recallBonus  = Math.max(0, plan.recallBonus);
+
+  // HUD notes (de-duped)
   const noteSet = new Set(plan.notes);
   if (reserveBonus > 0 && plan.notes.length === 0) {
     noteSet.add(`Arcane +${reserveBonus}`);
   }
-  if (recallBonus > 0 && !plan.notes.some((n) => n.toLowerCase().includes("recall"))) {
+  if (recallBonus > 0 && !plan.notes.some(n => n.toLowerCase().includes("recall"))) {
     noteSet.add(`Recall +${recallBonus}`);
   }
+
   const bonus = reserveBonus + recallBonus;
   const total = base + bonus;
-  return {
-    base,
-    bonus,
-    total,
-    notes: Array.from(noteSet),
-  }
-  {
-  return left.slice(0, 2).reduce((a, c) => a + cardReserveValue(c), 0);
-  }
+
+  return { base, bonus, total, notes: Array.from(noteSet) };
 }
 
   useEffect(() => {
@@ -1339,8 +1345,6 @@ case "ReserveSum": {
   detail = `Reserve ${pReserveTotal} vs ${eReserveTotal}`;
   break;
 }
-
-          break;
         case "ClosestToTarget": {
           const t = targetSlice === 0 ? (section.target ?? 0) : targetSlice;
           const pd = Math.abs(pVal - t);
@@ -1529,7 +1533,9 @@ if (winner && method) {
   setPreSpinPlan({ player: createEmptyPlan(), enemy: createEmptyPlan() });
   setPhase("roundEnd");
 }
-
+};   
+animateSpins();    // <-- CALL IT
+}    
   const nextRoundCore = useCallback(
     (opts?: { force?: boolean }) => {
       const allow = opts?.force || phase === "roundEnd";
