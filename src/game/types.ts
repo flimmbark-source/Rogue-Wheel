@@ -25,7 +25,16 @@ export type PlayerCore = {
 };
 export type Players = Record<Side, PlayerCore>;
 
-export type TagId = "oddshift" | "parityflip" | "echoreserve";
+export type TagId =
+  | "oddshift"
+  | "parityflip"
+  | "echoreserve"
+  | "wager1"
+  | "wager2"
+  | "wager3"
+  | "coinflip"
+  | "reroll"
+  | "jackpot";
 
 export type CardType = "normal" | "split";
 

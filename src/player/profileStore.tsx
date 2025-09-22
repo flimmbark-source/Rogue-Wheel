@@ -2,7 +2,7 @@
 // to match your existing game types/functions.
 
 import { shuffle } from "../game/math";
-import type { Card, Fighter } from "../game/types";
+import type { Card, Fighter, TagId } from "../game/types";
 
 // ===== Local persistence types (module-scoped) =====
 type CardId = string;
@@ -307,6 +307,18 @@ const nextCardId = (() => { let i = 1; return () => `C${i++}`; })();
  *  - "num_X" explicit number alias
  * Anything else falls back to number 0.
  */
+function deriveGambleTags(num: number): TagId[] {
+  const tags = new Set<TagId>();
+  if (num <= 1) tags.add("coinflip");
+  if (num < 0) tags.add("coinflip");
+  if (num === 5 || num === 7) tags.add("reroll");
+  if (num >= 4 && num < 7) tags.add("wager1");
+  if (num >= 7 && num < 9) tags.add("wager2");
+  if (num >= 9) tags.add("wager3");
+  if (num >= 8) tags.add("jackpot");
+  return Array.from(tags);
+}
+
 function cardFromId(cardId: string): Card {
   let num = 0;
   const mBasic = /^basic_(\d+)$/.exec(cardId);
@@ -317,12 +329,14 @@ function cardFromId(cardId: string): Card {
   else if (mNeg) num = parseInt(mNeg[1], 10);
   else if (mNum) num = parseInt(mNum[1], 10);
 
+  const tags = deriveGambleTags(num);
+
   return {
     id: nextCardId(),
     name: `${num}`,
     type: "normal",
     number: num,
-    tags: [],
+    tags,
   };
 }
 
@@ -345,7 +359,7 @@ export function starterDeck(): Card[] {
     name: `${n}`,
     type: "normal",
     number: n,
-    tags: [],
+    tags: deriveGambleTags(n),
   }));
   return shuffle(base);
 }

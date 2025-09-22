@@ -1,6 +1,7 @@
 // src/components/StSCard.tsx
 import React, { memo } from "react";
 import { Card } from "../game/types";
+import { getGambleBadges } from "../game/gamble";
 import { fmtNum, isSplit } from "../game/values";
 
 export default memo(function StSCard({
@@ -25,6 +26,7 @@ export default memo(function StSCard({
   onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
 }) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
+  const gambleBadges = getGambleBadges(card);
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onPick?.(); }}
@@ -48,6 +50,19 @@ export default memo(function StSCard({
           <div className="text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
         )}
       </div>
+      {gambleBadges.length > 0 && (
+        <div className="absolute inset-x-1 bottom-1 flex flex-wrap items-center justify-center gap-1">
+          {gambleBadges.map((meta) => (
+            <span
+              key={meta.id}
+              className="rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-100 shadow"
+              title={meta.description}
+            >
+              {meta.badge}
+            </span>
+          ))}
+        </div>
+      )}
     </button>
   );
 });

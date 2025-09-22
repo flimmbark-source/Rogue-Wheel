@@ -48,6 +48,7 @@ import {
   type LevelProgress,
 } from "./player/profileStore";
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
+import { getWagerStake, hasCoinFlip, hasJackpot, hasReroll, makeAllInCard } from "./game/gamble";
 
 // components
 import CanvasWheel, { WheelHandle } from "./components/CanvasWheel";
@@ -461,6 +462,19 @@ const storeReserveReport = useCallback(
   // Reserve sums after resolve (HUD only)
   const [reserveSums, setReserveSums] = useState<null | { player: number; enemy: number }>(null);
 
+  const [jackpotPot, setJackpotPot] = useState(0);
+  const [gambleSummary, setGambleSummary] = useState<{ events: string[]; pot: number }>({ events: [], pot: 0 });
+  const jackpotPotRef = useRef(jackpotPot);
+  useEffect(() => {
+    jackpotPotRef.current = jackpotPot;
+  }, [jackpotPot]);
+
+  const [allInUsed, setAllInUsed] = useState<{ player: boolean; enemy: boolean }>({ player: false, enemy: false });
+  const allInUsedRef = useRef(allInUsed);
+  useEffect(() => {
+    allInUsedRef.current = allInUsed;
+  }, [allInUsed]);
+
   // Reference popover
   const [showRef, setShowRef] = useState(false);
 
@@ -613,6 +627,87 @@ function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
   return left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
 }
 
+  const triggerAllIn = useCallback(
+    (side: LegacySide) => {
+      if (allInUsedRef.current[side]) return;
+
+      const resolveAllIn = (fighter: Fighter) => {
+        if (fighter.hand.length === 0 && fighter.deck.length === 0) {
+          return { fighter, info: null as const };
+        }
+
+        const sorted = [...fighter.hand].sort((a, b) => (b.number ?? 0) - (a.number ?? 0));
+        const anchor = sorted.shift() ?? null;
+        const discard = [...fighter.discard, ...sorted];
+        const deck = [...fighter.deck];
+        const burnCount = Math.min(3, deck.length);
+        const burned = deck.splice(0, burnCount);
+        discard.push(...burned);
+        const sacrificeCount = sorted.length + burned.length;
+        const basePower = anchor?.number ?? 0;
+        const wildPower = Math.max(10, basePower + sacrificeCount * 2 + 6);
+        const wildCard = makeAllInCard(wildPower);
+        const hand = anchor ? [anchor, wildCard] : [wildCard];
+        return {
+          fighter: { ...fighter, hand, deck, discard },
+          info: {
+            card: wildCard,
+            sacrifice: sacrificeCount,
+            boost: Math.max(2, sacrificeCount + 2),
+          },
+        } as const;
+      };
+
+      let info: { card: Card; sacrifice: number; boost: number } | null = null;
+      if (side === "player") {
+        setPlayer((prev) => {
+          const result = resolveAllIn(prev);
+          info = result.info;
+          return result.fighter;
+        });
+      } else {
+        setEnemy((prev) => {
+          const result = resolveAllIn(prev);
+          info = result.info;
+          return result.fighter;
+        });
+      }
+
+      if (!info) return;
+
+      const fighterName = namesByLegacy[side];
+      const message = `${fighterName} goes ALL-IN! Jackpot +${info.boost}.`;
+      const potAfter = jackpotPotRef.current + info.boost;
+
+      setAllInUsed((prev) => ({ ...prev, [side]: true }));
+      setJackpotPot(potAfter);
+      setGambleSummary((prev) => ({
+        pot: potAfter,
+        events: [message, ...prev.events].slice(0, 5),
+      }));
+
+      appendLog(`${fighterName} goes ALL-IN, forging ${info.card.name} (${fmtNum(info.card.number ?? 0)})! Jackpot +${info.boost}.`);
+
+      if (side === localLegacySide) {
+        setSelectedCardId(info.card.id);
+      }
+
+      broadcastLocalReserve();
+    },
+    [
+      appendLog,
+      broadcastLocalReserve,
+      jackpotPotRef,
+      localLegacySide,
+      namesByLegacy,
+      setEnemy,
+      setGambleSummary,
+      setJackpotPot,
+      setPlayer,
+      setSelectedCardId,
+    ]
+  );
+
   useEffect(() => {
     broadcastLocalReserve();
   }, [broadcastLocalReserve, assign, player, enemy, localLegacySide, round, isMultiplayer]);
@@ -647,7 +742,8 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
         : `pad-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name: "Reserve",
       number: 0,
-      kind: "normal",
+      type: "normal",
+      tags: [],
     } as unknown as Card);
   }
   return { ...f, hand: padded } as T;
@@ -745,13 +841,81 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     // 🔸 show these during showEnemy/anim immediately
     setReserveSums({ player: pReserve, enemy: eReserve });
 
+    const rng = wheelRngRef.current ?? Math.random;
+    const laneValues: { player: number; enemy: number }[] = [
+      { player: 0, enemy: 0 },
+      { player: 0, enemy: 0 },
+      { player: 0, enemy: 0 },
+    ];
+    const laneWagers = [0, 0, 0];
+    const laneJackpotEligible = [
+      { player: false, enemy: false },
+      { player: false, enemy: false },
+      { player: false, enemy: false },
+    ];
+    const gambleEvents: string[] = [];
+    let workingJackpot = jackpotPotRef.current;
+
+    const evalCardValue = (card: Card | null, side: LegacySide, lane: number) => {
+      if (!card) return 0;
+      let value = card.number ?? 0;
+      const tags = card.tags ?? [];
+      if (!tags.length) return value;
+
+      const sideName = namesByLegacy[side];
+
+      const wager = getWagerStake(tags);
+      if (wager > 0) {
+        laneWagers[lane] += wager;
+        const msg = `${sideName} antes +${wager} on wheel ${lane + 1}.`;
+        gambleEvents.push(msg);
+        appendLog(msg);
+      }
+
+      if (hasCoinFlip(tags)) {
+        const base = value;
+        const heads = rng() >= 0.5;
+        value = heads ? Math.max(1, base) * 2 : 0;
+        const msg = `${sideName} coin flip ${heads ? "hits" : "busts"} (${fmtNum(base)} → ${fmtNum(value)}) on wheel ${lane + 1}.`;
+        gambleEvents.push(msg);
+        appendLog(msg);
+      }
+
+      if (hasReroll(tags)) {
+        const base = value;
+        const rerolled = Math.max(0, Math.round(rng() * 12));
+        value = rerolled;
+        const msg = `${sideName} rerolls ${fmtNum(base)} → ${fmtNum(value)} on wheel ${lane + 1}.`;
+        gambleEvents.push(msg);
+        appendLog(msg);
+      }
+
+      if (hasJackpot(tags)) {
+        const feed = Math.max(1, Math.abs(value));
+        workingJackpot += feed;
+        laneJackpotEligible[lane][side] = true;
+        const msg = `${sideName} feeds the jackpot +${feed} on wheel ${lane + 1}.`;
+        gambleEvents.push(msg);
+        appendLog(msg);
+      }
+
+      return value;
+    };
+
+    for (let w = 0; w < 3; w++) {
+      laneValues[w] = {
+        player: evalCardValue(played[w].p, "player", w),
+        enemy: evalCardValue(played[w].e, "enemy", w),
+      };
+    }
+
     type Outcome = { steps: number; targetSlice: number; section: Section; winner: LegacySide | null; tie: boolean; wheel: number; detail: string };
     const outcomes: Outcome[] = [];
 
     for (let w = 0; w < 3; w++) {
       const secList = wheelSections[w];
-      const baseP = (played[w].p?.number ?? 0);
-      const baseE = (played[w].e?.number ?? 0);
+      const baseP = laneValues[w].player;
+      const baseE = laneValues[w].enemy;
       const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
       const targetSlice = (tokens[w] + steps) % SLICES;
       const section = secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) || ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
@@ -805,16 +969,53 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       let hudColors: [string | null, string | null, string | null] = [null, null, null];
       const roundWinsCount: Record<LegacySide, number> = { player: 0, enemy: 0 };
       outcomes.forEach((o) => {
-        if (o.tie) { appendLog(`Wheel ${o.wheel + 1} tie: ${o.detail} — no win.`); }
-        else if (o.winner) {
-          hudColors[o.wheel] = HUD_COLORS[o.winner];
-          roundWinsCount[o.winner] += 1;
-          if (o.winner === "player") pWins++; else eWins++;
-          appendLog(`Wheel ${o.wheel + 1} win -> ${o.winner} (${o.detail}).`);
+        if (o.tie) {
+          appendLog(`Wheel ${o.wheel + 1} tie: ${o.detail} — no win.`);
+          if (laneWagers[o.wheel] > 0) {
+            workingJackpot += laneWagers[o.wheel];
+            const msg = `Wheel ${o.wheel + 1} tie pushes +${laneWagers[o.wheel]} into the jackpot.`;
+            gambleEvents.push(msg);
+            appendLog(msg);
+          }
+          return;
+        }
+
+        if (!o.winner) return;
+
+        hudColors[o.wheel] = HUD_COLORS[o.winner];
+
+        const stake = laneWagers[o.wheel];
+        let bonus = 0;
+        const bonusParts: string[] = [];
+        if (stake > 0) {
+          bonus += stake;
+          bonusParts.push(`wagers +${stake}`);
+        }
+
+        if (laneJackpotEligible[o.wheel][o.winner] && workingJackpot > 0) {
+          const claim = workingJackpot;
+          bonus += claim;
+          workingJackpot = 0;
+          bonusParts.push(`jackpot +${claim}`);
+        }
+
+        const totalAward = 1 + bonus;
+        roundWinsCount[o.winner] += totalAward;
+        if (o.winner === "player") pWins += totalAward; else eWins += totalAward;
+
+        const swingText = bonusParts.length ? ` (payout ${bonusParts.join(" + ")})` : "";
+        appendLog(`Wheel ${o.wheel + 1} win -> ${o.winner} (${o.detail}).${swingText}`);
+
+        if (bonusParts.length) {
+          const msg = `Wheel ${o.wheel + 1} pays ${bonusParts.join(" & ")} to ${namesByLegacy[o.winner]}.`;
+          gambleEvents.push(msg);
         }
       });
 
       if (!mountedRef.current) return;
+
+      setJackpotPot(workingJackpot);
+      setGambleSummary({ events: gambleEvents.slice(-5), pot: workingJackpot });
 
       const prevInitiative = initiative;
       const roundScore = `${roundWinsCount.player}-${roundWinsCount.enemy}`;
@@ -1057,6 +1258,10 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
     setFreezeLayout(false);
     setLockedWheelSize(null);
+
+    setJackpotPot(0);
+    setGambleSummary({ events: [], pot: 0 });
+    setAllInUsed({ player: false, enemy: false });
 
     setPlayer(() => makeFighter("Wanderer"));
     setEnemy(() => makeFighter("Shade Bandit"));
@@ -1504,6 +1709,8 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 const HUDPanels = () => {
   const rsP = reserveSums ? reserveSums.player : null;
   const rsE = reserveSums ? reserveSums.enemy : null;
+  const pot = jackpotPot;
+  const summaryEvents = gambleSummary.events;
 
   const Panel = ({ side }: { side: LegacySide }) => {
     const isPlayer = side === 'player';
@@ -1602,6 +1809,18 @@ const HUDPanels = () => {
           <Panel side="enemy" />
         </div>
       </div>
+      <div className="mt-3 flex flex-col items-center gap-1">
+        <div
+          className="rounded-full border border-amber-400/60 bg-amber-500/15 px-3 py-1 text-[11px] font-semibold text-amber-100 shadow"
+        >
+          Jackpot Pot: <span className="tabular-nums">{pot}</span>
+        </div>
+        {summaryEvents.length > 0 && summaryEvents.slice(-3).map((event, idx) => (
+          <div key={`${event}-${idx}`} className="text-[10px] text-amber-100/80 text-center">
+            {event}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -1612,6 +1831,13 @@ const HUDPanels = () => {
 
   const resolveButtonDisabled = !canReveal || (isMultiplayer && localResolveReady);
   const resolveButtonLabel = isMultiplayer && localResolveReady ? "Ready" : "Resolve";
+  const allInAvailable = !allInUsed[localLegacySide];
+  const allInLabel = allInAvailable ? "All-In" : "All-In Spent";
+  const canAllIn = phase === "choose" && allInAvailable;
+  const handleAllInClick = useCallback(() => {
+    if (phase !== "choose") return;
+    triggerAllIn(localLegacySide);
+  }, [localLegacySide, phase, triggerAllIn]);
 
   const resolveStatusText =
     isMultiplayer && phase === "choose"
@@ -1682,6 +1908,14 @@ const HUDPanels = () => {
           )}
           {phase === "choose" && (
             <div className="flex flex-col items-end gap-1">
+              <button
+                disabled={!canAllIn}
+                onClick={handleAllInClick}
+                className="px-2.5 py-0.5 rounded border border-amber-400 text-amber-200 font-semibold bg-transparent transition hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Sacrifice reserves to fuel the jackpot and forge a wild card."
+              >
+                {allInLabel}
+              </button>
               <button
                 disabled={resolveButtonDisabled}
                 onClick={handleRevealClick}
