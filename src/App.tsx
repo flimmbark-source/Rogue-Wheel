@@ -772,6 +772,8 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
           break;
         }
         case "Initiative": winner = initiative; detail = `Initiative -> ${winner}`; break;
+        case "DoubleWin": if (pVal === eVal) tie = true; else winner = pVal > eVal ? "player" : "enemy"; detail = `Double win ${pVal} vs ${eVal}`; break;
+        case "SwapWins": if (pVal === eVal) tie = true; else winner = pVal < eVal ? "player" : "enemy"; detail = `Swap wins ${pVal} vs ${eVal}`; break;
         default: tie = true; detail = `Slice 0: no section`; break;
       }
       outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail });
@@ -801,22 +803,58 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       // Single commit after all wheels have finished
       setTokens(finalTokens);
 
-      let pWins = wins.player, eWins = wins.enemy;
-      let hudColors: [string | null, string | null, string | null] = [null, null, null];
-      const roundWinsCount: Record<LegacySide, number> = { player: 0, enemy: 0 };
+      const hudColors: [string | null, string | null, string | null] = [
+        null,
+        null,
+        null,
+      ];
+      const roundWins: Record<LegacySide, number> = { player: 0, enemy: 0 };
+      let swapCount = 0;
       outcomes.forEach((o) => {
-        if (o.tie) { appendLog(`Wheel ${o.wheel + 1} tie: ${o.detail} — no win.`); }
-        else if (o.winner) {
-          hudColors[o.wheel] = HUD_COLORS[o.winner];
-          roundWinsCount[o.winner] += 1;
-          if (o.winner === "player") pWins++; else eWins++;
-          appendLog(`Wheel ${o.wheel + 1} win -> ${o.winner} (${o.detail}).`);
+        const wheelLabel = `Wheel ${o.wheel + 1}`;
+        if (o.tie) {
+          appendLog(`${wheelLabel} tie: ${o.detail} — no win.`);
+          if (o.section.id === "SwapWins") {
+            swapCount += 1;
+            appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
+          }
+          return;
+        }
+
+        if (!o.winner) return;
+
+        hudColors[o.wheel] = HUD_COLORS[o.winner];
+        let awarded = 1;
+        if (o.section.id === "DoubleWin") {
+          awarded = 2;
+        }
+        roundWins[o.winner] += awarded;
+        appendLog(`${wheelLabel} win -> ${o.winner} (${o.detail}).`);
+        if (o.section.id === "DoubleWin") {
+          appendLog(`✨ ${wheelLabel}: ${namesByLegacy[o.winner]} claims two wins from this slice!`);
+        }
+        if (o.section.id === "SwapWins") {
+          swapCount += 1;
+          appendLog(`🔄 ${wheelLabel}: Round tallies will swap before scoring.`);
         }
       });
+
+      if (swapCount > 0) {
+        const before = `${roundWins.player}-${roundWins.enemy}`;
+        if (swapCount % 2 === 1) {
+          [roundWins.player, roundWins.enemy] = [roundWins.enemy, roundWins.player];
+          appendLog(`🔄 Swap effect: tallies trade places (${before} → ${roundWins.player}-${roundWins.enemy}).`);
+        } else {
+          appendLog(`🔄 Swap effect triggered ${swapCount} times: tallies return to ${before}.`);
+        }
+      }
 
       if (!mountedRef.current) return;
 
       const prevInitiative = initiative;
+      const roundWinsCount = roundWins;
+      const pWins = wins.player + roundWinsCount.player;
+      const eWins = wins.enemy + roundWinsCount.enemy;
       const roundScore = `${roundWinsCount.player}-${roundWinsCount.enemy}`;
       let nextInitiative: LegacySide;
       let initiativeLog: string;
@@ -1675,6 +1713,8 @@ const HUDPanels = () => {
                   <li>🗃️ Reserve — compare the two cards left in hand</li>
                   <li>🎯 Closest — value closest to target wins</li>
                   <li>⚑ Initiative — initiative holder wins</li>
+                  <li>✨ Double Win — higher value wins and counts double</li>
+                  <li>🔄 Swap Wins — lower value wins, then the round tallies swap sides</li>
                   <li><span className="font-semibold">0 Start</span> — no one wins</li>
                 </ul>
               </div>
