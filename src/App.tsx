@@ -34,6 +34,8 @@ import {
   type Fighter,
   type SplitChoiceMap,
   type Players,
+  type Phase,
+  type GameMode,
   LEGACY_FROM_SIDE,
 } from "./game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
@@ -52,6 +54,10 @@ import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 // components
 import CanvasWheel, { WheelHandle } from "./components/CanvasWheel";
 import StSCard from "./components/StSCard";
+import {
+  getLearnedSpellsForFighter,
+  type SpellDefinition,
+} from "./game/spells";
 
 type AblyRealtime = InstanceType<typeof Realtime>;
 type AblyChannel = ReturnType<AblyRealtime["channels"]["get"]>;
@@ -119,6 +125,12 @@ export default function ThreeWheel_WinsOnly({
     enemy: players.right.name,
   };
 
+  const rawGameMode =
+    (players as Players & { gameMode?: unknown }).gameMode ??
+    (players.left as Players["left"] & { gameMode?: unknown }).gameMode ??
+    (players.right as Players["right"] & { gameMode?: unknown }).gameMode;
+  const gameMode: GameMode = rawGameMode === "grimoire" ? "grimoire" : "classic";
+
   const winGoal =
     typeof targetWins === "number" && Number.isFinite(targetWins)
       ? Math.max(1, Math.min(15, Math.round(targetWins)))
@@ -150,7 +162,7 @@ export default function ThreeWheel_WinsOnly({
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
 
   // Phase state
-  const [phase, setPhase] = useState<"choose" | "showEnemy" | "anim" | "roundEnd" | "ended">("choose");
+  const [phase, setPhase] = useState<Phase>("choose");
 
   const [resolveVotes, setResolveVotes] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
@@ -429,6 +441,8 @@ const storeReserveReport = useCallback(
 );
 
   const handleMPIntentRef = useRef<(intent: MPIntent) => void>(() => {});
+  const spellCastRequestRef = useRef<(spell: SpellDefinition) => void>(() => {});
+  const infoPopoverRootRef = useRef<HTMLDivElement | null>(null);
 
   const sendIntent = useCallback(
     (intent: MPIntent) => {
@@ -463,10 +477,65 @@ const storeReserveReport = useCallback(
 
   // Reference popover
   const [showRef, setShowRef] = useState(false);
+  const [showGrimoire, setShowGrimoire] = useState(false);
 
   const appendLog = (s: string) => setLog((prev) => [s, ...prev].slice(0, 60));
   const START_LOG = "A Shade Bandit eyes your purse...";
   const [log, setLog] = useState<string[]>([START_LOG]);
+
+  const playerMana = useMemo(() => {
+    const maybe = (player as Fighter & { mana?: unknown }).mana;
+    return typeof maybe === "number" && Number.isFinite(maybe) ? maybe : 0;
+  }, [player]);
+
+  const playerSpells = useMemo(() => {
+    if (gameMode !== "grimoire") return [] as SpellDefinition[];
+    return getLearnedSpellsForFighter(player);
+  }, [gameMode, player]);
+
+  useEffect(() => {
+    if (gameMode !== "grimoire" && showGrimoire) {
+      setShowGrimoire(false);
+    }
+  }, [gameMode, showGrimoire]);
+
+  useEffect(() => {
+    if (!showRef && !showGrimoire) return;
+
+    const handlePointer = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (infoPopoverRootRef.current?.contains(target)) return;
+      setShowRef(false);
+      setShowGrimoire(false);
+    };
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowRef(false);
+        setShowGrimoire(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointer);
+    document.addEventListener("touchstart", handlePointer);
+    document.addEventListener("keydown", handleKey);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointer);
+      document.removeEventListener("touchstart", handlePointer);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [showRef, showGrimoire]);
+
+  const handleSpellActivate = useCallback(
+    (spell: SpellDefinition) => {
+      if (gameMode !== "grimoire") return;
+      spellCastRequestRef.current(spell);
+      setShowGrimoire(false);
+    },
+    [gameMode]
+  );
 
   const canReveal = useMemo(() => {
     const lane = localLegacySide === "player" ? assign.player : assign.enemy;
@@ -1662,22 +1731,135 @@ const HUDPanels = () => {
           <div><span className="opacity-70">Phase</span> <span className="font-semibold">{phase}</span></div>
           <div><span className="opacity-70">Goal</span> <span className="font-semibold">First to {winGoal} wins</span></div>
         </div>
-        <div className="flex items-center gap-2 relative">
-          <button onClick={() => setShowRef((v) => !v)} className="px-2.5 py-0.5 rounded bg-slate-700 text-white border border-slate-600 hover:bg-slate-600">Reference</button>
-          {showRef && (
-            <div className="absolute top-[110%] right-0 w-80 rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50">
-              <div className="flex items-center justify-between mb-1"><div className="font-semibold">Reference</div><button onClick={() => setShowRef(false)} className="text-xl leading-none text-slate-300 hover:text-white">×</button></div>
-              <div className="text-[12px] space-y-2">
-                <div>Place <span className="font-semibold">1 card next to each wheel</span>, then <span className="font-semibold">press the Resolve button</span>. Where the <span className="font-semibold">token stops</span> decides the winnning rule, and the player who matches it gets <span className="font-semibold">1 win</span>. First to <span className="font-semibold">{winGoal}</span> wins takes the match.</div>
-                <ul className="list-disc pl-5 space-y-1">
-                  <li>💥 Strongest — higher value wins</li>
-                  <li>🦊 Weakest — lower value wins</li>
-                  <li>🗃️ Reserve — compare the two cards left in hand</li>
-                  <li>🎯 Closest — value closest to target wins</li>
-                  <li>⚑ Initiative — initiative holder wins</li>
-                  <li><span className="font-semibold">0 Start</span> — no one wins</li>
-                </ul>
+        <div ref={infoPopoverRootRef} className="flex items-center gap-2 relative">
+          <div className="relative">
+            <button
+              onClick={() =>
+                setShowRef((prev) => {
+                  const next = !prev;
+                  if (next) setShowGrimoire(false);
+                  return next;
+                })
+              }
+              className="px-2.5 py-0.5 rounded bg-slate-700 text-white border border-slate-600 hover:bg-slate-600"
+            >
+              Reference
+            </button>
+            {showRef && (
+              <div className="absolute top-[110%] right-0 w-80 rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-semibold">Reference</div>
+                  <button
+                    onClick={() => setShowRef(false)}
+                    className="text-xl leading-none text-slate-300 hover:text-white"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="text-[12px] space-y-2">
+                  <div>
+                    Place <span className="font-semibold">1 card next to each wheel</span>, then <span className="font-semibold">press the Resolve button</span>. Where the <span className="font-semibold">token stops</span> decides the winnning rule, and the player who matches it gets <span className="font-semibold">1 win</span>. First to <span className="font-semibold">{winGoal}</span> wins takes the match.
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>💥 Strongest — higher value wins</li>
+                    <li>🦊 Weakest — lower value wins</li>
+                    <li>🗃️ Reserve — compare the two cards left in hand</li>
+                    <li>🎯 Closest — value closest to target wins</li>
+                    <li>⚑ Initiative — initiative holder wins</li>
+                    <li>
+                      <span className="font-semibold">0 Start</span> — no one wins
+                    </li>
+                  </ul>
+                </div>
               </div>
+            )}
+          </div>
+          {gameMode === "grimoire" && (
+            <div className="relative">
+              <button
+                onClick={() =>
+                  setShowGrimoire((prev) => {
+                    const next = !prev;
+                    if (next) setShowRef(false);
+                    return next;
+                  })
+                }
+                className="px-2.5 py-0.5 rounded bg-slate-700 text-white border border-slate-600 hover:bg-slate-600"
+              >
+                Grimoire
+              </button>
+              {showGrimoire && (
+                <div className="absolute top-[110%] left-0 w-80 rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="font-semibold">Grimoire</div>
+                    <button
+                      onClick={() => setShowGrimoire(false)}
+                      className="text-xl leading-none text-slate-300 hover:text-white"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="text-[12px] space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span className="flex items-center gap-1">
+                        <span aria-hidden className="text-sky-300">🔹</span>
+                        <span>Mana</span>
+                      </span>
+                      <span className="font-semibold text-slate-100">{playerMana}</span>
+                    </div>
+                    {playerSpells.length === 0 ? (
+                      <div className="italic text-slate-400">No spells learned yet.</div>
+                    ) : (
+                      <ul className="space-y-1">
+                        {playerSpells.map((spell) => {
+                          const allowedPhases = spell.allowedPhases ?? ["choose"];
+                          const phaseAllowed = allowedPhases.includes(phase);
+                          const canAfford = playerMana >= spell.cost;
+                          const disabled = !phaseAllowed || !canAfford;
+                          return (
+                            <li key={spell.id}>
+                              <button
+                                type="button"
+                                onClick={() => handleSpellActivate(spell)}
+                                disabled={disabled}
+                                className={`w-full rounded border border-slate-700/70 bg-slate-900/60 px-2 py-1.5 text-left transition ${
+                                  disabled
+                                    ? "cursor-not-allowed opacity-50"
+                                    : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-1 font-semibold text-[13px]">
+                                    {spell.icon ? (
+                                      <span aria-hidden>{spell.icon}</span>
+                                    ) : null}
+                                    <span>{spell.name}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1 text-[11px] text-sky-200">
+                                    <span aria-hidden className="text-[14px] leading-none">🔹</span>
+                                    <span>{spell.cost}</span>
+                                  </div>
+                                </div>
+                                <div className="mt-1 text-[11px] leading-snug text-slate-300">{spell.description}</div>
+                                {!phaseAllowed && (
+                                  <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
+                                    Unavailable this phase
+                                  </div>
+                                )}
+                                {!canAfford && (
+                                  <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
+                                    Not enough mana
+                                  </div>
+                                )}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           {phase === "choose" && (
@@ -1727,37 +1909,37 @@ const HUDPanels = () => {
         </div>
       </div>
 
-{/* Docked hand overlay */}
-<HandDock onMeasure={setHandClearance} />
+      {/* Docked hand overlay */}
+      <HandDock onMeasure={setHandClearance} />
 
-{/* Ended overlay (banner + modal) */}
-{phase === "ended" && (
-  <>
-    {victoryCollapsed ? (
-      <button
-        onClick={() => setVictoryCollapsed(false)}
-        className={`fixed top-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border px-4 py-2 text-sm font-semibold shadow-lg transition hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ${
-          localWon
-            ? "border-emerald-500/40 bg-emerald-900/70 text-emerald-100"
-            : "border-slate-700 bg-slate-900/80 text-slate-100"
-        }`}
-      >
-        <span className="rounded-full bg-slate-950/40 px-2 py-0.5 text-xs uppercase tracking-wide">
-          {localWon ? "Victory" : "Defeat"}
-        </span>
-        <span className="text-xs opacity-80">Tap to reopen results</span>
-        {localWon && matchSummary?.expGained ? (
-          <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] text-emerald-100">
-            +{matchSummary.expGained} XP
-          </span>
-        ) : null}
-      </button>
-    ) : null}
+      {/* Ended overlay (banner + modal) */}
+      {phase === "ended" && (
+        <>
+          {victoryCollapsed ? (
+            <button
+              onClick={() => setVictoryCollapsed(false)}
+              className={`fixed top-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border px-4 py-2 text-sm font-semibold shadow-lg transition hover:-translate-y-[1px] focus:outline-none focus:ring-2 focus:ring-emerald-400/60 ${
+                localWon
+                  ? "border-emerald-500/40 bg-emerald-900/70 text-emerald-100"
+                  : "border-slate-700 bg-slate-900/80 text-slate-100"
+              }`}
+            >
+              <span className="rounded-full bg-slate-950/40 px-2 py-0.5 text-xs uppercase tracking-wide">
+                {localWon ? "Victory" : "Defeat"}
+              </span>
+              <span className="text-xs opacity-80">Tap to reopen results</span>
+              {localWon && matchSummary?.expGained ? (
+                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[11px] text-emerald-100">
+                  +{matchSummary.expGained} XP
+                </span>
+              ) : null}
+            </button>
+          ) : null}
 
-    {!victoryCollapsed && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-3">
-        <div className="relative w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl space-y-4">
-          {/* Minimize */}
+          {!victoryCollapsed && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-3">
+              <div className="relative w-full max-w-sm rounded-lg border border-slate-700 bg-slate-900/95 p-6 text-center shadow-2xl space-y-4">
+                {/* Minimize */}
           <button
             onClick={() => setVictoryCollapsed(true)}
             
