@@ -61,6 +61,10 @@ export type Fighter = {
   discard: Card[];
 };
 
+export type Phase = "choose" | "showEnemy" | "anim" | "roundEnd" | "ended";
+
+export type GameMode = "classic" | "grimoire";
+
 /** Helpful 2P maps (optional, but convenient) */
 export type HandMap = Record<Side, Card[]>;
 export type ChosenCardMap = Partial<Record<Side, Card>>;
