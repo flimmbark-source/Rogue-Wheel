@@ -28,9 +28,8 @@ export type Profile = {
   unlocks: UnlockState;
   cosmetics: string[];
 };
-
 export type ChallengeFrequency = "daily" | "weekly";
-export type ChallengeKind = "win_matches" | "play_cards" | "coop_victories";
+export type ChallengeKind = "win_matches" | "coop_victories";
 export type ChallengeReward =
   | { type: "currency"; currency: CurrencyId; amount: number }
   | { type: "inventory"; items: SwapItem[] }
@@ -53,15 +52,6 @@ export type ChallengeBoard = {
   weekly: Challenge[];
   generatedAt: { daily: number; weekly: number };
 };
-export type ChallengeProgressSnapshot = {
-  id: string;
-  kind: ChallengeKind;
-  progress: number;
-  target: number;
-  completed: boolean;
-  claimed: boolean;
-};
-
 export type SharedStats = {
   coopWins: number;
   coopLosses: number;
@@ -76,6 +66,8 @@ export type CoopObjective = {
   progress: number;
   reward?: ChallengeReward;
   expiresAt: number;
+  completedAt?: number;
+  claimedAt?: number;
 };
 export type LeaderboardEntry = {
   playerId: string;
@@ -84,7 +76,6 @@ export type LeaderboardEntry = {
   victories: number;
   updatedAt: number;
 };
-
 type LocalState = {
   version: number;
   profile: Profile;
@@ -101,7 +92,6 @@ const KEY = "rw:single:state";
 const VERSION = 3;
 const MAX_DECK_SIZE = 10;
 const MAX_COPIES_PER_DECK = 2;
-const WHEEL_LOADOUT_SIZE = 3;
 const DAILY_SLOTS = 2;
 const WEEKLY_SLOTS = 2;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -112,12 +102,13 @@ const DEFAULT_UNLOCKS: UnlockState = {
   wheels: { bandit: true, sorcerer: true, beast: true, guardian: false, chaos: false },
   modes: { coop: false, leaderboard: false },
 };
+const DEFAULT_COSMETICS: string[] = [];
 const DEFAULT_SHARED: SharedStats = {
   coopWins: 0,
   coopLosses: 0,
   objectivesCompleted: 0,
   leaderboardRating: 1000,
-  lastUpdated: Date.now(),
+  lastUpdated: 0,
 };
 
 const COOP_OBJECTIVE_PERIOD_MS = WEEK_MS;
@@ -146,8 +137,6 @@ function uid(prefix = "id") {
   return `${prefix}_${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`;
 }
 
-const DEFAULT_COSMETICS: string[] = [];
-
 // ===== Seed data (keep numbers only to match Card { type:'normal', number:n }) =====
 const SEED_INVENTORY: InventoryItem[] = [];
 
@@ -157,84 +146,6 @@ const SEED_DECK: Deck = {
   isActive: true,
   cards: Array.from({ length: 10 }, (_, n) => ({ cardId: `basic_${n}`, qty: 1 })),
 };
-
-// Challenge + objective templates
-
-type ChallengeTemplate = {
-  kind: ChallengeKind;
-  title: string;
-  description: string;
-  target: number;
-  reward: ChallengeReward;
-  minLevel?: number;
-};
-
-const CHALLENGE_TEMPLATES: Record<ChallengeFrequency, ChallengeTemplate[]> = {
-  daily: [
-    {
-      kind: "win_matches",
-      title: "Morning Warmup",
-      description: "Win two matches in any mode.",
-      target: 2,
-      reward: { type: "inventory", items: [{ cardId: "neg_-1", qty: 1 }] },
-    },
-    {
-      kind: "play_cards",
-      title: "Card Slinger",
-      description: "Play 12 cards across matches today.",
-      target: 12,
-      reward: { type: "cosmetic", cosmeticId: "banner_ember", name: "Ember Pennant" },
-    },
-    {
-      kind: "coop_victories",
-      title: "Team Spirit",
-      description: "Win a cooperative round with an ally.",
-      target: 1,
-      reward: { type: "currency", currency: "gold", amount: 150 },
-      minLevel: 3,
-    },
-  ],
-  weekly: [
-    {
-      kind: "win_matches",
-      title: "Wheel Champion",
-      description: "Win ten matches before the week ends.",
-      target: 10,
-      reward: { type: "inventory", items: [{ cardId: "neg_-2", qty: 1 }, { cardId: "neg_-3", qty: 1 }] },
-    },
-    {
-      kind: "coop_victories",
-      title: "Allied Triumphs",
-      description: "Earn five cooperative victories this week.",
-      target: 5,
-      reward: { type: "cosmetic", cosmeticId: "sigil_starlit", name: "Starlit Sigil" },
-    },
-  ],
-};
-
-type ObjectiveTemplate = {
-  description: string;
-  target: number;
-  reward?: ChallengeReward;
-};
-
-const COOP_OBJECTIVE_TEMPLATES: ObjectiveTemplate[] = [
-  {
-    description: "Win 3 cooperative matches with any ally.",
-    target: 3,
-    reward: { type: "currency", currency: "sigils", amount: 40 },
-  },
-  {
-    description: "Spin the guardian wheel 8 times in cooperative play.",
-    target: 8,
-    reward: { type: "inventory", items: [{ cardId: "basic_7", qty: 1 }] },
-  },
-  {
-    description: "Complete 4 cooperative objectives with perfect rounds.",
-    target: 4,
-    reward: { type: "cosmetic", cosmeticId: "trail_radiant", name: "Radiant Trail" },
-  },
-];
 
 function normalizeCurrencies(input?: Partial<CurrencyLedger> | null): CurrencyLedger {
   const next: CurrencyLedger = { ...DEFAULT_CURRENCIES };
@@ -273,33 +184,74 @@ function ensureCosmetics(list: unknown): string[] {
   return Array.from(out);
 }
 
-function ensureLeaderboard(entries: unknown, profile: Profile): LeaderboardEntry[] {
-  const list: LeaderboardEntry[] = Array.isArray(entries)
-    ? entries
-        .map((entry) => ({
-          playerId: typeof entry?.playerId === "string" ? entry.playerId : uid("lb"),
-          name: typeof entry?.name === "string" ? entry.name : "Player",
-          rating: typeof entry?.rating === "number" && Number.isFinite(entry.rating) ? entry.rating : 1000,
-          victories: typeof entry?.victories === "number" && Number.isFinite(entry.victories) ? Math.max(0, Math.floor(entry.victories)) : 0,
-          updatedAt: typeof entry?.updatedAt === "number" ? entry.updatedAt : Date.now(),
-        }))
-    : [];
+function computeExpiry(frequency: ChallengeFrequency, now: number, periodOverride?: number) {
+  const period = periodOverride ?? (frequency === "daily" ? DAY_MS : WEEK_MS);
+  const bucket = Math.floor(now / period) * period;
+  return bucket + period;
+}
 
-  const existing = list.find((e) => e.playerId === profile.id);
-  if (!existing) {
-    list.push({
-      playerId: profile.id,
-      name: profile.displayName,
-      rating: DEFAULT_SHARED.leaderboardRating,
-      victories: 0,
-      updatedAt: Date.now(),
-    });
+function makeChallenge(template: ChallengeTemplate, frequency: ChallengeFrequency, now: number): Challenge {
+  return {
+    id: uid(frequency === "daily" ? "day" : "week"),
+    frequency,
+    kind: template.kind,
+    title: template.title,
+    description: template.description,
+    target: template.target,
+    progress: 0,
+    reward: template.reward,
+    expiresAt: computeExpiry(frequency, now),
+  };
+}
+
+function ensureChallengeBoard(data: unknown, profile: Profile, now: number): ChallengeBoard {
+  const base: ChallengeBoard = {
+    daily: [],
+    weekly: [],
+    generatedAt: { daily: 0, weekly: 0 },
+  };
+  if (data && typeof data === "object") {
+    const board = data as Partial<ChallengeBoard>;
+    const normalizeList = (list: unknown, frequency: ChallengeFrequency): Challenge[] => {
+      if (!Array.isArray(list)) return [];
+      return list
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") return null;
+          const raw = entry as Challenge;
+          return {
+            id: typeof raw.id === "string" ? raw.id : uid(frequency === "daily" ? "day" : "week"),
+            frequency,
+            kind: (raw.kind as ChallengeKind) ?? "win_matches",
+            title: typeof raw.title === "string" ? raw.title : "Daily Challenge",
+            description: typeof raw.description === "string" ? raw.description : "Complete matches.",
+            target: typeof raw.target === "number" && raw.target > 0 ? Math.floor(raw.target) : 1,
+            progress: typeof raw.progress === "number" && raw.progress >= 0 ? Math.floor(raw.progress) : 0,
+            reward: raw.reward ?? { type: "currency", currency: "gold", amount: 50 },
+            expiresAt: typeof raw.expiresAt === "number" ? raw.expiresAt : computeExpiry(frequency, now),
+            completedAt: typeof raw.completedAt === "number" ? raw.completedAt : undefined,
+            claimedAt: typeof raw.claimedAt === "number" ? raw.claimedAt : undefined,
+          } satisfies Challenge;
+        })
+        .filter(Boolean) as Challenge[];
+    };
+    base.daily = normalizeList(board.daily, "daily");
+    base.weekly = normalizeList(board.weekly, "weekly");
+    base.generatedAt = {
+      daily: typeof board.generatedAt?.daily === "number" ? board.generatedAt.daily : 0,
+      weekly: typeof board.generatedAt?.weekly === "number" ? board.generatedAt.weekly : 0,
+    };
   }
-  return list.sort((a, b) => b.rating - a.rating);
+
+  refreshChallengeLists(base, profile, now);
+  return base;
+}
+
+function seedChallengeBoard(profile: Profile, now: number): ChallengeBoard {
+  return ensureChallengeBoard(undefined, profile, now);
 }
 
 function ensureSharedStats(stats: unknown): SharedStats {
-  const base = { ...DEFAULT_SHARED };
+  const base = { ...DEFAULT_SHARED, lastUpdated: Date.now() };
   if (!stats || typeof stats !== "object") return base;
   const obj = stats as Partial<SharedStats>;
   base.coopWins = typeof obj.coopWins === "number" ? Math.max(0, Math.floor(obj.coopWins)) : base.coopWins;
@@ -326,6 +278,8 @@ function ensureObjectives(entries: unknown, now: number): CoopObjective[] {
       progress: typeof entry?.progress === "number" && entry.progress >= 0 ? Math.floor(entry.progress) : 0,
       reward: entry?.reward as ChallengeReward | undefined,
       expiresAt: typeof entry?.expiresAt === "number" ? entry.expiresAt : now + COOP_OBJECTIVE_PERIOD_MS,
+      completedAt: typeof (entry as any)?.completedAt === "number" ? (entry as any).completedAt : undefined,
+      claimedAt: typeof (entry as any)?.claimedAt === "number" ? (entry as any).claimedAt : undefined,
     }))
     .filter(Boolean);
   return generateObjectives(sanitized, now);
@@ -350,188 +304,375 @@ function generateObjectives(existing: CoopObjective[], now: number): CoopObjecti
   return out;
 }
 
-function computeExpiry(frequency: ChallengeFrequency, now: number, periodOverride?: number) {
-  const period = periodOverride ?? (frequency === "daily" ? DAY_MS : WEEK_MS);
-  const bucket = Math.floor(now / period) * period;
-  return bucket + period;
+function ensureLeaderboard(entries: unknown, profile: Profile): LeaderboardEntry[] {
+  const list: LeaderboardEntry[] = Array.isArray(entries)
+    ? entries
+        .map((entry) => ({
+          playerId: typeof entry?.playerId === "string" ? entry.playerId : uid("lb"),
+          name: typeof entry?.name === "string" ? entry.name : "Player",
+          rating: typeof entry?.rating === "number" && Number.isFinite(entry.rating) ? entry.rating : 1000,
+          victories: typeof entry?.victories === "number" && Number.isFinite(entry.victories) ? Math.max(0, Math.floor(entry.victories)) : 0,
+          updatedAt: typeof entry?.updatedAt === "number" ? entry.updatedAt : Date.now(),
+        }))
+    : [];
+
+  const existing = list.find((e) => e.playerId === profile.id);
+  if (!existing) {
+    list.push({
+      playerId: profile.id,
+      name: profile.displayName,
+      rating: DEFAULT_SHARED.leaderboardRating,
+      victories: 0,
+      updatedAt: Date.now(),
+    });
+  }
+  return list.sort((a, b) => b.rating - a.rating);
 }
 
-function refreshChallengeBoard(state: LocalState, now = Date.now()) {
-  const board = state.challenges;
+function refreshChallengeLists(board: ChallengeBoard, profile: Profile, now: number) {
   const trim = (list: Challenge[]) => list.filter((ch) => ch.expiresAt > now);
   board.daily = trim(board.daily);
   board.weekly = trim(board.weekly);
 
-  const ensure = (frequency: ChallengeFrequency, slots: number) => {
+  const ensureSlots = (frequency: ChallengeFrequency, slots: number) => {
     const templates = CHALLENGE_TEMPLATES[frequency];
     const list = frequency === "daily" ? board.daily : board.weekly;
     let i = 0;
     while (list.length < slots && templates.length > 0) {
       const template = templates[(Math.floor(now / (frequency === "daily" ? DAY_MS : WEEK_MS)) + list.length + i) % templates.length];
       const minLevel = template.minLevel ?? 0;
-      if (state.profile.level >= minLevel) {
-        list.push({
-          id: uid(frequency === "daily" ? "day" : "week"),
-          frequency,
-          kind: template.kind,
-          title: template.title,
-          description: template.description,
-          target: template.target,
-          progress: 0,
-          reward: template.reward,
-          expiresAt: computeExpiry(frequency, now),
-        });
+      if (profile.level >= minLevel) {
+        list.push(makeChallenge(template, frequency, now));
       }
       i++;
       if (i > templates.length * 2) break;
     }
   };
 
-  ensure("daily", DAILY_SLOTS);
-  ensure("weekly", WEEKLY_SLOTS);
+  ensureSlots("daily", DAILY_SLOTS);
+  ensureSlots("weekly", WEEKLY_SLOTS);
   board.generatedAt.daily = now;
   board.generatedAt.weekly = now;
 }
 
+function refreshChallengeBoard(state: LocalState, now = Date.now()) {
+  refreshChallengeLists(state.challenges, state.profile, now);
+}
+
 function cloneChallenge(ch: Challenge): Challenge {
-  return { ...ch, reward: { ...ch.reward } };
+  const reward: ChallengeReward =
+    ch.reward.type === "inventory"
+      ? { type: "inventory", items: ch.reward.items.map((item) => ({ ...item })) }
+      : { ...ch.reward };
+  return { ...ch, reward };
 }
 
-function applyChallengeProgress(state: LocalState, kind: ChallengeKind, delta: number, now: number) {
-  if (delta <= 0) return;
-  const apply = (ch: Challenge) => {
-    if (ch.kind !== kind || ch.completedAt) return false;
-    const before = ch.progress;
-    ch.progress = Math.min(ch.target, ch.progress + delta);
-    if (ch.progress >= ch.target) {
-      ch.completedAt = now;
-    }
-    return ch.progress !== before;
+function cloneObjective(obj: CoopObjective): CoopObjective {
+  return {
+    ...obj,
+    reward:
+      obj.reward?.type === "inventory"
+        ? { type: "inventory", items: obj.reward.items.map((item) => ({ ...item })) }
+        : obj.reward
+        ? { ...obj.reward }
+        : undefined,
   };
-  let changed = false;
-  for (const ch of state.challenges.daily) changed = apply(ch) || changed;
-  for (const ch of state.challenges.weekly) changed = apply(ch) || changed;
-  if (changed) state.challenges.generatedAt.daily = now;
 }
 
-function objectiveProgress(state: LocalState, amount: number, now: number) {
-  if (amount <= 0) return;
-  let completed = 0;
-  for (const obj of state.coopObjectives) {
-    if (obj.progress >= obj.target) continue;
-    const before = obj.progress;
-    obj.progress = Math.min(obj.target, obj.progress + amount);
-    if (obj.progress >= obj.target) {
-      state.sharedStats.objectivesCompleted += 1;
-      if (obj.reward) {
-        applyReward(state, obj.reward, now, false);
-      }
-    }
-    if (obj.progress !== before && obj.progress >= obj.target) completed++;
-  }
-  if (completed > 0) {
-    state.sharedStats.lastUpdated = now;
+function addInventoryEntries(state: LocalState, items: SwapItem[]) {
+  for (const item of items) {
+    const existing = state.inventory.find((entry) => entry.cardId === item.cardId);
+    if (existing) existing.qty += item.qty;
+    else state.inventory.push({ cardId: item.cardId, qty: item.qty });
   }
 }
 
-function applyReward(state: LocalState, reward: ChallengeReward, now: number, markShared = true) {
+function awardChallengeReward(state: LocalState, reward: ChallengeReward) {
   if (reward.type === "currency") {
-    state.profile.currencies[reward.currency] =
-      (state.profile.currencies[reward.currency] ?? 0) + Math.max(0, Math.floor(reward.amount));
-  } else if (reward.type === "inventory") {
-    for (const item of reward.items) {
-      const existing = state.inventory.find((i) => i.cardId === item.cardId);
-      if (existing) existing.qty += item.qty;
-      else state.inventory.push({ cardId: item.cardId, qty: item.qty });
-    }
-  } else if (reward.type === "cosmetic") {
+    const current = state.profile.currencies[reward.currency] ?? 0;
+    state.profile.currencies[reward.currency] = Math.max(0, current + Math.floor(reward.amount));
+    return;
+  }
+  if (reward.type === "inventory") {
+    addInventoryEntries(state, reward.items);
+    return;
+  }
+  if (reward.type === "cosmetic") {
     if (!state.profile.cosmetics.includes(reward.cosmeticId)) {
       state.profile.cosmetics.push(reward.cosmeticId);
     }
   }
-  if (markShared) state.sharedStats.lastUpdated = now;
 }
 
-function migrateState(raw: any): LocalState {
-  const seedState = seed();
-  if (!raw || typeof raw !== "object") {
-    return seedState;
+function applyChallengeProgress(state: LocalState, kind: ChallengeKind, delta: number, now: number) {
+  if (delta <= 0) return;
+  const apply = (list: Challenge[]) => {
+    for (const challenge of list) {
+      if (challenge.kind !== kind) continue;
+      if (challenge.expiresAt <= now) continue;
+      if (challenge.completedAt) continue;
+      challenge.progress = Math.min(challenge.target, challenge.progress + delta);
+      if (challenge.progress >= challenge.target) {
+        challenge.completedAt = now;
+      }
+    }
+  };
+  apply(state.challenges.daily);
+  apply(state.challenges.weekly);
+}
+
+function applySharedStats(state: LocalState, input: MatchRecordInput, now: number) {
+  const stats = state.sharedStats;
+  const mode = input.mode ?? "solo";
+  if (mode === "coop") {
+    if (input.didWin) stats.coopWins += 1;
+    else stats.coopLosses += 1;
   }
-
-  const profileRaw = raw.profile ?? {};
-  const profile: Profile = {
-    ...seedState.profile,
-    ...profileRaw,
-    level: typeof profileRaw.level === "number" ? profileRaw.level : seedState.profile.level,
-    exp: typeof profileRaw.exp === "number" ? profileRaw.exp : seedState.profile.exp,
-    winStreak: typeof profileRaw.winStreak === "number" ? profileRaw.winStreak : seedState.profile.winStreak,
-    currencies: normalizeCurrencies(profileRaw.currencies),
-    unlocks: normalizeUnlocks(profileRaw.unlocks),
-    cosmetics: ensureCosmetics(profileRaw.cosmetics),
-  };
-
-  const state: LocalState = {
-    version: VERSION,
-    profile,
-    inventory: Array.isArray(raw.inventory) ? raw.inventory.map((i: any) => ({ cardId: String(i.cardId), qty: Math.max(0, Number(i.qty) || 0) })) : seedState.inventory,
-    decks: Array.isArray(raw.decks)
-      ? raw.decks.map((d: any) => ({
-          id: typeof d.id === "string" ? d.id : uid("deck"),
-          name: typeof d.name === "string" ? d.name : "Deck",
-          isActive: Boolean(d.isActive),
-          cards: Array.isArray(d.cards)
-            ? d.cards.map((c: any) => ({ cardId: String(c.cardId), qty: Math.max(0, Number(c.qty) || 0) }))
-            : [],
-        }))
-      : seedState.decks,
-    challenges: {
-      daily: Array.isArray(raw.challenges?.daily) ? raw.challenges.daily.map(cloneChallenge) : seedState.challenges.daily,
-      weekly: Array.isArray(raw.challenges?.weekly) ? raw.challenges.weekly.map(cloneChallenge) : seedState.challenges.weekly,
-      generatedAt: {
-        daily: typeof raw.challenges?.generatedAt?.daily === "number" ? raw.challenges.generatedAt.daily : 0,
-        weekly: typeof raw.challenges?.generatedAt?.weekly === "number" ? raw.challenges.generatedAt.weekly : 0,
-      },
-    },
-    sharedStats: ensureSharedStats(raw.sharedStats),
-    coopObjectives: ensureObjectives(raw.coopObjectives, Date.now()),
-    leaderboard: ensureLeaderboard(raw.leaderboard, profile),
-  };
-
-  if (!state.decks.some((d) => d.isActive) && state.decks[0]) state.decks[0].isActive = true;
-  refreshChallengeBoard(state);
-  return state;
+  if (mode === "versus") {
+    const entry = state.leaderboard.find((e) => e.playerId === state.profile.id);
+    if (entry) {
+      const delta = input.didWin ? 25 : -15;
+      entry.rating = Math.max(0, Math.floor(entry.rating + delta));
+      if (input.didWin) entry.victories += 1;
+      entry.updatedAt = now;
+      stats.leaderboardRating = entry.rating;
+    }
+  }
+  if (input.sharedStatsDelta) {
+    const delta = input.sharedStatsDelta;
+    if (typeof delta.coopWins === "number") stats.coopWins = Math.max(0, stats.coopWins + Math.floor(delta.coopWins));
+    if (typeof delta.coopLosses === "number")
+      stats.coopLosses = Math.max(0, stats.coopLosses + Math.floor(delta.coopLosses));
+    if (typeof delta.objectivesCompleted === "number")
+      stats.objectivesCompleted = Math.max(0, stats.objectivesCompleted + Math.floor(delta.objectivesCompleted));
+    if (typeof delta.leaderboardRating === "number")
+      stats.leaderboardRating = Math.max(0, Math.floor(delta.leaderboardRating));
+  }
+  stats.lastUpdated = now;
 }
+
+function applyProgressUnlocks(state: LocalState) {
+  const { profile, sharedStats } = state;
+  if (!profile.unlocks.wheels.guardian && profile.level >= 3) profile.unlocks.wheels.guardian = true;
+  if (!profile.unlocks.wheels.chaos && profile.level >= 6) profile.unlocks.wheels.chaos = true;
+  if (!profile.unlocks.modes.coop && sharedStats.coopWins > 0) profile.unlocks.modes.coop = true;
+  if (!profile.unlocks.modes.leaderboard && sharedStats.leaderboardRating >= 1100) {
+    profile.unlocks.modes.leaderboard = true;
+  }
+}
+
+function updateCoopObjectives(state: LocalState, increment: number, now: number) {
+  if (increment <= 0) return;
+  for (const objective of state.coopObjectives) {
+    if (objective.expiresAt <= now) continue;
+    if (objective.completedAt) continue;
+    objective.progress = Math.min(objective.target, objective.progress + increment);
+    if (objective.progress >= objective.target) {
+      objective.completedAt = now;
+      if (objective.reward && !objective.claimedAt) {
+        awardChallengeReward(state, objective.reward);
+        objective.claimedAt = now;
+      }
+      state.sharedStats.objectivesCompleted += 1;
+    }
+  }
+  state.coopObjectives = generateObjectives(state.coopObjectives, now);
+}
+
+type ChallengeTemplate = {
+  kind: ChallengeKind;
+  title: string;
+  description: string;
+  target: number;
+  reward: ChallengeReward;
+  minLevel?: number;
+};
+
+const CHALLENGE_TEMPLATES: Record<ChallengeFrequency, ChallengeTemplate[]> = {
+  daily: [
+    {
+      kind: "win_matches",
+      title: "Warmup Win",
+      description: "Win a match in any mode.",
+      target: 1,
+      reward: { type: "inventory", items: [{ cardId: "neg_-1", qty: 1 }] },
+    },
+    {
+      kind: "win_matches",
+      title: "Gold Rush",
+      description: "Secure two victories today.",
+      target: 2,
+      reward: { type: "currency", currency: "gold", amount: 120 },
+      minLevel: 3,
+    },
+  ],
+  weekly: [
+    {
+      kind: "win_matches",
+      title: "Wheel Champion",
+      description: "Win ten matches before the week ends.",
+      target: 10,
+      reward: { type: "inventory", items: [{ cardId: "neg_-2", qty: 1 }] },
+    },
+    {
+      kind: "coop_victories",
+      title: "Allied Triumphs",
+      description: "Win three cooperative matches this week.",
+      target: 3,
+      reward: { type: "cosmetic", cosmeticId: "sigil_starlit", name: "Starlit Sigil" },
+    },
+  ],
+};
+
+type ObjectiveTemplate = {
+  description: string;
+  target: number;
+  reward?: ChallengeReward;
+};
+
+const COOP_OBJECTIVE_TEMPLATES: ObjectiveTemplate[] = [
+  {
+    description: "Win 3 cooperative matches with any ally.",
+    target: 3,
+    reward: { type: "currency", currency: "sigils", amount: 40 },
+  },
+  {
+    description: "Finish 5 cooperative rounds without losses.",
+    target: 5,
+    reward: { type: "inventory", items: [{ cardId: "basic_7", qty: 1 }] },
+  },
+  {
+    description: "Complete 4 cooperative objectives with perfect spins.",
+    target: 4,
+    reward: { type: "cosmetic", cosmeticId: "trail_radiant", name: "Radiant Trail" },
+  },
+];
 
 function seed(): LocalState {
   const now = Date.now();
-  const base: LocalState = {
-    version: VERSION,
-    profile: {
-      id: uid("user"),
-      displayName: "Local Player",
-      mmr: 1000,
-      createdAt: now,
-      level: 1,
-      exp: 0,
-      winStreak: 0,
-      currencies: { ...DEFAULT_CURRENCIES },
-      unlocks: { ...DEFAULT_UNLOCKS },
-      cosmetics: [...DEFAULT_COSMETICS],
+  const profile: Profile = {
+    id: uid("user"),
+    displayName: "Local Player",
+    mmr: 1000,
+    createdAt: now,
+    level: 1,
+    exp: 0,
+    winStreak: 0,
+    currencies: { ...DEFAULT_CURRENCIES },
+    unlocks: {
+      wheels: { ...DEFAULT_UNLOCKS.wheels },
+      modes: { ...DEFAULT_UNLOCKS.modes },
     },
-    inventory: SEED_INVENTORY.map((i) => ({ ...i })),
-    decks: [SEED_DECK],
-    challenges: { daily: [], weekly: [], generatedAt: { daily: 0, weekly: 0 } },
-    sharedStats: { ...DEFAULT_SHARED },
-    coopObjectives: [],
-    leaderboard: [],
+    cosmetics: [...DEFAULT_COSMETICS],
   };
-  base.leaderboard = ensureLeaderboard(base.leaderboard, base.profile);
-  base.coopObjectives = generateObjectives(base.coopObjectives, now);
-  refreshChallengeBoard(base, now);
-  return base;
+
+  const challenges = seedChallengeBoard(profile, now);
+  const sharedStats: SharedStats = { ...DEFAULT_SHARED, lastUpdated: now };
+  const coopObjectives = generateObjectives([], now);
+  const leaderboard = ensureLeaderboard([], profile);
+
+  return {
+    version: VERSION,
+    profile,
+    inventory: SEED_INVENTORY,
+    decks: [SEED_DECK],
+    challenges,
+    sharedStats,
+    coopObjectives,
+    leaderboard,
+  };
 }
 
 // ===== Load/save =====
+function migrateState(raw: any): LocalState {
+  const fallback = seed();
+  const now = Date.now();
+
+  const state: LocalState = {
+    version: VERSION,
+    profile: fallback.profile,
+    inventory: fallback.inventory.map((item) => ({ ...item })),
+    decks: fallback.decks.map((deck) => ({ ...deck, cards: deck.cards.map((c) => ({ ...c })) })),
+    challenges: fallback.challenges,
+    sharedStats: fallback.sharedStats,
+    coopObjectives: fallback.coopObjectives,
+    leaderboard: fallback.leaderboard,
+  };
+
+  if (raw && typeof raw === "object") {
+    const source: any = raw;
+    if (source.profile && typeof source.profile === "object") {
+      const profile = source.profile as Partial<Profile> & Record<string, unknown>;
+      state.profile = {
+        id: typeof profile.id === "string" ? profile.id : state.profile.id,
+        displayName: typeof profile.displayName === "string" ? profile.displayName : state.profile.displayName,
+        mmr: typeof profile.mmr === "number" && Number.isFinite(profile.mmr) ? profile.mmr : state.profile.mmr,
+        createdAt: typeof profile.createdAt === "number" ? profile.createdAt : state.profile.createdAt,
+        level: typeof profile.level === "number" ? Math.max(1, Math.floor(profile.level)) : state.profile.level,
+        exp: typeof profile.exp === "number" && profile.exp >= 0 ? Math.floor(profile.exp) : state.profile.exp,
+        winStreak:
+          typeof profile.winStreak === "number" && profile.winStreak >= 0
+            ? Math.floor(profile.winStreak)
+            : state.profile.winStreak,
+        currencies: normalizeCurrencies(profile.currencies as Partial<CurrencyLedger> | null | undefined),
+        unlocks: normalizeUnlocks(profile.unlocks as Partial<UnlockState> | null | undefined),
+        cosmetics: ensureCosmetics(profile.cosmetics),
+      };
+    }
+
+    if (Array.isArray(source.inventory)) {
+      const inv: InventoryItem[] = source.inventory
+        .map((entry: any) => {
+          if (!entry || typeof entry !== "object") return null;
+          const cardId = typeof entry.cardId === "string" ? entry.cardId : null;
+          const qty = typeof entry.qty === "number" && Number.isFinite(entry.qty) ? Math.max(0, Math.floor(entry.qty)) : 0;
+          if (!cardId || qty <= 0) return null;
+          return { cardId, qty };
+        })
+        .filter(Boolean) as InventoryItem[];
+      state.inventory = inv;
+    }
+
+    if (Array.isArray(source.decks) && source.decks.length > 0) {
+      const decks: Deck[] = source.decks
+        .map((deck: any, idx: number) => {
+          if (!deck || typeof deck !== "object") return null;
+          const id = typeof deck.id === "string" ? deck.id : uid("deck");
+          const name = typeof deck.name === "string" ? deck.name : `Deck ${idx + 1}`;
+          const isActive = Boolean(deck.isActive);
+          const cards: DeckCard[] = Array.isArray(deck.cards)
+            ? deck.cards
+                .map((card: any) => {
+                  if (!card || typeof card !== "object") return null;
+                  const cardId = typeof card.cardId === "string" ? card.cardId : null;
+                  const qty = typeof card.qty === "number" && Number.isFinite(card.qty) ? Math.max(0, Math.floor(card.qty)) : 0;
+                  if (!cardId || qty <= 0) return null;
+                  return { cardId, qty };
+                })
+                .filter(Boolean) as DeckCard[]
+            : [];
+          return { id, name, isActive, cards };
+        })
+        .filter(Boolean) as Deck[];
+      if (decks.length > 0) {
+        if (!decks.some((d) => d.isActive)) decks[0].isActive = true;
+        state.decks = decks;
+      }
+    }
+
+    state.challenges = ensureChallengeBoard(source.challenges, state.profile, now);
+    state.sharedStats = ensureSharedStats(source.sharedStats);
+    state.coopObjectives = ensureObjectives(source.coopObjectives, now);
+    state.leaderboard = ensureLeaderboard(source.leaderboard, state.profile);
+  }
+
+  refreshChallengeLists(state.challenges, state.profile, now);
+  state.coopObjectives = generateObjectives(state.coopObjectives, now);
+  state.sharedStats.lastUpdated = now;
+  state.version = VERSION;
+  return state;
+}
+
 function loadStateRaw(): LocalState {
   if (!storage) {
     if (!memoryState) memoryState = seed();
@@ -556,9 +697,9 @@ function loadStateRaw(): LocalState {
   }
   try {
     const parsed = JSON.parse(raw);
-    const state = migrateState(parsed);
-    saveState(state);
-    return state;
+    const migrated = migrateState(parsed);
+    saveState(migrated);
+    return migrated;
   } catch {
     const s = seed();
     try {
@@ -570,7 +711,6 @@ function loadStateRaw(): LocalState {
   }
 }
 function saveState(state: LocalState) {
-  state.version = VERSION;
   if (!storage) {
     memoryState = state;
     return;
@@ -583,19 +723,16 @@ function saveState(state: LocalState) {
 }
 
 // ===== Helpers =====
-const findActive = (s: LocalState) => s.decks.find((d) => d.isActive) ?? s.decks[0];
+const findActive = (s: LocalState) => s.decks.find(d => d.isActive) ?? s.decks[0];
 const sum = (cards: DeckCard[]) => cards.reduce((a, c) => a + c.qty, 0);
-const qtyInDeck = (d: Deck, id: string) => d.cards.find((c) => c.cardId === id)?.qty ?? 0;
+const qtyInDeck = (d: Deck, id: string) => d.cards.find(c => c.cardId === id)?.qty ?? 0;
 const setQty = (d: Deck, id: string, q: number) => {
-  const i = d.cards.findIndex((c) => c.cardId === id);
-  if (q <= 0) {
-    if (i >= 0) d.cards.splice(i, 1);
-    return;
-  }
-  if (i >= 0) d.cards[i].qty = q;
-  else d.cards.push({ cardId: id, qty: q });
+  const i = d.cards.findIndex(c => c.cardId === id);
+  if (q <= 0) { if (i >= 0) d.cards.splice(i, 1); return; }
+  if (i >= 0) d.cards[i].qty = q; else d.cards.push({ cardId: id, qty: q });
 };
-const ownAtLeast = (inv: InventoryItem[], id: string, need: number) => (inv.find((i) => i.cardId === id)?.qty ?? 0) >= need;
+const ownAtLeast = (inv: InventoryItem[], id: string, need: number) =>
+  (inv.find(i => i.cardId === id)?.qty ?? 0) >= need;
 
 const EXP_BASE = 100;
 
@@ -612,13 +749,6 @@ const toLevelProgress = (profile: Profile): LevelProgress => {
   return { level: profile.level, exp: profile.exp, expToNext, percent };
 };
 
-export type MatchContext = {
-  didWin: boolean;
-  mode?: "solo" | "multiplayer" | "coop";
-  wheelArchetypes?: WheelArchetype[];
-  cooperativeObjectiveProgress?: number;
-};
-
 export type MatchResultSummary = {
   didWin: boolean;
   expGained: number;
@@ -627,21 +757,19 @@ export type MatchResultSummary = {
   after: LevelProgress;
   segments: LevelProgressSegment[];
   levelUps: number;
-  challengeProgress?: ChallengeProgressSnapshot[];
-  unlockedArchetypes?: WheelArchetype[];
-  currencies?: CurrencyLedger;
-  sharedStats?: SharedStats;
-  coopObjectives?: CoopObjective[];
-  leaderboard?: LeaderboardEntry[];
+};
+export type MatchRecordInput = {
+  didWin: boolean;
+  mode?: "solo" | "coop" | "versus";
+  cardsPlayed?: number;
+  sharedStatsDelta?: Partial<Pick<SharedStats, "coopWins" | "coopLosses" | "objectivesCompleted" | "leaderboardRating">>;
 };
 
-export function recordMatchResult({ didWin, mode = "solo", wheelArchetypes = [], cooperativeObjectiveProgress = 0 }: MatchContext): MatchResultSummary {
+export function recordMatchResult({ didWin, mode = "solo", sharedStatsDelta }: MatchRecordInput): MatchResultSummary {
   const state = loadStateRaw();
   const profile = state.profile;
   const before = toLevelProgress(profile);
   const now = Date.now();
-
-  refreshChallengeBoard(state, now);
 
   let expGained = 0;
   let levelUps = 0;
@@ -678,65 +806,28 @@ export function recordMatchResult({ didWin, mode = "solo", wheelArchetypes = [],
 
     profile.level = curLevel;
     profile.exp = curExp;
-
-    applyChallengeProgress(state, "win_matches", 1, now);
-    if (mode === "coop" || mode === "multiplayer") {
-      applyChallengeProgress(state, "coop_victories", 1, now);
-    }
   } else {
     profile.winStreak = 0;
   }
 
-  applyChallengeProgress(state, "play_cards", 3, now);
-  if (cooperativeObjectiveProgress > 0) {
-    objectiveProgress(state, cooperativeObjectiveProgress, now);
-  }
-
-  // Shared stats + leaderboard persistence
-  if (mode !== "solo") {
-    state.sharedStats.lastUpdated = now;
-    if (didWin) state.sharedStats.coopWins += 1;
-    else state.sharedStats.coopLosses += 1;
-
-    const localEntry = state.leaderboard.find((entry) => entry.playerId === profile.id);
-    if (localEntry) {
-      const delta = didWin ? 15 : -10;
-      localEntry.rating = Math.max(0, localEntry.rating + delta);
-      if (didWin) localEntry.victories += 1;
-      localEntry.updatedAt = now;
-      state.sharedStats.leaderboardRating = localEntry.rating;
-    }
-  }
-
-  if (mode === "coop" && cooperativeObjectiveProgress <= 0 && didWin) {
-    objectiveProgress(state, 1, now);
-  }
-
-  // Level-based unlocks
-  const unlocked: WheelArchetype[] = [];
-  if (!state.profile.unlocks.wheels.guardian && profile.level >= 5) {
-    state.profile.unlocks.wheels.guardian = true;
-    unlocked.push("guardian");
-  }
-  if (!state.profile.unlocks.wheels.chaos && profile.level >= 12) {
-    state.profile.unlocks.wheels.chaos = true;
-    unlocked.push("chaos");
-  }
-
   const after = toLevelProgress(profile);
 
-  const challengeProgress: ChallengeProgressSnapshot[] = [
-    ...state.challenges.daily,
-    ...state.challenges.weekly,
-  ].map((ch) => ({
-    id: ch.id,
-    kind: ch.kind,
-    progress: ch.progress,
-    target: ch.target,
-    completed: !!ch.completedAt,
-    claimed: !!ch.claimedAt,
-  }));
+  if (didWin) {
+    applyChallengeProgress(state, "win_matches", 1, now);
+  }
+  if (didWin && mode === "coop") {
+    applyChallengeProgress(state, "coop_victories", 1, now);
+  }
 
+  applySharedStats(state, { didWin, mode, sharedStatsDelta }, now);
+  if (mode === "coop" && didWin) {
+    updateCoopObjectives(state, 1, now);
+  } else if (mode === "coop") {
+    updateCoopObjectives(state, 0, now);
+  }
+
+  refreshChallengeBoard(state, now);
+  applyProgressUnlocks(state);
   saveState(state);
 
   return {
@@ -747,12 +838,6 @@ export function recordMatchResult({ didWin, mode = "solo", wheelArchetypes = [],
     after,
     segments,
     levelUps,
-    challengeProgress,
-    unlockedArchetypes: unlocked.length ? unlocked : undefined,
-    currencies: { ...state.profile.currencies },
-    sharedStats: { ...state.sharedStats },
-    coopObjectives: state.coopObjectives.map((o) => ({ ...o })),
-    leaderboard: state.leaderboard.map((l) => ({ ...l })),
   };
 }
 
@@ -771,48 +856,64 @@ export type ProfileBundle = {
 export function getProfileBundle(): ProfileBundle {
   const s = loadStateRaw();
   refreshChallengeBoard(s);
+  applyProgressUnlocks(s);
   saveState(s);
-  return {
-    profile: s.profile,
-    inventory: s.inventory,
-    decks: s.decks,
-    active: findActive(s),
-    challenges: s.challenges,
-    sharedStats: s.sharedStats,
-    coopObjectives: s.coopObjectives,
-    leaderboard: s.leaderboard,
+
+  const profile: Profile = {
+    ...s.profile,
+    currencies: { ...s.profile.currencies },
+    unlocks: {
+      wheels: { ...s.profile.unlocks.wheels },
+      modes: { ...s.profile.unlocks.modes },
+    },
+    cosmetics: [...s.profile.cosmetics],
   };
+  const inventory = s.inventory.map((item) => ({ ...item }));
+  const decks = s.decks.map((deck) => ({
+    ...deck,
+    cards: deck.cards.map((card) => ({ ...card })),
+  }));
+  const activeId = findActive(s)?.id;
+  const active = activeId ? decks.find((d) => d.id === activeId) : undefined;
+  const challenges: ChallengeBoard = {
+    daily: s.challenges.daily.map(cloneChallenge),
+    weekly: s.challenges.weekly.map(cloneChallenge),
+    generatedAt: { ...s.challenges.generatedAt },
+  };
+  const sharedStats: SharedStats = { ...s.sharedStats };
+  const coopObjectives = s.coopObjectives.map(cloneObjective);
+  const leaderboard = s.leaderboard.map((entry) => ({ ...entry }));
+
+  return { profile, inventory, decks, active, challenges, sharedStats, coopObjectives, leaderboard };
 }
 export function createDeck(name = "New Deck") {
   const s = loadStateRaw();
   const d: Deck = { id: uid("deck"), name, isActive: false, cards: [] };
-  s.decks.push(d);
-  saveState(s);
-  return d;
+  s.decks.push(d); saveState(s); return d;
 }
 export function setActiveDeck(id: string) {
   const s = loadStateRaw();
-  s.decks = s.decks.map((d) => ({ ...d, isActive: d.id === id }));
+  s.decks = s.decks.map(d => ({ ...d, isActive: d.id === id }));
   saveState(s);
 }
 export function renameDeck(id: string, name: string) {
   const s = loadStateRaw();
-  const d = s.decks.find((x) => x.id === id);
+  const d = s.decks.find(x => x.id === id);
   if (d) d.name = name || "Deck";
   saveState(s);
 }
 export function deleteDeck(id: string) {
   const s = loadStateRaw();
-  s.decks = s.decks.filter((d) => d.id !== id);
-  if (!s.decks.some((d) => d.isActive) && s.decks[0]) s.decks[0].isActive = true;
+  s.decks = s.decks.filter(d => d.id !== id);
+  if (!s.decks.some(d => d.isActive) && s.decks[0]) s.decks[0].isActive = true;
   saveState(s);
 }
 export function swapDeckCards(deckId: string, remove: SwapItem[], add: SwapItem[]) {
   const s = loadStateRaw();
-  const deck = s.decks.find((d) => d.id === deckId);
+  const deck = s.decks.find(d => d.id === deckId);
   if (!deck) throw new Error("Deck not found");
 
-  const next: DeckCard[] = deck.cards.map((c) => ({ ...c }));
+  const next: DeckCard[] = deck.cards.map(c => ({ ...c }));
   const tmp: Deck = { ...deck, cards: next };
 
   for (const r of remove) setQty(tmp, r.cardId, Math.max(0, qtyInDeck(tmp, r.cardId) - r.qty));
@@ -822,7 +923,8 @@ export function swapDeckCards(deckId: string, remove: SwapItem[], add: SwapItem[
   for (const c of tmp.cards) {
     if (!c.cardId.startsWith("basic_") && c.qty > MAX_COPIES_PER_DECK)
       throw new Error(`Too many copies of ${c.cardId} (max ${MAX_COPIES_PER_DECK})`);
-    if (!ownAtLeast(s.inventory, c.cardId, 1)) throw new Error(`You don't own ${c.cardId}`);
+    if (!ownAtLeast(s.inventory, c.cardId, 1))
+      throw new Error(`You don't own ${c.cardId}`);
   }
 
   deck.cards = tmp.cards;
@@ -831,124 +933,154 @@ export function swapDeckCards(deckId: string, remove: SwapItem[], add: SwapItem[
 }
 export function addToInventory(items: SwapItem[]) {
   const s = loadStateRaw();
-  for (const it of items) {
-    const i = s.inventory.findIndex((x) => x.cardId === it.cardId);
-    if (i >= 0) s.inventory[i].qty += it.qty;
-    else s.inventory.push({ cardId: it.cardId, qty: it.qty });
-  }
+  addInventoryEntries(s, items);
   saveState(s);
-}
-
-export function adjustCurrency(currency: CurrencyId, delta: number): number {
-  const s = loadStateRaw();
-  const current = s.profile.currencies[currency] ?? 0;
-  const next = Math.max(0, current + Math.floor(delta));
-  s.profile.currencies[currency] = next;
-  saveState(s);
-  return next;
-}
-
-export function unlockWheel(archetype: WheelArchetype) {
-  const s = loadStateRaw();
-  if (!s.profile.unlocks.wheels[archetype]) {
-    s.profile.unlocks.wheels[archetype] = true;
-    saveState(s);
-  }
 }
 
 export function getUnlockedWheelArchetypes(): WheelArchetype[] {
-  const s = loadStateRaw();
-  return (Object.keys(s.profile.unlocks.wheels) as WheelArchetype[]).filter((key) => s.profile.unlocks.wheels[key]);
+  const state = loadStateRaw();
+  applyProgressUnlocks(state);
+  saveState(state);
+  return (Object.keys(state.profile.unlocks.wheels) as WheelArchetype[]).filter(
+    (arch) => state.profile.unlocks.wheels[arch]
+  );
 }
 
 export function getWheelLoadout(): WheelArchetype[] {
-  return normalizeWheelLoadout(getUnlockedWheelArchetypes());
+  const unlocked = getUnlockedWheelArchetypes();
+  if (unlocked.length === 0) {
+    return ["bandit", "sorcerer", "beast"];
+  }
+
+  const base: WheelArchetype[] = [];
+  if (unlocked.includes("bandit")) base.push("bandit");
+  if (unlocked.includes("sorcerer")) base.push("sorcerer");
+  const remaining = unlocked.filter((arch) => !base.includes(arch));
+  const extras = shuffle([...remaining]);
+  const ordered = [...base, ...extras];
+
+  const chosen: WheelArchetype[] = [];
+  for (const arch of ordered) {
+    if (!chosen.includes(arch)) {
+      chosen.push(arch);
+    }
+    if (chosen.length === 3) break;
+  }
+
+  const fallback: WheelArchetype[] = ["bandit", "sorcerer", "beast"];
+  for (const arch of fallback) {
+    if (chosen.length >= 3) break;
+    if (unlocked.includes(arch) && !chosen.includes(arch)) chosen.push(arch);
+  }
+
+  const limit = Math.min(3, Math.max(1, unlocked.length));
+  return chosen.slice(0, limit);
 }
 
-export function getChallengeBoard(): ChallengeBoard {
-  const s = loadStateRaw();
-  refreshChallengeBoard(s);
-  saveState(s);
+export type MultiplayerSnapshot = {
+  sharedStats: SharedStats;
+  coopObjectives: CoopObjective[];
+  leaderboard: LeaderboardEntry[];
+};
+
+export function getMultiplayerSnapshot(): MultiplayerSnapshot {
+  const state = loadStateRaw();
+  refreshChallengeBoard(state);
+  applyProgressUnlocks(state);
+  saveState(state);
   return {
-    daily: s.challenges.daily.map(cloneChallenge),
-    weekly: s.challenges.weekly.map(cloneChallenge),
-    generatedAt: { ...s.challenges.generatedAt },
+    sharedStats: { ...state.sharedStats },
+    coopObjectives: state.coopObjectives.map(cloneObjective),
+    leaderboard: state.leaderboard.map((entry) => ({ ...entry })),
   };
 }
 
-export function claimChallengeReward(id: string): Challenge | null {
-  const s = loadStateRaw();
-  refreshChallengeBoard(s);
-  const all = [...s.challenges.daily, ...s.challenges.weekly];
-  const target = all.find((ch) => ch.id === id);
-  if (!target || !target.completedAt || target.claimedAt) return null;
+export function syncMultiplayerSnapshot(snapshot: MultiplayerSnapshot) {
+  const state = loadStateRaw();
   const now = Date.now();
-  target.claimedAt = now;
-  applyReward(s, target.reward, now);
-  saveState(s);
-  return cloneChallenge(target);
-}
 
-export function getSharedStats(): SharedStats {
-  const s = loadStateRaw();
-  return { ...s.sharedStats };
-}
-
-export function applySharedStatsFromNetwork(snapshot: SharedStats): SharedStats {
-  const s = loadStateRaw();
-  s.sharedStats = {
-    coopWins: Math.max(s.sharedStats.coopWins, snapshot.coopWins),
-    coopLosses: Math.max(s.sharedStats.coopLosses, snapshot.coopLosses),
-    objectivesCompleted: Math.max(s.sharedStats.objectivesCompleted, snapshot.objectivesCompleted),
-    leaderboardRating: Math.max(s.sharedStats.leaderboardRating, snapshot.leaderboardRating),
-    lastUpdated: Math.max(s.sharedStats.lastUpdated, snapshot.lastUpdated),
+  state.sharedStats = {
+    ...state.sharedStats,
+    coopWins: Math.max(state.sharedStats.coopWins, snapshot.sharedStats.coopWins),
+    coopLosses: Math.max(state.sharedStats.coopLosses, snapshot.sharedStats.coopLosses),
+    objectivesCompleted: Math.max(state.sharedStats.objectivesCompleted, snapshot.sharedStats.objectivesCompleted),
+    leaderboardRating: Math.max(state.sharedStats.leaderboardRating, snapshot.sharedStats.leaderboardRating),
+    lastUpdated: now,
   };
-  saveState(s);
-  return { ...s.sharedStats };
-}
 
-export function getCoopObjectives(): CoopObjective[] {
-  const s = loadStateRaw();
-  s.coopObjectives = generateObjectives(s.coopObjectives, Date.now());
-  saveState(s);
-  return s.coopObjectives.map((o) => ({ ...o }));
-}
+  const incomingObjectives = ensureObjectives(snapshot.coopObjectives, now);
+  const existingObjectives = state.coopObjectives;
+  const mergedObjectives: CoopObjective[] = incomingObjectives.map((incoming) => {
+    const existing = existingObjectives.find((obj) => obj.id === incoming.id);
+    if (!existing) return incoming;
+    return {
+      ...incoming,
+      progress: Math.max(existing.progress, incoming.progress),
+      completedAt: existing.completedAt ?? incoming.completedAt,
+      claimedAt: existing.claimedAt ?? incoming.claimedAt,
+    };
+  });
+  const preserved = existingObjectives.filter(
+    (obj) => !mergedObjectives.some((incoming) => incoming.id === obj.id)
+  );
+  state.coopObjectives = generateObjectives([...mergedObjectives, ...preserved], now);
 
-export function applyCoopObjectivesSnapshot(list: CoopObjective[]): CoopObjective[] {
-  const s = loadStateRaw();
-  const now = Date.now();
-  const merged = generateObjectives(list.map((o) => ({ ...o })), now);
-  s.coopObjectives = merged;
-  saveState(s);
-  return merged.map((o) => ({ ...o }));
-}
-
-export function getLeaderboard(): LeaderboardEntry[] {
-  const s = loadStateRaw();
-  return s.leaderboard.map((entry) => ({ ...entry }));
-}
-
-export function applyLeaderboardSnapshot(entries: LeaderboardEntry[]): LeaderboardEntry[] {
-  const s = loadStateRaw();
-  const map = new Map<string, LeaderboardEntry>();
-  for (const entry of [...s.leaderboard, ...entries]) {
-    const existing = map.get(entry.playerId);
-    if (!existing || existing.rating < entry.rating) {
-      map.set(entry.playerId, { ...entry });
+  const merged = new Map<string, LeaderboardEntry>();
+  for (const entry of state.leaderboard) {
+    merged.set(entry.playerId, { ...entry });
+  }
+  for (const entry of snapshot.leaderboard) {
+    if (!entry) continue;
+    const existing = merged.get(entry.playerId);
+    const sanitized: LeaderboardEntry = {
+      playerId: typeof entry.playerId === "string" ? entry.playerId : uid("lb"),
+      name: typeof entry.name === "string" ? entry.name : existing?.name ?? state.profile.displayName,
+      rating: typeof entry.rating === "number" && Number.isFinite(entry.rating) ? Math.max(0, Math.floor(entry.rating)) : 0,
+      victories:
+        typeof entry.victories === "number" && Number.isFinite(entry.victories)
+          ? Math.max(0, Math.floor(entry.victories))
+          : existing?.victories ?? 0,
+      updatedAt: typeof entry.updatedAt === "number" ? entry.updatedAt : now,
+    };
+    if (!existing) {
+      merged.set(sanitized.playerId, sanitized);
+    } else {
+      merged.set(sanitized.playerId, {
+        ...existing,
+        name: sanitized.name,
+        rating: Math.max(existing.rating, sanitized.rating),
+        victories: Math.max(existing.victories, sanitized.victories),
+        updatedAt: Math.max(existing.updatedAt, sanitized.updatedAt),
+      });
     }
   }
-  s.leaderboard = Array.from(map.values()).sort((a, b) => b.rating - a.rating);
-  saveState(s);
-  return s.leaderboard.map((entry) => ({ ...entry }));
+  state.leaderboard = ensureLeaderboard(Array.from(merged.values()), state.profile);
+
+  applyProgressUnlocks(state);
+  saveState(state);
+}
+
+export function claimChallengeReward(id: string): Challenge | undefined {
+  const state = loadStateRaw();
+  const now = Date.now();
+  refreshChallengeBoard(state, now);
+  const all = [...state.challenges.daily, ...state.challenges.weekly];
+  const found = all.find((ch) => ch.id === id);
+  if (!found || !found.completedAt || found.claimedAt) {
+    saveState(state);
+    return undefined;
+  }
+  found.claimedAt = now;
+  awardChallengeReward(state, found.reward);
+  applyProgressUnlocks(state);
+  saveState(state);
+  return cloneChallenge(found);
 }
 
 // ====== CARD FACTORY to map profile cardIds -> real game Card ======
 
 // sequential card ids for the runtime deck
-const nextCardId = (() => {
-  let i = 1;
-  return () => `C${i++}`;
-})();
+const nextCardId = (() => { let i = 1; return () => `C${i++}`; })();
 
 /**
  * Supported cardId formats:
@@ -957,19 +1089,16 @@ const nextCardId = (() => {
  *  - "num_X" explicit number alias
  * Anything else falls back to number 0.
  */
-export function cardNumberFromId(cardId: string): number {
-  if (typeof cardId !== "string") return 0;
-  const mBasic = /^basic_(\d+)$/.exec(cardId);
-  if (mBasic) return parseInt(mBasic[1], 10);
-  const mNeg = /^neg_(-?\d+)$/.exec(cardId);
-  if (mNeg) return parseInt(mNeg[1], 10);
-  const mNum = /^num_(-?\d+)$/.exec(cardId);
-  if (mNum) return parseInt(mNum[1], 10);
-  return 0;
-}
-
 function cardFromId(cardId: string): Card {
-  const num = cardNumberFromId(cardId);
+  let num = 0;
+  const mBasic = /^basic_(\d+)$/.exec(cardId);
+  const mNeg   = /^neg_(-?\d+)$/.exec(cardId);
+  const mNum   = /^num_(-?\d+)$/.exec(cardId);
+
+  if (mBasic) num = parseInt(mBasic[1], 10);
+  else if (mNeg) num = parseInt(mNeg[1], 10);
+  else if (mNum) num = parseInt(mNum[1], 10);
+
   return {
     id: nextCardId(),
     name: `${num}`,
@@ -977,19 +1106,6 @@ function cardFromId(cardId: string): Card {
     number: num,
     tags: [],
   };
-}
-
-function normalizeWheelLoadout(list: WheelArchetype[]): WheelArchetype[] {
-  const source = list.length ? [...list] : ["bandit"];
-  const out: WheelArchetype[] = [];
-  for (const arch of source) {
-    if (out.length >= WHEEL_LOADOUT_SIZE) break;
-    out.push(arch);
-  }
-  while (out.length < WHEEL_LOADOUT_SIZE) {
-    out.push(out[out.length - 1] ?? "bandit");
-  }
-  return out.slice(0, WHEEL_LOADOUT_SIZE);
 }
 
 // ====== Build a runtime deck (Card[]) from the ACTIVE profile deck ======

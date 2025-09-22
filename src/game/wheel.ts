@@ -14,20 +14,26 @@ export const VC_META: Record<
 
 import { shuffle } from "./math";
 
-const ARCHETYPE_SEGMENTS: Record<WheelArchetype, number[]> = {
-  bandit: [5, 4, 3, 2, 1],
-  sorcerer: [5, 5, 2, 2, 1],
-  beast: [6, 3, 3, 2, 1],
-  guardian: [4, 4, 3, 3, 2],
-  chaos: [7, 3, 2, 2, 2],
-};
-
 export function genWheelSections(
   archetype: WheelArchetype = "bandit",
   rng: () => number = Math.random
 ): Section[] {
-  const baseLens = ARCHETYPE_SEGMENTS[archetype] ?? ARCHETYPE_SEGMENTS.bandit;
-  const lens = shuffle(baseLens, rng);
+  const lens = (() => {
+    switch (archetype) {
+      case "bandit":
+        return shuffle([5, 4, 3, 2, 1], rng);
+      case "sorcerer":
+        return shuffle([5, 5, 2, 2, 1], rng);
+      case "beast":
+        return shuffle([6, 3, 3, 2, 1], rng);
+      case "guardian":
+        return shuffle([4, 4, 3, 3, 2], rng);
+      case "chaos":
+        return shuffle([6, 5, 3, 1, 1], rng);
+      default:
+        return shuffle([5, 4, 3, 2, 1], rng);
+    }
+  })();
   const kinds: VC[] = shuffle([
     "Strongest",
     "Weakest",

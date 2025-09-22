@@ -46,12 +46,7 @@ export type VC =
   | "ClosestToTarget"
   | "Initiative";
 
-export type WheelArchetype =
-  | "bandit"
-  | "sorcerer"
-  | "beast"
-  | "guardian"
-  | "chaos";
+export type WheelArchetype = "bandit" | "sorcerer" | "beast" | "guardian" | "chaos";
 
 export type Section = {
   id: VC;

@@ -3,12 +3,9 @@ import { Realtime } from "ably";
 import type { PresenceMessage } from "ably";
 import { TARGET_WINS, type Players, type Side } from "./game/types";
 import {
-  getSharedStats,
-  getCoopObjectives,
-  getLeaderboard,
-  type SharedStats,
-  type CoopObjective,
-  type LeaderboardEntry,
+  getMultiplayerSnapshot,
+  syncMultiplayerSnapshot,
+  type MultiplayerSnapshot,
 } from "./player/profileStore";
 
 // ----- Start payload now includes targetWins (wins goal) -----
@@ -19,9 +16,7 @@ type StartMessagePayload = {
   players: Players;          // { left: {id,name,color}, right: {…} }
   playersArr?: { clientId: string; name: string }[]; // optional: raw list for debugging
   targetWins: number;        // 👈 merged feature: game wins goal
-  sharedStats: SharedStats;
-  leaderboard: LeaderboardEntry[];
-  cooperativeObjectives: CoopObjective[];
+  snapshot: MultiplayerSnapshot;
 };
 
 type StartPayload = StartMessagePayload & {
@@ -325,6 +320,12 @@ await refreshMembers(chan);
           connectionListenerRef.current = null;
         }
 
+        try {
+          syncMultiplayerSnapshot(payload.snapshot);
+        } catch (err) {
+          console.error("Failed to sync multiplayer snapshot", err);
+        }
+
         onStart({
           ...payload,
           localSide,
@@ -499,9 +500,7 @@ await refreshMembers(chan);
       hostId: members[0].clientId, // first in presence is host
       playersArr: members,         // optional, for debugging/analytics
       targetWins: winsGoal,        // 👈 pass wins goal into the game
-      sharedStats: getSharedStats(),
-      leaderboard: getLeaderboard(),
-      cooperativeObjectives: getCoopObjectives(),
+      snapshot: getMultiplayerSnapshot(),
     };
 
     await channelRef.current?.publish("start", payload);
