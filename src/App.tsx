@@ -135,9 +135,13 @@ type MPIntent =
       spellId: string;
       manaAfter: number;
       payload?: SpellResolutionIntentPayload | null;
+    }
+  | {
+      type: "spellState";
+      side: LegacySide;
+      lane: number;
+      state: LaneSpellState;
     };
-
-  { type: "spellState"; side: LegacySide; lane: number; state: LaneSpellState };
 
 
 // ---------------- Constants ----------------
