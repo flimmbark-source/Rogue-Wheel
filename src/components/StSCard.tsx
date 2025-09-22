@@ -1,6 +1,6 @@
 // src/components/StSCard.tsx
 import React, { memo } from "react";
-import { Card, type TagId } from "../game/types";
+import { Card } from "../game/types";
 import { fmtNum, isSplit } from "../game/values";
 
 export default memo(function StSCard({
@@ -35,36 +35,8 @@ export default memo(function StSCard({
       ? { w: 92, h: 128 }
       : { w: 72, h: 96 };
 
-  // ----- Tags (new) -----
-  const TAG_INFO: Record<TagId, { icon: string; label: string; tone: string }> = {
-    oddshift: { icon: "↷", label: "Oddshift", tone: "bg-amber-500/80" },
-    parityflip: { icon: "±", label: "Parity Flip", tone: "bg-sky-500/80" },
-    echoreserve: { icon: "⟳", label: "Echo Reserve", tone: "bg-emerald-500/80" },
-    swap: { icon: "⇄", label: "Swap", tone: "bg-violet-500/80" },
-    steal: { icon: "⇆", label: "Steal", tone: "bg-rose-500/80" },
-    decoy: { icon: "?", label: "Decoy", tone: "bg-slate-500/80" },
-    reveal: { icon: "👁", label: "Reveal", tone: "bg-orange-400/80" },
-  };
-
-  const tagBadges = !faceDown
-    ? (card.tags ?? []).map((tag) => {
-        const data = TAG_INFO[tag];
-        if (!data) return null;
-        return (
-          <span
-            key={tag}
-            className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded text-[10px] font-semibold text-black/85 shadow ${data.tone}`}
-            title={data.label}
-          >
-            {data.icon}
-          </span>
-        );
-      })
-    : null;
-
   // ----- Link descriptor badges (from Experimental) -----
   // ----- Title / value / hint -----
-  const cardTitle = faceDown ? "Hidden" : card.name;
   const metaDisplay = card.meta?.decoy?.display;
 
   const renderValue = () => {
@@ -129,17 +101,9 @@ export default memo(function StSCard({
       />
 
       {/* Content */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-2 text-center">
-        {/* Top row: title (left) + badges (right) */}
-        <div className="absolute top-1 left-1 right-1 flex items-center justify-between gap-1">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-white/70 truncate text-left">
-            {cardTitle}
-          </div>
-          <div className="flex flex-wrap gap-1 items-center justify-end">{tagBadges}</div>
-        </div>
-
+      <div className="absolute inset-0 flex flex-col items-center justify-center px-2 text-center">
         {/* Main value */}
-        <div className="mt-2 flex flex-1 items-center justify-center">{renderValue()}</div>
+        <div className="flex flex-1 items-center justify-center">{renderValue()}</div>
 
         {/* Hint */}
       </div>
