@@ -2548,18 +2548,6 @@ const HUDPanels = () => {
 
   return (
     <div className="w-full flex flex-col items-center">
-      <div className="mb-3 flex flex-wrap items-center justify-center gap-2 text-xs sm:text-sm">
-        <span className="rounded-full border border-white/20 bg-black/40 px-3 py-1 text-slate-100">
-          Mode: <span className="font-semibold">{matchMode.name}</span>
-        </span>
-        <span className="rounded-full border border-white/20 bg-black/40 px-3 py-1 text-slate-100">
-          Target: <span className="tabular-nums font-semibold">{winGoal}</span> wins
-        </span>
-        <span className={`rounded-full border px-3 py-1 font-mono text-sm sm:text-base ${timerClass}`}>
-          Timer: {timerDisplay}
-        </span>
-      </div>
-
       <div className="grid w-full max-w-[900px] grid-cols-2 items-stretch gap-2 overflow-x-hidden">
         <div className="min-w-0 w-full max-w-[420px] mx-auto h-full">
           <Panel side="player" />
