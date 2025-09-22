@@ -101,6 +101,7 @@ const KEY = "rw:single:state";
 const VERSION = 3;
 const MAX_DECK_SIZE = 10;
 const MAX_COPIES_PER_DECK = 2;
+const WHEEL_LOADOUT_SIZE = 3;
 const DAILY_SLOTS = 2;
 const WEEKLY_SLOTS = 2;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -860,6 +861,10 @@ export function getUnlockedWheelArchetypes(): WheelArchetype[] {
   return (Object.keys(s.profile.unlocks.wheels) as WheelArchetype[]).filter((key) => s.profile.unlocks.wheels[key]);
 }
 
+export function getWheelLoadout(): WheelArchetype[] {
+  return normalizeWheelLoadout(getUnlockedWheelArchetypes());
+}
+
 export function getChallengeBoard(): ChallengeBoard {
   const s = loadStateRaw();
   refreshChallengeBoard(s);
@@ -952,16 +957,19 @@ const nextCardId = (() => {
  *  - "num_X" explicit number alias
  * Anything else falls back to number 0.
  */
-function cardFromId(cardId: string): Card {
-  let num = 0;
+export function cardNumberFromId(cardId: string): number {
+  if (typeof cardId !== "string") return 0;
   const mBasic = /^basic_(\d+)$/.exec(cardId);
+  if (mBasic) return parseInt(mBasic[1], 10);
   const mNeg = /^neg_(-?\d+)$/.exec(cardId);
+  if (mNeg) return parseInt(mNeg[1], 10);
   const mNum = /^num_(-?\d+)$/.exec(cardId);
+  if (mNum) return parseInt(mNum[1], 10);
+  return 0;
+}
 
-  if (mBasic) num = parseInt(mBasic[1], 10);
-  else if (mNeg) num = parseInt(mNeg[1], 10);
-  else if (mNum) num = parseInt(mNum[1], 10);
-
+function cardFromId(cardId: string): Card {
+  const num = cardNumberFromId(cardId);
   return {
     id: nextCardId(),
     name: `${num}`,
@@ -969,6 +977,19 @@ function cardFromId(cardId: string): Card {
     number: num,
     tags: [],
   };
+}
+
+function normalizeWheelLoadout(list: WheelArchetype[]): WheelArchetype[] {
+  const source = list.length ? [...list] : ["bandit"];
+  const out: WheelArchetype[] = [];
+  for (const arch of source) {
+    if (out.length >= WHEEL_LOADOUT_SIZE) break;
+    out.push(arch);
+  }
+  while (out.length < WHEEL_LOADOUT_SIZE) {
+    out.push(out[out.length - 1] ?? "bandit");
+  }
+  return out.slice(0, WHEEL_LOADOUT_SIZE);
 }
 
 // ====== Build a runtime deck (Card[]) from the ACTIVE profile deck ======

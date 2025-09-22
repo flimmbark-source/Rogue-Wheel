@@ -45,7 +45,7 @@ import {
   refillTo,
   freshFive,
   recordMatchResult,
-  getUnlockedWheelArchetypes,
+  getWheelLoadout,
   applySharedStatsFromNetwork,
   applyCoopObjectivesSnapshot,
   applyLeaderboardSnapshot,
@@ -89,20 +89,6 @@ const THEME = {
   slotBorder:'#7a5a33',
   brass:     '#b68a4e',
   textWarm:  '#ead9b9',
-};
-
-const WHEEL_COUNT = 3;
-const normalizeWheelLoadout = (list: WheelArchetype[]): WheelArchetype[] => {
-  const source = list.length ? [...list] : ["bandit"];
-  const out: WheelArchetype[] = [];
-  for (const arch of source) {
-    if (out.length >= WHEEL_COUNT) break;
-    out.push(arch);
-  }
-  while (out.length < WHEEL_COUNT) {
-    out.push(out[out.length - 1] ?? "bandit");
-  }
-  return out.slice(0, WHEEL_COUNT);
 };
 
 // ---------------- Main Component ----------------
@@ -151,7 +137,7 @@ export default function ThreeWheel_WinsOnly({
 
   const [sharedStatsState, setSharedStatsState] = useState<SharedStats>(() => getSharedStats());
   const [coopObjectivesState, setCoopObjectivesState] = useState<CoopObjective[]>(() => getCoopObjectives());
-  const [wheelLoadout, setWheelLoadout] = useState<WheelArchetype[]>(() => normalizeWheelLoadout(getUnlockedWheelArchetypes()));
+  const [wheelLoadout, setWheelLoadout] = useState<WheelArchetype[]>(() => getWheelLoadout());
 
   useEffect(() => {
     if (sharedStatsSnapshot) {
@@ -300,7 +286,7 @@ export default function ThreeWheel_WinsOnly({
         setMatchSummary(summary);
 
         if (summary.unlockedArchetypes?.length) {
-          setWheelLoadout(normalizeWheelLoadout(getUnlockedWheelArchetypes()));
+          setWheelLoadout(getWheelLoadout());
         }
         setSharedStatsState(getSharedStats());
         setCoopObjectivesState(getCoopObjectives());
