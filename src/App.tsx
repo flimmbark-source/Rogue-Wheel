@@ -49,13 +49,18 @@ import {
 import {
   makeFighter,
   drawOne,
-  refillTo,
   freshFive,
   recordMatchResult,
   type MatchResultSummary,
   type LevelProgress,
 } from "./player/profileStore";
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
+import {
+  autoPickEnemy,
+  calcWheelSize,
+  computeReserveSum,
+  settleFighterAfterRound,
+} from "./features/threeWheel/utils/combat";
 
 // components
 import CanvasWheel, { WheelHandle } from "./components/CanvasWheel";
@@ -144,7 +149,6 @@ type MPIntent =
 
 
 // ---------------- Constants ----------------
-const MIN_WHEEL = 160;
 const MAX_WHEEL = 200;
 
 const THEME = {
@@ -574,17 +578,6 @@ const resetRoundTransientState = useCallback(
 
   const [handClearance, setHandClearance] = useState<number>(0);
 
-function calcWheelSize(viewH: number, viewW: number, dockAllowance = 0) {
-  const isMobile = viewW <= 480;
-  const chromeAllowance = viewW >= 1024 ? 200 : 140;
-  const raw = Math.floor((viewH - chromeAllowance - dockAllowance) / 3);
-  const MOBILE_MAX = 188;
-  const DESKTOP_MAX = 220;
-  const maxAllowed = isMobile ? MOBILE_MAX : DESKTOP_MAX;
-  return Math.max(MIN_WHEEL, Math.min(maxAllowed, raw));
-}
-  
-  
   // --- Mobile pointer-drag support ---
 const [isPtrDragging, setIsPtrDragging] = useState(false);
 const [ptrDragCard, setPtrDragCard] = useState<Card | null>(null);
@@ -864,7 +857,10 @@ const storeReserveReport = useCallback(
 
   const broadcastLocalReserve = useCallback(() => {
     const lane = localLegacySide === "player" ? assignRef.current.player : assignRef.current.enemy;
-    const reserve = computeReserveSum(localLegacySide, lane);
+    const reserve = computeReserveSum(localLegacySide, lane, {
+      player: player.hand,
+      enemy: enemy.hand,
+    });
     const updated = storeReserveReport(localLegacySide, reserve, round);
     if (isMultiplayer && updated) {
       sendIntent({ type: "reserve", side: localLegacySide, reserve, round });
@@ -1219,63 +1215,9 @@ const canReveal = useMemo(() => {
   }
 
 
-function autoPickEnemy(): (Card | null)[] {
-  const hand = [...enemy.hand].filter(isNormal);   // ← guard
-  const picks: (Card | null)[] = [null, null, null];
-  const take = (c: typeof hand[number]) => { const k = hand.indexOf(c); if (k >= 0) hand.splice(k, 1); return c; };
-  const best = [...hand].sort((a, b) => b.number - a.number)[0]; if (best) picks[0] = take(best);
-  const low  = [...hand].sort((a, b) => a.number - b.number)[0]; if (low) picks[1] = take(low);
-  const sorted = [...hand].sort((a, b) => a.number - b.number); const mid = sorted[Math.floor(sorted.length / 2)]; if (mid) picks[2] = take(mid);
-  for (let i = 0; i < 3; i++) if (!picks[i] && hand.length) picks[i] = take(hand[0]);
-  return picks;
-}
-
-function computeReserveSum(who: LegacySide, used: (Card | null)[]) {
-  const hand = who === "player" ? player.hand : enemy.hand;
-  const usedIds = new Set((used.filter(Boolean) as Card[]).map((c) => c.id));
-  const left = hand.filter((c) => !usedIds.has(c.id));
-  return left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
-}
-
   useEffect(() => {
     broadcastLocalReserve();
   }, [broadcastLocalReserve, assign, player, enemy, localLegacySide, round, isMultiplayer]);
-
-// Keep this: after a round, move only played cards out of hand, discard them, then draw.
-function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
-  const playedIds = new Set(played.map((c) => c.id));
-  const next: Fighter = {
-    name: f.name,
-    deck: [...f.deck],
-    hand: f.hand.filter((c) => !playedIds.has(c.id)), // keep reserves in hand
-    discard: [...f.discard, ...played],
-  };
-
-  // First, try to draw back to 5 using your existing deck util.
-  const refilled = refillTo(next, 5);
-
-  // Then, as a safety net, pad with neutral 0-cards if still short.
-  return ensureFiveHand(refilled, 5);
-}
-
-// Small helper to top-up a hand with neutral 0-value cards if needed.
-// Uses crypto.randomUUID() when available to avoid ID collisions.
-function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
-  if (f.hand.length >= TARGET) return f;
-
-  const padded = [...f.hand];
-  while (padded.length < TARGET) {
-    padded.push({
-      id: typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `pad-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      name: "Reserve",
-      number: 0,
-      kind: "normal",
-    } as unknown as Card);
-  }
-  return { ...f, hand: padded } as T;
-}
 
   // ---------------- Reveal / Resolve ----------------
   const revealRoundCore = useCallback(
@@ -1297,7 +1239,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       if (isMultiplayer) {
         enemyPicks = [...assignRef.current.enemy];
       } else {
-        enemyPicks = autoPickEnemy();
+        enemyPicks = autoPickEnemy(enemy.hand);
         if (enemyPicks.some(Boolean)) {
           const pickIds = new Set((enemyPicks.filter(Boolean) as Card[]).map((c) => c.id));
           setEnemy((prev) => ({
@@ -1342,19 +1284,24 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       ? played.map((pe) => pe.p)
       : played.map((pe) => pe.e);
 
-    const localReserve = computeReserveSum(localLegacySide, localPlayed);
+    const handMap = {
+      player: player.hand,
+      enemy: enemy.hand,
+    } as const;
+
+    const localReserve = computeReserveSum(localLegacySide, localPlayed, handMap);
     let remoteReserve: number;
     let usedRemoteReport = false;
 
     if (!isMultiplayer) {
-      remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+      remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed, handMap);
     } else {
       const report = reserveReportsRef.current[remoteLegacySide];
       if (report && report.round === round) {
         remoteReserve = report.reserve;
         usedRemoteReport = true;
       } else {
-        remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+        remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed, handMap);
       }
     }
 
