@@ -2,7 +2,9 @@
 // to match your existing game types/functions.
 
 import { shuffle } from "../game/math";
-import type { Card, Fighter, WheelArchetype } from "../game/types";
+import type { Card, Fighter, WheelArchetype, SorcererPerk } from "../game/types";
+import { SORCERER_PERKS } from "../game/types";
+
 
 // ===== Local persistence types (module-scoped) =====
 type CardId = string;
@@ -85,6 +87,8 @@ type LocalState = {
   sharedStats: SharedStats;
   coopObjectives: CoopObjective[];
   leaderboard: LeaderboardEntry[];
+  sorcererPerks: SorcererPerk[];
+
 };
 
 // ===== Storage/config =====
@@ -113,6 +117,18 @@ const DEFAULT_SHARED: SharedStats = {
 
 const COOP_OBJECTIVE_PERIOD_MS = WEEK_MS;
 
+const isSorcererPerk = (perk: unknown): perk is SorcererPerk =>
+  typeof perk === "string" && (SORCERER_PERKS as readonly string[]).includes(perk as SorcererPerk);
+
+const unique = <T,>(arr: T[]) => arr.filter((value, index) => arr.indexOf(value) === index);
+
+const arraysEqual = <T,>(a: T[], b: T[]) => a.length === b.length && a.every((value, index) => value === b[index]);
+
+const sanitizePerks = (perks: unknown): SorcererPerk[] => {
+  if (!Array.isArray(perks)) return [];
+  return unique(perks.filter(isSorcererPerk));
+};
+
 type SafeStorage = Pick<Storage, "getItem" | "setItem"> | null;
 
 function resolveStorage(): SafeStorage {
@@ -138,13 +154,32 @@ function uid(prefix = "id") {
 }
 
 // ===== Seed data (keep numbers only to match Card { type:'normal', number:n }) =====
-const SEED_INVENTORY: InventoryItem[] = [];
+const SEED_INVENTORY: InventoryItem[] = [
+  { cardId: "trick_decoy", qty: 1 },
+  { cardId: "trick_oddshift_right", qty: 1 },
+  { cardId: "trick_parity_flip", qty: 1 },
+  { cardId: "trick_swap_edges", qty: 1 },
+  { cardId: "trick_steal_center", qty: 1 },
+  { cardId: "trick_echo", qty: 1 },
+  { cardId: "trick_reveal", qty: 1 },
+];
 
 const SEED_DECK: Deck = {
   id: uid("deck"),
   name: "Starter Deck",
   isActive: true,
-  cards: Array.from({ length: 10 }, (_, n) => ({ cardId: `basic_${n}`, qty: 1 })),
+  cards: [
+    { cardId: "basic_0", qty: 1 },
+    { cardId: "basic_1", qty: 1 },
+    { cardId: "basic_2", qty: 1 },
+    { cardId: "basic_3", qty: 1 },
+    { cardId: "basic_4", qty: 1 },
+    { cardId: "basic_5", qty: 1 },
+    { cardId: "trick_decoy", qty: 1 },
+    { cardId: "trick_oddshift_right", qty: 1 },
+    { cardId: "trick_parity_flip", qty: 1 },
+    { cardId: "trick_echo", qty: 1 },
+  ],
 };
 
 function normalizeCurrencies(input?: Partial<CurrencyLedger> | null): CurrencyLedger {
@@ -573,7 +608,16 @@ function seed(): LocalState {
 
   return {
     version: VERSION,
-    profile,
+    profile: {
+      id: uid("user"),
+      displayName: "Local Player",
+      mmr: 1000,
+      createdAt: Date.now(),
+      level: 1,
+      exp: 0,
+      winStreak: 0,
+      sorcererPerks: [],
+    },
     inventory: SEED_INVENTORY,
     decks: [SEED_DECK],
     challenges,
@@ -696,10 +740,52 @@ function loadStateRaw(): LocalState {
     return s;
   }
   try {
-    const parsed = JSON.parse(raw);
-    const migrated = migrateState(parsed);
-    saveState(migrated);
-    return migrated;
+const parsed = JSON.parse(raw) as LocalState | any;
+
+// Run the newer schema migrator if present, but be defensive.
+let s: LocalState;
+try {
+  // If migrateState handles versions/currencies/etc., prefer it.
+  s = migrateState(parsed) as LocalState;
+} catch {
+  // Fallback to raw if migrateState throws for any reason.
+  s = parsed as LocalState;
+}
+
+// Ensure we always have a version field.
+if (!(s as any).version) (s as any).version = VERSION;
+
+// Legacy upgrades for very old saves, in case migrateState didn't cover them.
+if (s.version < 2) {
+  s.version = 2;
+  if (!s.profile) {
+    s.profile = seed().profile;
+  } else {
+    if (typeof s.profile.level !== "number") s.profile.level = 1;
+    if (typeof s.profile.exp !== "number") s.profile.exp = 0;
+    if (typeof s.profile.winStreak !== "number") s.profile.winStreak = 0;
+  }
+}
+
+if (s.version < 3) {
+  s.version = 3;
+  if (!s.profile) {
+    s.profile = seed().profile;
+  }
+  s.profile.sorcererPerks = sanitizePerks(s.profile.sorcererPerks);
+}
+
+// Final safety: perks must be an array and sanitized.
+if (!Array.isArray(s.profile?.sorcererPerks)) {
+  s.profile = s.profile ?? seed().profile;
+  s.profile.sorcererPerks = [];
+}
+s.profile.sorcererPerks = sanitizePerks(s.profile.sorcererPerks);
+
+// Persist once after all migrations/sanitization.
+saveState(s);
+return s;
+
   } catch {
     const s = seed();
     try {
@@ -757,6 +843,11 @@ export type MatchResultSummary = {
   after: LevelProgress;
   segments: LevelProgressSegment[];
   levelUps: number;
+  modeId?: MatchModeId;
+  modeLabel?: string;
+  targetWins?: number;
+  timerSeconds?: number | null;
+  winMethod?: "goal" | "timer";
 };
 export type MatchRecordInput = {
   didWin: boolean;
@@ -765,7 +856,44 @@ export type MatchRecordInput = {
   sharedStatsDelta?: Partial<Pick<SharedStats, "coopWins" | "coopLosses" | "objectivesCompleted" | "leaderboardRating">>;
 };
 
-export function recordMatchResult({ didWin, mode = "solo", sharedStatsDelta }: MatchRecordInput): MatchResultSummary {
+type SharedStatsDelta = Partial<{
+  coopWins: number;
+  coopLosses: number;
+  objectivesCompleted: number;
+  leaderboardRating: number;
+}>;
+
+type RecordMatchOptions = {
+  // Experimental fields
+  didWin: boolean;
+  modeId?: MatchModeId;
+  modeLabel?: string;
+  targetWins?: number;
+  timerSeconds?: number | null;
+  winMethod?: "goal" | "timer";
+
+  // codex/enrich fields
+  mode?: "solo" | "coop" | "leaderboard";
+  sharedStatsDelta?: SharedStatsDelta;
+};
+
+export function recordMatchResult(opts: RecordMatchOptions): MatchResultSummary {
+  const {
+    didWin,
+    modeId,
+    modeLabel,
+    targetWins,
+    timerSeconds,
+    winMethod,
+    // keep codex params optional; default mode to "solo"
+    mode = "solo",
+    sharedStatsDelta,
+  } = opts;
+
+  // ...existing implementation that updates profile, XP, streak, etc.
+  // Use mode/modeId/modeLabel as needed, and apply sharedStatsDelta if provided.
+}
+
   const state = loadStateRaw();
   const profile = state.profile;
   const before = toLevelProgress(profile);
@@ -838,7 +966,42 @@ export function recordMatchResult({ didWin, mode = "solo", sharedStatsDelta }: M
     after,
     segments,
     levelUps,
+    modeId,
+    modeLabel,
+    targetWins,
+    timerSeconds: timerSeconds ?? null,
+    winMethod,
   };
+}
+
+export function getSorcererPerks(): SorcererPerk[] {
+  const state = loadStateRaw();
+  const profile = state.profile;
+  const sanitized = sanitizePerks(profile?.sorcererPerks ?? []);
+  if (!arraysEqual(profile?.sorcererPerks ?? [], sanitized)) {
+    profile.sorcererPerks = sanitized;
+    saveState(state);
+  }
+  return [...sanitized];
+}
+
+export function unlockSorcererPerk(perk: SorcererPerk): SorcererPerk[] {
+  const state = loadStateRaw();
+  const profile = state.profile;
+  const current = sanitizePerks(profile?.sorcererPerks ?? []);
+  if (!current.includes(perk) && isSorcererPerk(perk)) {
+    current.push(perk);
+    profile.sorcererPerks = current;
+    saveState(state);
+  } else if (!arraysEqual(profile.sorcererPerks ?? [], current)) {
+    profile.sorcererPerks = current;
+    saveState(state);
+  }
+  return [...current];
+}
+
+export function hasSorcererPerk(perk: SorcererPerk): boolean {
+  return getSorcererPerks().includes(perk);
 }
 
 // ===== Public profile/deck management API (used by UI) =====
@@ -855,36 +1018,55 @@ export type ProfileBundle = {
 
 export function getProfileBundle(): ProfileBundle {
   const s = loadStateRaw();
-  refreshChallengeBoard(s);
-  applyProgressUnlocks(s);
-  saveState(s);
+// Before returning the bundle, make sure perks are sanitized on state `s`
+const perks = sanitizePerks(s.profile?.sorcererPerks ?? []);
+if (!arraysEqual(s.profile?.sorcererPerks ?? [], perks)) {
+  s.profile.sorcererPerks = perks;
+}
 
-  const profile: Profile = {
-    ...s.profile,
-    currencies: { ...s.profile.currencies },
-    unlocks: {
-      wheels: { ...s.profile.unlocks.wheels },
-      modes: { ...s.profile.unlocks.modes },
-    },
-    cosmetics: [...s.profile.cosmetics],
-  };
-  const inventory = s.inventory.map((item) => ({ ...item }));
-  const decks = s.decks.map((deck) => ({
-    ...deck,
-    cards: deck.cards.map((card) => ({ ...card })),
-  }));
-  const activeId = findActive(s)?.id;
-  const active = activeId ? decks.find((d) => d.id === activeId) : undefined;
-  const challenges: ChallengeBoard = {
-    daily: s.challenges.daily.map(cloneChallenge),
-    weekly: s.challenges.weekly.map(cloneChallenge),
-    generatedAt: { ...s.challenges.generatedAt },
-  };
-  const sharedStats: SharedStats = { ...s.sharedStats };
-  const coopObjectives = s.coopObjectives.map(cloneObjective);
-  const leaderboard = s.leaderboard.map((entry) => ({ ...entry }));
+// Keep the codex flow that updates time-based/derived data
+refreshChallengeBoard(s);
+applyProgressUnlocks(s);
 
-  return { profile, inventory, decks, active, challenges, sharedStats, coopObjectives, leaderboard };
+// Persist any changes we’ve made to `s`
+saveState(s);
+
+// ---- Build a cloned bundle (no accidental mutation leaks) ----
+const profile: Profile = {
+  ...s.profile,
+  // ensure we return sanitized perks
+  sorcererPerks: [...(s.profile.sorcererPerks ?? [])],
+  // codex fields
+  currencies: { ...s.profile.currencies },
+  unlocks: {
+    wheels: { ...s.profile.unlocks.wheels },
+    modes: { ...s.profile.unlocks.modes },
+  },
+  cosmetics: [...s.profile.cosmetics],
+};
+
+const inventory = s.inventory.map((item) => ({ ...item }));
+const decks = s.decks.map((deck) => ({
+  ...deck,
+  cards: deck.cards.map((card) => ({ ...card })),
+}));
+
+// Make `active` reference the object inside our cloned `decks`
+const activeId = findActive(s)?.id;
+const active = activeId ? decks.find((d) => d.id === activeId) : undefined;
+
+const challenges: ChallengeBoard = {
+  daily: s.challenges.daily.map(cloneChallenge),
+  weekly: s.challenges.weekly.map(cloneChallenge),
+  generatedAt: { ...s.challenges.generatedAt },
+};
+
+const sharedStats: SharedStats = { ...s.sharedStats };
+const coopObjectives = s.coopObjectives.map(cloneObjective);
+const leaderboard = s.leaderboard.map((entry) => ({ ...entry }));
+
+return { profile, inventory, decks, active, challenges, sharedStats, coopObjectives, leaderboard };
+
 }
 export function createDeck(name = "New Deck") {
   const s = loadStateRaw();
@@ -1082,14 +1264,105 @@ export function claimChallengeReward(id: string): Challenge | undefined {
 // sequential card ids for the runtime deck
 const nextCardId = (() => { let i = 1; return () => `C${i++}`; })();
 
+type TaggedCardDefinition = Omit<Card, "id"> & { number?: number };
+
+const TAGGED_LIBRARY: Record<string, TaggedCardDefinition> = {
+  trick_decoy: {
+    name: "Smoke Decoy",
+    type: "normal",
+    number: 0,
+    tags: ["decoy"],
+    hint: "Counts as zero when seen.",
+    meta: { decoy: { display: "??", reserveValue: 0 } },
+  },
+  trick_oddshift_right: {
+    name: "Oddshift Engine",
+    type: "normal",
+    number: 3,
+    tags: ["oddshift"],
+    hint: "Slides right if its value is odd.",
+    meta: { oddshift: { direction: 1 } },
+  },
+  trick_parity_flip: {
+    name: "Parity Flip",
+    type: "normal",
+    number: 2,
+    tags: ["parityflip"],
+    hint: "Flip both numbers' parity here.",
+    meta: { parityflip: { target: "both", amount: 1 } },
+  },
+  trick_swap_edges: {
+    name: "Edge Swap",
+    type: "normal",
+    number: 1,
+    tags: ["swap"],
+    hint: "Swap this lane with the far edge.",
+    meta: { swap: { with: 2 } },
+  },
+  trick_steal_center: {
+    name: "Center Heist",
+    type: "normal",
+    number: 1,
+    tags: ["steal"],
+    hint: "Trade with the foe's center card.",
+    meta: { steal: { from: 1 } },
+  },
+  trick_echo: {
+    name: "Reserve Echo",
+    type: "normal",
+    number: 0,
+    tags: ["echoreserve"],
+    hint: "Copy rival reserve for this round.",
+    meta: { echoreserve: { mode: "copy-opponent" } },
+  },
+  trick_reveal: {
+    name: "Silent Scout",
+    type: "normal",
+    number: 1,
+    tags: ["reveal"],
+    hint: "Reveal a foe placement once per match.",
+    meta: { reveal: {} },
+  },
+};
+
 /**
  * Supported cardId formats:
+ *  - Known trick ids defined in TAGGED_LIBRARY
  *  - "basic_N" where N is 0..9  → normal card with number N
  *  - "neg_X" where X is a number (e.g., -2) → normal card with number X
  *  - "num_X" explicit number alias
  * Anything else falls back to number 0.
  */
+
+function buildDescriptorsForNumber(num: number) {
+  const pretty = num < 0 ? `−${Math.abs(num)}` : `${num}`;
+  const linkDescriptors: Card["linkDescriptors"] = [];
+  let multiLane = false;
+
+  if (num % 3 === 0) {
+    multiLane = true;
+    linkDescriptors.push({
+      kind: "lane",
+      key: `triad-${num}`,
+      label: "Tri-Link",
+      bonusSteps: 2,
+      description: "Copy this card across lanes to add +2 steps each.",
+    });
+  }
+
+  linkDescriptors.push({
+    kind: "numberMatch",
+    key: `match-${num}`,
+    label: `Match ${pretty}`,
+    bonusSteps: 1,
+    description: `Pair ${pretty} on another lane to add +1 step.`,
+  });
+
+  return { multiLane, linkDescriptors };
+}
+
 function cardFromId(cardId: string): Card {
+
   let num = 0;
   const mBasic = /^basic_(\d+)$/.exec(cardId);
   const mNeg   = /^neg_(-?\d+)$/.exec(cardId);
@@ -1099,18 +1372,21 @@ function cardFromId(cardId: string): Card {
   else if (mNeg) num = parseInt(mNeg[1], 10);
   else if (mNum) num = parseInt(mNum[1], 10);
 
+  const descriptors = buildDescriptorsForNumber(num);
+
   return {
-    id: nextCardId(),
+    id: opts?.preview ? `preview_${cardId}` : nextCardId(),
     name: `${num}`,
     type: "normal",
     number: num,
     tags: [],
+    ...descriptors,
   };
 }
 
 // ====== Build a runtime deck (Card[]) from the ACTIVE profile deck ======
-export function buildActiveDeckAsCards(): Card[] {
-  const { active } = getProfileBundle();
+export function buildActiveDeckAsCards(bundle?: ProfileBundle): Card[] {
+  const active = bundle?.active ?? getProfileBundle().active;
   if (!active || !active.cards?.length) return starterDeck(); // fallback
 
   const pool: Card[] = [];
@@ -1122,13 +1398,7 @@ export function buildActiveDeckAsCards(): Card[] {
 
 // ====== Runtime helpers (folded from your src/game/decks.ts) ======
 export function starterDeck(): Card[] {
-  const base: Card[] = Array.from({ length: 10 }, (_, n) => ({
-    id: nextCardId(),
-    name: `${n}`,
-    type: "normal",
-    number: n,
-    tags: [],
-  }));
+  const base: Card[] = Array.from({ length: 10 }, (_, n) => cardFromId(`basic_${n}`));
   return shuffle(base);
 }
 
@@ -1156,11 +1426,14 @@ export function freshFive(f: Fighter): Fighter {
   const pool = shuffle([...f.deck, ...f.hand, ...f.discard]);
   const hand = pool.slice(0, 5);
   const deck = pool.slice(5);
-  return { name: f.name, hand, deck, discard: [] };
+  return { ...f, hand, deck, discard: [] };
 }
 
 /** Make a fighter using the ACTIVE profile deck (draw 5 to start). */
 export function makeFighter(name: string): Fighter {
-  const deck = buildActiveDeckAsCards();
-  return refillTo({ name, deck, hand: [], discard: [] }, 5);
+  const bundle = getProfileBundle();
+  const deck = buildActiveDeckAsCards(bundle);
+  const perks = bundle.profile?.sorcererPerks ?? [];
+  const baseMana = perks.includes("arcaneOverflow") ? 1 : 0;
+  return refillTo({ name, deck, hand: [], discard: [], mana: baseMana, perks }, 5);
 }

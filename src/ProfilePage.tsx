@@ -7,6 +7,7 @@ import {
   renameDeck,
   deleteDeck,
   swapDeckCards,
+  unlockSorcererPerk,
   expRequiredForLevel,
   claimChallengeReward,
   type ProfileBundle,
@@ -17,17 +18,40 @@ import {
   type UnlockState,
   type CurrencyId,
 } from "./player/profileStore";
-import type { Card } from "./game/types";
 
-/** Map our string cardId → runtime Card for StSCard preview. */
-function cardFromId(cardId: string): Card {
+import type { Card, SorcererPerk } from "./game/types";
+import { SORCERER_PERKS } from "./game/types";
+
+/** Map a string cardId → a preview Card shape for StSCard. */
+function cardFromId(cardId: string, _opts?: { preview?: boolean }): Card {
+  // Support a few simple id formats: basic_#, neg_#, num_#
   const mBasic = /^basic_(\d+)$/.exec(cardId);
-  const mNeg = /^neg_(-?\d+)$/.exec(cardId);
-  const mNum = /^num_(-?\d+)$/.exec(cardId);
-  const num = mBasic ? +mBasic[1] : mNeg ? +mNeg[1] : mNum ? +mNum[1] : 0;
-  return { id: `preview_${cardId}`, name: `${num}`, type: "normal", number: num, tags: [] };
+  const mNeg   = /^neg_(-?\d+)$/.exec(cardId);
+  const mNum   = /^num_(-?\d+)$/.exec(cardId);
+
+  const value =
+    mBasic ? Number(mBasic[1])
+  : mNeg   ? Number(mNeg[1])
+  : mNum   ? Number(mNum[1])
+  : 0;
+
+  const name =
+    mBasic ? `Basic ${value}`
+  : mNeg   ? `Negative ${value}`
+  : mNum   ? `Number ${value}`
+  : "Card";
+
+  // Minimal Card shape that StSCard can render
+  return {
+    id: `preview_${cardId}`,
+    name,
+    number: value,
+    kind: "normal",
+    tags: [],
+  } as Card;
 }
 
+/** Currency labels + helpers for challenges/objectives UI. */
 const CURRENCY_LABELS: Record<CurrencyId, string> = {
   gold: "Gold",
   sigils: "Sigils",
@@ -108,6 +132,25 @@ function FitCard({
   );
 }
 
+const PERK_INFO: Record<SorcererPerk, { title: string; description: string }> = {
+  arcaneOverflow: {
+    title: "Arcane Overflow",
+    description: "Start each battle with +1 mana.",
+  },
+  spellEcho: {
+    title: "Spell Echo",
+    description: "Predictive casts grant +3 reserve instead of +2.",
+  },
+  planarSwap: {
+    title: "Planar Swap",
+    description: "VC swaps cost 1 less mana (minimum 1).",
+  },
+  recallMastery: {
+    title: "Recall Mastery",
+    description: "Reserve recalls are free and pull up to two cards when possible.",
+  },
+};
+
 export default function ProfilePage() {
   // Initialize immediately so we can render without waiting for an effect
   const [bundle, setBundle] = useState<ProfileBundle | null>(() => {
@@ -166,7 +209,17 @@ export default function ProfilePage() {
     );
   }
 
-  const { profile, inventory, decks, active, challenges, sharedStats, coopObjectives, leaderboard } = bundle;
+  const {
+    profile,
+    inventory,
+    decks,
+    active,
+    challenges,
+    sharedStats,
+    coopObjectives,
+    leaderboard,
+  } = bundle;
+  const unlockedPerks = profile.sorcererPerks ?? [];
 
   const expToNext = expRequiredForLevel(profile.level);
   const expPercent = expToNext > 0 ? Math.min(1, profile.exp / expToNext) : 0;
@@ -308,6 +361,7 @@ export default function ProfilePage() {
           <div className="mt-1 text-xs text-white/60">Current streak: {profile.winStreak}</div>
         </div>
 
+        {/* Currencies & unlocks */}
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
           {(Object.keys(profile.currencies) as CurrencyId[]).map((currency) => (
             <span
@@ -357,6 +411,41 @@ export default function ProfilePage() {
               })}
             </div>
           </div>
+        </div>
+
+        {/* Sorcerer Perks */}
+        <h3 className="text-lg mt-4">Sorcerer Perks</h3>
+        <div className="mt-2 space-y-2">
+          {SORCERER_PERKS.map((perk) => {
+            const info = PERK_INFO[perk as SorcererPerk];
+            const unlocked = unlockedPerks.includes(perk as SorcererPerk);
+            return (
+              <div
+                key={perk}
+                className="flex items-start justify-between gap-3 rounded-lg border border-white/20 bg-black/30 px-3 py-2"
+              >
+                <div>
+                  <div className="font-semibold text-sm">{info.title}</div>
+                  <div className="text-xs opacity-80 max-w-xs">{info.description}</div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (unlocked) return;
+                    unlockSorcererPerk(perk as SorcererPerk);
+                    refresh();
+                  }}
+                  disabled={unlocked}
+                  className={`text-xs px-2 py-1 rounded border transition ${
+                    unlocked
+                      ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200 cursor-default'
+                      : 'border-amber-400/60 bg-amber-400/80 text-slate-900 hover:bg-amber-300'
+                  }`}
+                >
+                  {unlocked ? 'Unlocked' : 'Unlock'}
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         <div className="flex items-center justify-between mt-3">
@@ -412,7 +501,7 @@ export default function ProfilePage() {
               {cardId ? (
                 <FitCard>
                   <StSCard
-                    card={cardFromId(cardId)}
+                    card={cardFromId(cardId, { preview: true })}
                     size="md"
                     draggable
                     onDragStart={(e) => setDrag(e, { from: "deck", cardId })}
@@ -427,6 +516,7 @@ export default function ProfilePage() {
         </div>
       </section>
 
+      {/* RIGHT column: inventory + live systems */}
       <div className="grid gap-4">
         <section className="rounded-xl p-3 border border-white/20 bg-black/25">
           <div className="flex items-center justify-between">
@@ -451,7 +541,7 @@ export default function ProfilePage() {
                   <div className="aspect-[3/4] w-full max-w-[180px] p-1 rounded-lg ring-1 ring-white/10 bg-white/5 grid place-items-center">
                     <FitCard>
                       <StSCard
-                        card={cardFromId(i.cardId)}
+                        card={cardFromId(i.cardId, { preview: true })}
                         size="md"
                         disabled={avail <= 0}
                         draggable
@@ -550,7 +640,7 @@ export default function ProfilePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {leaderboard.slice(0, 5).map((entry) => (
+                    {leaderboard.slice(0, 5).map((entry: LeaderboardEntry) => (
                       <tr key={entry.playerId} className="odd:bg-white/5">
                         <td className="px-2 py-1">{entry.name}</td>
                         <td className="px-2 py-1 text-right font-semibold">{entry.rating}</td>

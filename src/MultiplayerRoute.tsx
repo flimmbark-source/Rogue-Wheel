@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Realtime } from "ably";
 import type { PresenceMessage } from "ably";
+
 import { TARGET_WINS, type Players, type Side } from "./game/types";
 import {
   getMultiplayerSnapshot,
@@ -9,6 +10,18 @@ import {
 } from "./player/profileStore";
 
 // ----- Start payload now includes targetWins (wins goal) -----
+
+import {
+  MATCH_MODE_PRESETS,
+  DEFAULT_MATCH_MODE_ID,
+  resolveMatchMode,
+  type MatchModeId,
+  type Players,
+  type Side,
+} from "./game/types";
+
+// ----- Start payload now includes match settings -----
+
 type StartMessagePayload = {
   roomCode: string;
   seed: number;
@@ -16,7 +29,12 @@ type StartMessagePayload = {
   players: Players;          // { left: {id,name,color}, right: {…} }
   playersArr?: { clientId: string; name: string }[]; // optional: raw list for debugging
   targetWins: number;        // 👈 merged feature: game wins goal
+
   snapshot: MultiplayerSnapshot;
+
+  modeId: MatchModeId;
+  timerSeconds: number | null;
+
 };
 
 type StartPayload = StartMessagePayload & {
@@ -45,9 +63,15 @@ export default function MultiplayerRoute({
   const [name, setName] = useState<string>(() => defaultName());
   const [status, setStatus] = useState<string>("");
 
-  // Rounds to win (host controls)
-  const [targetWins, setTargetWins] = useState<number>(TARGET_WINS);
-  const [targetWinsInput, setTargetWinsInput] = useState<string>(String(TARGET_WINS));
+  // Match mode (host controls)
+  const [selectedModeId, setSelectedModeId] = useState<MatchModeId>(DEFAULT_MATCH_MODE_ID);
+  const selectedMode = MATCH_MODE_PRESETS[selectedModeId] ?? MATCH_MODE_PRESETS[DEFAULT_MATCH_MODE_ID];
+  const modeOptions = useMemo(() => Object.values(MATCH_MODE_PRESETS), []);
+  const selectedTargetWins = selectedMode.targetWins;
+  const selectedTimerSeconds =
+    typeof selectedMode.timerSeconds === "number" && selectedMode.timerSeconds > 0
+      ? Math.round(selectedMode.timerSeconds)
+      : null;
 
   // ---- Ably core refs ----
   const ablyRef = useRef<Realtime | null>(null);
@@ -55,7 +79,7 @@ export default function MultiplayerRoute({
 
   // members list (UI) and authoritative presence map
   const [members, setMembers] = useState<
-    { clientId: string; name: string; targetWins?: number }[]
+    { clientId: string; name: string; modeId?: MatchModeId }[]
   >([]);
   const clientId = useMemo(() => uid4(), []);
 
@@ -63,11 +87,11 @@ export default function MultiplayerRoute({
     clientId: string;
     name: string;
     ts: number;
-    targetWins?: number;
+    modeId?: MatchModeId;
   };
   const memberMapRef = useRef<Map<string, MemberEntry>>(new Map());
 
-  // Commit member map -> UI array; also sync host's targetWins to all clients
+  // Commit member map -> UI array; also sync host's match mode to all clients
   const commitMembers = useCallback((map: Map<string, MemberEntry>) => {
     const ordered = Array.from(map.values()).sort((a, b) => {
       if (a.ts !== b.ts) return a.ts - b.ts;
@@ -75,16 +99,17 @@ export default function MultiplayerRoute({
     });
 
     setMembers(
-      ordered.map(({ clientId, name, targetWins }) => ({ clientId, name, targetWins }))
+      ordered.map(({ clientId, name, modeId }) => ({ clientId, name, modeId }))
     );
 
-    // host is first; mirror host's wins goal locally
+    // host is first; mirror host's mode locally
     const host = ordered[0];
-    const hostTargetWins = host?.targetWins;
-    if (typeof hostTargetWins === "number" && Number.isFinite(hostTargetWins)) {
-      setTargetWins(clampTargetWins(hostTargetWins));
+    const hostModeId = host?.modeId;
+    if (hostModeId) {
+      const resolved = resolveMatchMode(hostModeId).id;
+      setSelectedModeId(resolved);
     }
-  }, []);
+  }, [setSelectedModeId]);
 
   const applySnapshot = useCallback(
   (list: PresenceMessage[] | undefined | null) => {
@@ -95,7 +120,7 @@ export default function MultiplayerRoute({
       for (const msg of list) {
         if (!msg?.clientId) continue;
         const data = (msg.data ?? {}) as any;
-        const rawTargetWins = data?.targetWins;
+        const rawModeId = typeof data?.modeId === "string" ? data.modeId : undefined;
         const prev = prevMap.get(msg.clientId);
         const serverTs = typeof msg.timestamp === "number" ? msg.timestamp : undefined;
         const ts =
@@ -109,10 +134,10 @@ export default function MultiplayerRoute({
           clientId: msg.clientId,
           name: data?.name ?? "Player",
           ts,
-          targetWins:
-            typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
-              ? clampTargetWins(rawTargetWins)
-              : prev?.targetWins,
+          modeId:
+            rawModeId !== undefined
+              ? resolveMatchMode(rawModeId).id
+              : prev?.modeId ?? DEFAULT_MATCH_MODE_ID,
         });
       }
     }
@@ -154,16 +179,16 @@ export default function MultiplayerRoute({
       })();
 
       const name = data?.name ?? existing?.name ?? "Player";
-      const rawTargetWins = data?.targetWins;
-      const memberTargetWins =
-        typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
-          ? clampTargetWins(rawTargetWins)
-          : existing?.targetWins;
+      const rawModeId = typeof data?.modeId === "string" ? data.modeId : undefined;
+      const memberModeId =
+        rawModeId !== undefined
+          ? resolveMatchMode(rawModeId).id
+          : existing?.modeId ?? DEFAULT_MATCH_MODE_ID;
 
       if (action === "leave" || action === "absent") {
         map.delete(msg.clientId);
       } else if (action === "enter" || action === "present" || action === "update") {
-        map.set(msg.clientId, { clientId: msg.clientId, name, ts, targetWins: memberTargetWins });
+        map.set(msg.clientId, { clientId: msg.clientId, name, ts, modeId: memberModeId });
       }
 
       memberMapRef.current = map;
@@ -263,8 +288,8 @@ export default function MultiplayerRoute({
       presenceListenerRef.current = onPresence;
       chan.presence.subscribe(onPresence);
 
-// 3) Enter presence with the current name and targetWins
-await chan.presence.enter({ name, targetWins });
+// 3) Enter presence with the current name and match mode
+await chan.presence.enter({ name, modeId: selectedModeId });
 
 // Seed self immediately so the UI shows the host right away
 {
@@ -272,7 +297,7 @@ await chan.presence.enter({ name, targetWins });
     clientId,
     name,
     ts: Date.now(),
-    targetWins,
+    modeId: selectedModeId,
   };
   const map = new Map<string, MemberEntry>([[clientId, self]]);
   memberMapRef.current = map;
@@ -373,24 +398,19 @@ await refreshMembers(chan);
     return false;
   }
 
-  // Keep the input string mirrored to state if host changes wins elsewhere
-  useEffect(() => {
-    setTargetWinsInput(targetWins.toString());
-  }, [targetWins]);
-
-  // If name/targetWins change while in-room, update presence & local cache
+  // If name/mode change while in-room, update presence & local cache
   useEffect(() => {
     (async () => {
       if (mode === "in-room" && channelRef.current) {
         try {
-          await channelRef.current.presence.update({ name, targetWins });
+          await channelRef.current.presence.update({ name, modeId: selectedModeId });
 
           const current = memberMapRef.current.get(clientId);
           const map = new Map(memberMapRef.current);
           map.set(clientId, {
             clientId,
             name,
-            targetWins,
+            modeId: selectedModeId,
             ts: current?.ts ?? Date.now(),
           });
           memberMapRef.current = map;
@@ -398,7 +418,7 @@ await refreshMembers(chan);
         } catch { /* no-op */ }
       }
     })();
-  }, [clientId, commitMembers, mode, name, targetWins]);
+  }, [clientId, commitMembers, mode, name, selectedModeId]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -477,8 +497,7 @@ await refreshMembers(chan);
     setMode("idle");
     setRoomCode("");
     setJoinCode("");
-    setTargetWins(TARGET_WINS);
-    setTargetWinsInput(TARGET_WINS.toString());
+    setSelectedModeId(DEFAULT_MATCH_MODE_ID);
   }
 
   async function onStartGame() {
@@ -491,7 +510,8 @@ await refreshMembers(chan);
     // --- Assign sides deterministically: host=left, first joiner=right
     const players = assignSides(members);
 
-    const winsGoal = clampTargetWins(targetWins);
+    const winsGoal = selectedTargetWins;
+    const timerSeconds = selectedTimerSeconds;
     const seed = Math.floor(Math.random() * 2 ** 31);
     const payload: StartMessagePayload = {
       roomCode,
@@ -500,39 +520,17 @@ await refreshMembers(chan);
       hostId: members[0].clientId, // first in presence is host
       playersArr: members,         // optional, for debugging/analytics
       targetWins: winsGoal,        // 👈 pass wins goal into the game
+
       snapshot: getMultiplayerSnapshot(),
+
+      modeId: selectedMode.id,
+      timerSeconds,
+
     };
 
     await channelRef.current?.publish("start", payload);
     // Host will also receive the 'start' event and flow through subscribe handler
   }
-
-  // --- host-only input handlers for “Rounds to win” ---
-  const handleTargetWinsChange = useCallback((value: string) => {
-    // only digits (allow empty while typing)
-    if (!/^\d*$/.test(value)) return;
-    setTargetWinsInput(value);
-    if (value === "") return;
-
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isFinite(parsed)) {
-      setTargetWins(clampTargetWins(parsed));
-    }
-  }, []);
-
-  const handleTargetWinsBlur = useCallback(() => {
-    if (targetWinsInput === "") {
-      setTargetWins(TARGET_WINS);
-      setTargetWinsInput(TARGET_WINS.toString());
-      return;
-    }
-    const parsed = Number.parseInt(targetWinsInput, 10);
-    if (Number.isFinite(parsed)) {
-      const clamped = clampTargetWins(parsed);
-      setTargetWins(clamped);
-      setTargetWinsInput(clamped.toString());
-    }
-  }, [targetWinsInput]);
 
   return (
     <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-100 p-4">
@@ -601,26 +599,50 @@ await refreshMembers(chan);
             </div>
 
             <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-white/10">
-              <div className="text-sm opacity-80 mb-1">Rounds to win</div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  min={1}
-                  max={25}
-                  disabled={!isHost}
-                  className="w-24 rounded-lg bg-black/40 px-3 py-2 text-center ring-1 ring-white/10 disabled:opacity-60"
-                  value={targetWinsInput}
-                  onChange={(e) => handleTargetWinsChange(e.target.value)}
-                  onBlur={handleTargetWinsBlur}
-                />
+              <div className="mb-1 flex items-center justify-between text-sm opacity-80">
+                <span>Match mode</span>
                 {!isHost && (
                   <span className="rounded bg-white/10 px-2 py-0.5 text-xs">Host controls this</span>
                 )}
               </div>
+              <div className="grid gap-2">
+                {modeOptions.map((mode) => {
+                  const isSelected = selectedModeId === mode.id;
+                  const timerLabel = formatModeTimer(mode.timerSeconds);
+                  return (
+                    <label
+                      key={mode.id}
+                      className={`flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-left transition ${
+                        isSelected ? "border-amber-400/80 bg-amber-400/10" : "border-white/10 bg-black/30 hover:border-white/20"
+                      } ${!isHost ? "cursor-default opacity-90" : ""}`}
+                    >
+                      <input
+                        type="radio"
+                        name="match-mode"
+                        className="mt-1"
+                        checked={isSelected}
+                        onChange={() => {
+                          if (!isHost) return;
+                          setSelectedModeId(mode.id);
+                        }}
+                        disabled={!isHost}
+                      />
+                      <div className="flex flex-col gap-0.5">
+                        <div className="text-sm font-semibold text-white">
+                          {mode.name}
+                        </div>
+                        <div className="text-xs text-white/80">
+                          {mode.targetWins} wins · {timerLabel}
+                        </div>
+                        <div className="text-[11px] text-white/60">{mode.description}</div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
               <div className="mt-1 text-xs opacity-70">
-                First player to reach {targetWins} round wins takes the match.
+                Selected: {selectedMode.name} — first to {selectedTargetWins} wins
+                {selectedTimerSeconds ? ` with a ${formatModeTimer(selectedTimerSeconds)} timer.` : " with no timer."}
               </div>
             </div>
 
@@ -693,11 +715,17 @@ function defaultName() {
   return `Player ${animals[Math.floor(Math.random() * animals.length)]}`;
 }
 
-function clampTargetWins(value: number) {
-  if (!Number.isFinite(value)) return TARGET_WINS;
-  const rounded = Math.round(value);
-  const clamped = Math.max(1, Math.min(25, rounded));
-  return clamped;
+function formatModeTimer(seconds: number | null | undefined): string {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
+    return "No timer";
+  }
+  const total = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(total / 60);
+  const secs = total % 60;
+  if (minutes > 0) {
+    return `${minutes}:${secs.toString().padStart(2, "0")}`;
+  }
+  return `${secs}s`;
 }
 
 // Assign sides from presence order (host=left, first joiner=right)
