@@ -69,7 +69,32 @@ export type PlayerCore = {
 };
 export type Players = Record<Side, PlayerCore>;
 
-export type TagId = "oddshift" | "parityflip" | "echoreserve";
+export type TagId =
+  | "oddshift"
+  | "parityflip"
+  | "echoreserve"
+  | "swap"
+  | "steal"
+  | "decoy"
+  | "reveal";
+
+export type OddshiftMeta = { direction?: number };
+export type ParityFlipMeta = { target?: "self" | "opponent" | "both"; amount?: number };
+export type SwapMeta = { with?: number };
+export type StealMeta = { from?: number };
+export type EchoReserveMeta = { mode?: "copy-opponent" | "mirror" | "bonus"; bonus?: number };
+export type RevealMeta = { lanes?: number | number[] };
+export type DecoyMeta = { display?: string; reserveValue?: number };
+
+export type CardMeta = {
+  oddshift?: OddshiftMeta;
+  parityflip?: ParityFlipMeta;
+  swap?: SwapMeta;
+  steal?: StealMeta;
+  echoreserve?: EchoReserveMeta;
+  reveal?: RevealMeta;
+  decoy?: DecoyMeta;
+};
 
 export type LinkKind = "lane" | "numberMatch";
 
@@ -91,6 +116,8 @@ export type Card = {
   leftValue?: number;   // when type === "split"
   rightValue?: number;  // when type === "split"
   tags: TagId[];
+  meta?: CardMeta;
+  hint?: string;
   multiLane?: boolean;
   linkDescriptors?: CardLinkDescriptor[];
 };
