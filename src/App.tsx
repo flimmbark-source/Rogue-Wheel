@@ -71,8 +71,6 @@ type AblyChannel = ReturnType<AblyRealtime["channels"]["get"]>;
 // keep your local alias
 type LegacySide = "player" | "enemy";
 
-type GameMode = "classic" | "grimoire";
-
 // your existing MPIntent union (merged from conflict)
 type MPIntent =
   | { type: "assign"; lane: number; side: LegacySide; card: Card }
@@ -108,7 +106,6 @@ export default function ThreeWheel_WinsOnly({
   hostId,
   targetWins,
   onExit,
-  gameMode = "classic",
 }: {
   localSide: TwoSide;
   localPlayerId: string;
@@ -119,7 +116,6 @@ export default function ThreeWheel_WinsOnly({
   hostId?: string;
   targetWins?: number;
   onExit?: () => void;
-  gameMode?: GameMode;
 }) {
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; timeoutsRef.current.forEach(clearTimeout); timeoutsRef.current.clear(); }; }, []);
@@ -186,8 +182,6 @@ const effectiveGameMode: GameMode =
     typeof targetWins === "number" && Number.isFinite(targetWins)
       ? Math.max(1, Math.min(15, Math.round(targetWins)))
       : TARGET_WINS;
-
-  const isGrimoireMode = gameMode === "grimoire";
 
   const createInitialArchetypeSelection = () => ({
     player: isGrimoireMode ? null : DEFAULT_ARCHETYPE,
@@ -625,16 +619,18 @@ const storeReserveReport = useCallback(
     return typeof maybe === "number" && Number.isFinite(maybe) ? maybe : 0;
   }, [player]);
 
-  const playerSpells = useMemo(() => {
-    if (gameMode !== "grimoire") return [] as SpellDefinition[];
-    return getLearnedSpellsForFighter(player);
-  }, [gameMode, player]);
+const playerSpells = useMemo(() => {
+  if (!isGrimoireMode) return [] as SpellDefinition[];
+  return getLearnedSpellsForFighter(player);
+}, [isGrimoireMode, player]);
 
-  useEffect(() => {
-    if (gameMode !== "grimoire" && showGrimoire) {
-      setShowGrimoire(false);
-    }
-  }, [gameMode, showGrimoire]);
+
+useEffect(() => {
+  if (!isGrimoireMode && showGrimoire) {
+    setShowGrimoire(false);
+  }
+}, [isGrimoireMode, showGrimoire]);
+
 
   useEffect(() => {
     if (!showRef && !showGrimoire) return;
@@ -2197,7 +2193,6 @@ const HUDPanels = ({
   data-archetypes-enabled={grimoireAttrValue}
 >
   {showArchetypeModal && renderArchetypeModal()}
-    >
 
 
       {/* Controls */}
