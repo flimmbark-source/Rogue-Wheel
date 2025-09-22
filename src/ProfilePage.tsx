@@ -9,8 +9,37 @@ import {
   swapDeckCards,
   expRequiredForLevel,
   type ProfileBundle,
-  cardFromId,
 } from "./player/profileStore";
+
+/** Map a string cardId → a preview Card shape for StSCard. */
+function cardFromId(cardId: string, _opts?: { preview?: boolean }): Card {
+  // Support a few simple id formats: basic_#, neg_#, num_#
+  const mBasic = /^basic_(\d+)$/.exec(cardId);
+  const mNeg   = /^neg_(-?\d+)$/.exec(cardId);
+  const mNum   = /^num_(-?\d+)$/.exec(cardId);
+
+  const value =
+    mBasic ? Number(mBasic[1])
+  : mNeg   ? Number(mNeg[1])
+  : mNum   ? Number(mNum[1])
+  : 0;
+
+  const name =
+    mBasic ? `Basic ${value}`
+  : mNeg   ? `Negative ${value}`
+  : mNum   ? `Number ${value}`
+  : "Card";
+
+  // Minimal Card shape that StSCard can render
+  return {
+    id: `preview_${cardId}`,
+    name,
+    number: value,
+    kind: "normal",
+    tags: [],
+  } as Card;
+}
+
 
 /** Scales its child to fit the available width while preserving aspect. */
 function FitCard({
