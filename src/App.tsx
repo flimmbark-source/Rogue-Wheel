@@ -2429,6 +2429,7 @@ return (
 
         {/* Archetype selections summary + ready controls */}
         <div className="grid gap-4 sm:grid-cols-2">
+          {/* local side panel */}
           <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold text-slate-100">
@@ -2454,6 +2455,7 @@ return (
             </ul>
           </div>
 
+          {/* remote side panel */}
           <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold text-slate-100">
@@ -2480,6 +2482,7 @@ return (
           </div>
         </div>
 
+        {/* footer: status text + Ready/Next button */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm text-slate-300/90">
             {isMultiplayer
@@ -2500,16 +2503,11 @@ return (
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </div>{/* end modal card */}
+    </div>{/* end backdrop */}
   );
-}; // <- end renderArchetypeModal
-
-        </div>
-      </div>
-    </div>
-  );
-};
+}; // end renderArchetypeModal
+      
 
   const localResolveReady = resolveVotes[localLegacySide];
   const remoteResolveReady = resolveVotes[remoteLegacySide];
