@@ -1,14 +1,11 @@
+// game/spells.ts (merged)
+
 import type { Fighter, Phase } from "./types";
-
-export type SpellId =
-  | "fireball"
-  | "ice-shard"
-  | "mirror-image"
-  | "arcane-shift"
-  | "hex"
-  | "time-twist";
-
-export type SpellArchetype = "wanderer" | "bandit" | "sorcerer" | "beast";
+import {
+  ARCHETYPE_DEFINITIONS,
+  type ArchetypeId as SpellArchetype,
+  type SpellId, // single source of truth for IDs (camelCase)
+} from "./archetypes";
 
 export type SpellTargetOwnership = "ally" | "enemy" | "any";
 
@@ -17,6 +14,12 @@ export type SpellTargetDefinition =
   | { type: "self"; automatic?: boolean }
   | { type: "card"; ownership: SpellTargetOwnership; automatic?: boolean }
   | { type: "wheel"; scope: "current" | "any" };
+
+export function getSpellDefinitions(ids: SpellId[]): SpellDefinition[] {
+  return ids
+    .map((id) => getSpellById(id))
+    .filter((s): s is SpellDefinition => Boolean(s));
+}
 
 export type SpellTargetInstance =
   | { type: "none" }
@@ -52,11 +55,10 @@ export type SpellDefinition = {
   allowedPhases?: Phase[];
 };
 
+// ---------- helpers for registry ----------
 const ensureLog = (context: SpellResolverContext) => {
-  if (!Array.isArray(context.state.log)) {
-    context.state.log = [];
-  }
-  return context.state.log;
+  if (!Array.isArray(context.state.log)) context.state.log = [];
+  return context.state.log!;
 };
 
 const describeTarget = (target?: SpellTargetInstance): string => {
@@ -73,8 +75,9 @@ const describeTarget = (target?: SpellTargetInstance): string => {
   }
 };
 
+// ---------- registry (IDs MUST match archetypes SpellId union: camelCase) ----------
 const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
-  "fireball": {
+  fireball: {
     id: "fireball",
     name: "Fireball",
     description:
@@ -92,14 +95,14 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
     resolver: (context) => {
       const log = ensureLog(context);
       log.push(`${context.caster.name} scorches ${describeTarget(context.target)} with a Fireball.`);
-
       const streak = (context.state.fireballStreak as number | undefined) ?? 0;
       context.state.fireballStreak = streak + 1;
       context.state.lastFireballTarget = context.target ?? { type: "none" };
     },
   },
-  "ice-shard": {
-    id: "ice-shard",
+
+  iceShard: {
+    id: "iceShard",
     name: "Ice Shard",
     description:
       "Freeze an exposed enemy card, reducing its effectiveness and marking it as chilled.",
@@ -110,7 +113,6 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
     resolver: (context) => {
       const log = ensureLog(context);
       log.push(`${context.caster.name} encases ${describeTarget(context.target)} in razor ice.`);
-
       const chilled = (context.state.chilledCards as Record<string, number> | undefined) ?? {};
       if (context.target?.type === "card") {
         chilled[context.target.cardId] = (chilled[context.target.cardId] ?? 0) + 1;
@@ -118,8 +120,9 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
       context.state.chilledCards = chilled;
     },
   },
-  "mirror-image": {
-    id: "mirror-image",
+
+  mirrorImage: {
+    id: "mirrorImage",
     name: "Mirror Image",
     description:
       "Create an illusion of one of your cards, storing a copy for later tricks and misdirection.",
@@ -130,7 +133,6 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
     resolver: (context) => {
       const log = ensureLog(context);
       log.push(`${context.caster.name} weaves a mirror image of ${describeTarget(context.target)}.`);
-
       if (context.target?.type === "card") {
         const copies = (context.state.mirroredCards as Record<string, number> | undefined) ?? {};
         copies[context.target.cardId] = (copies[context.target.cardId] ?? 0) + 1;
@@ -138,8 +140,9 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
       }
     },
   },
-  "arcane-shift": {
-    id: "arcane-shift",
+
+  arcaneShift: {
+    id: "arcaneShift",
     name: "Arcane Shift",
     description:
       "Twist the active wheel's victory condition toward the caster's preferred outcome.",
@@ -150,13 +153,13 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
     resolver: (context) => {
       const log = ensureLog(context);
       log.push(`${context.caster.name} warps ${describeTarget(context.target)} with an Arcane Shift.`);
-
       context.state.shiftedWheel = {
         target: context.target ?? { type: "none" },
         by: context.caster.name,
       };
     },
   },
+
   hex: {
     id: "hex",
     name: "Hex",
@@ -169,7 +172,6 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
     resolver: (context) => {
       const log = ensureLog(context);
       log.push(`${context.caster.name} hexes ${describeTarget(context.target)} with baleful energy.`);
-
       if (context.target?.type === "card") {
         const curses = (context.state.hexedCards as Record<string, number> | undefined) ?? {};
         curses[context.target.cardId] = (curses[context.target.cardId] ?? 0) + 1;
@@ -177,8 +179,9 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
       }
     },
   },
-  "time-twist": {
-    id: "time-twist",
+
+  timeTwist: {
+    id: "timeTwist",
     name: "Time Twist",
     description:
       "Fold the timeline, granting the caster momentum while queuing a delayed surge for later phases.",
@@ -189,7 +192,6 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
     resolver: (context) => {
       const log = ensureLog(context);
       log.push(`${context.caster.name} bends time around themselves.`);
-
       const momentum = (context.state.timeMomentum as number | undefined) ?? 0;
       context.state.timeMomentum = momentum + 1;
       const delayed = (context.state.delayedEffects as string[] | undefined) ?? [];
@@ -199,19 +201,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   },
 };
 
-const SPELLS_BY_ARCHETYPE: Record<SpellArchetype, SpellId[]> = {
-  wanderer: ["fireball", "ice-shard", "mirror-image"],
-  bandit: ["hex", "mirror-image", "ice-shard"],
-  sorcerer: ["fireball", "arcane-shift", "time-twist"],
-  beast: ["fireball", "hex", "ice-shard"],
-};
-
-const ARCHETYPES: SpellArchetype[] = ["wanderer", "bandit", "sorcerer", "beast"];
-
-function isSpellArchetype(value: unknown): value is SpellArchetype {
-  return typeof value === "string" && (ARCHETYPES as string[]).includes(value);
-}
-
+// ---------- API ----------
 export function getSpellById(id: SpellId | string): SpellDefinition | undefined {
   return SPELL_REGISTRY[id as SpellId];
 }
@@ -220,33 +210,35 @@ export function listSpellIds(): SpellId[] {
   return Object.keys(SPELL_REGISTRY) as SpellId[];
 }
 
+// Use archetype definitions as the single source for which spells an archetype has
 export function listSpellsForArchetype(archetype: SpellArchetype): SpellDefinition[] {
-  const spellIds = SPELLS_BY_ARCHETYPE[archetype] ?? [];
+  const def = ARCHETYPE_DEFINITIONS[archetype];
+  const spellIds = def?.spellIds ?? [];
   return spellIds
     .map((id) => getSpellById(id))
-    .filter((spell): spell is SpellDefinition => Boolean(spell));
+    .filter((s): s is SpellDefinition => Boolean(s));
 }
 
 export function getSpellbookForArchetype(archetype: SpellArchetype): SpellDefinition[] {
   return listSpellsForArchetype(archetype);
 }
 
-export function inferSpellArchetypeFromFighter(fighter: Fighter): SpellArchetype {
-  const maybeArchetype = (fighter as Fighter & { archetype?: unknown }).archetype;
-  if (isSpellArchetype(maybeArchetype)) {
-    return maybeArchetype;
+function inferSpellArchetypeFromFighter(fighter: Fighter): SpellArchetype {
+  const maybe = (fighter as Fighter & { archetype?: unknown }).archetype;
+  if (typeof maybe === "string" && maybe in ARCHETYPE_DEFINITIONS) {
+    return maybe as SpellArchetype;
   }
-
-  const normalized = fighter.name?.toLowerCase?.() ?? "";
-  if (normalized.includes("bandit")) return "bandit";
-  if (normalized.includes("sorcerer")) return "sorcerer";
-  if (normalized.includes("beast")) return "beast";
+  // fallback inference by name
+  const n = fighter.name?.toLowerCase?.() ?? "";
+  if (n.includes("bandit")) return "bandit";
+  if (n.includes("sorcerer")) return "sorcerer";
+  if (n.includes("beast")) return "beast";
   return "wanderer";
 }
 
 export function getLearnedSpellsForFighter(fighter: Fighter): SpellDefinition[] {
   const archetype = inferSpellArchetypeFromFighter(fighter);
-  const book = getSpellbookForArchetype(archetype);
+  const baseBook = getSpellbookForArchetype(archetype);
   const learned = (fighter as Fighter & { learnedSpells?: unknown }).learnedSpells;
 
   if (Array.isArray(learned) && learned.length > 0) {
@@ -254,10 +246,8 @@ export function getLearnedSpellsForFighter(fighter: Fighter): SpellDefinition[] 
       learned.filter((id): id is SpellId => typeof id === "string" && getSpellById(id) !== undefined)
     );
     if (allowed.size > 0) {
-      return book.filter((spell) => allowed.has(spell.id));
+      return baseBook.filter((spell) => allowed.has(spell.id));
     }
   }
-
-  return book;
+  return baseBook;
 }
-
