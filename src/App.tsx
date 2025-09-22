@@ -1081,11 +1081,6 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       const roundWins: Record<LegacySide, number> = { player: 0, enemy: 0 };
       let swapCount = 0;
       outcomes.forEach((o) => 
-
-        if (!o.winner) return;
-
-        hudColors[o.wheel] = HUD_COLORS[o.winner];
-
         const stake = laneWagers[o.wheel];
         let bonus = 0;
         const bonusParts: string[] = [];
