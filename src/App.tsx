@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import { Realtime } from "ably";
 import { motion } from "framer-motion";
+import type { GameMode } from "./gameModes";
 
 
 /**
@@ -97,6 +98,7 @@ export default function ThreeWheel_WinsOnly({
   hostId,
   targetWins,
   onExit,
+  gameMode = "classic",
 }: {
   localSide: TwoSide;
   localPlayerId: string;
@@ -106,6 +108,7 @@ export default function ThreeWheel_WinsOnly({
   hostId?: string;
   targetWins?: number;
   onExit?: () => void;
+  gameMode?: GameMode;
 }) {
   const mountedRef = useRef(true);
   useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; timeoutsRef.current.forEach(clearTimeout); timeoutsRef.current.clear(); }; }, []);
@@ -145,6 +148,7 @@ export default function ThreeWheel_WinsOnly({
   })();
 
   const isMultiplayer = !!roomCode;
+  const isGrimoireMode = gameMode === "grimoire";
   const ablyRef = useRef<AblyRealtime | null>(null);
   const chanRef = useRef<AblyChannel | null>(null);
 
@@ -1722,8 +1726,18 @@ const HUDPanels = () => {
     if (phase !== "ended") setVictoryCollapsed(false); // reset when leaving "ended"
   }, [phase]);
 
+  const rootModeClassName = isGrimoireMode ? "grimoire-mode" : "classic-mode";
+  const grimoireAttrValue = isGrimoireMode ? "true" : "false";
+
   return (
-    <div className="h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2" style={{ gridTemplateRows: "auto auto 1fr auto" }}>
+    <div
+      className={`h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2 ${rootModeClassName}`}
+      style={{ gridTemplateRows: "auto auto 1fr auto" }}
+      data-game-mode={gameMode}
+      data-mana-enabled={grimoireAttrValue}
+      data-spells-enabled={grimoireAttrValue}
+      data-archetypes-enabled={grimoireAttrValue}
+    >
       {/* Controls */}
       <div className="flex items-center justify-between text-[12px] min-h-[24px]">
         <div className="flex items-center gap-3">

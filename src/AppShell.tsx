@@ -1,30 +1,37 @@
 // src/AppShell.tsx
 import React, { useState } from "react";
-import type { Realtime } from "ably";
 import App from "./App";
 import HubRoute from "./HubRoute";
 import MultiplayerRoute from "./MultiplayerRoute";
 import type { Players, Side } from "./game/types";
 import ProfilePage from "./ProfilePage";
+import ModeSelect from "./ModeSelect";
+import { DEFAULT_GAME_MODE, type GameMode } from "./gameModes";
 
 type MPStartPayload = Parameters<
   NonNullable<React.ComponentProps<typeof MultiplayerRoute>["onStart"]>
 >[0];
 
+type GameView = { key: "game"; mode: "solo" | "mp"; mpPayload?: MPStartPayload };
+
 type View =
   | { key: "hub" }
   | { key: "mp" }
   | { key: "profile" }
-  | { key: "game"; mode: "solo" | "mp"; mpPayload?: MPStartPayload };
+  | { key: "modeSelect"; from: "hub" | "mp"; next: GameView }
+  | GameView;
 
 export default function AppShell() {
   const [view, setView] = useState<View>({ key: "hub" });
   const [mpPayload, setMpPayload] = useState<MPStartPayload | null>(null);
+  const [gameMode, setGameMode] = useState<GameMode>(DEFAULT_GAME_MODE);
 
   if (view.key === "hub") {
     return (
       <HubRoute
-        onStart={() => setView({ key: "game", mode: "solo" })}
+        onStart={() =>
+          setView({ key: "modeSelect", from: "hub", next: { key: "game", mode: "solo" } })
+        }
         onMultiplayer={() => setView({ key: "mp" })}
         onProfile={() => setView({ key: "profile" })}
       />
@@ -37,25 +44,62 @@ export default function AppShell() {
         onBack={() => setView({ key: "hub" })}
         onStart={(payload) => {
           setMpPayload(payload);
-          setView({ key: "game", mode: "mp", mpPayload: payload });
+          setView({
+            key: "modeSelect",
+            from: "mp",
+            next: { key: "game", mode: "mp", mpPayload: payload },
+          });
         }}
       />
     );
   }
 
-
   if (view.key === "profile") {
-  return (
-    <div className="min-h-dvh flex flex-col">
-      <div className="p-2">
-        <button className="underline text-sm" onClick={() => setView({ key: "hub" })}>
-          ← Back to Main Menu
-        </button>
+    return (
+      <div className="min-h-dvh flex flex-col">
+        <div className="p-2">
+          <button className="underline text-sm" onClick={() => setView({ key: "hub" })}>
+            ← Back to Main Menu
+          </button>
+        </div>
+        <ProfilePage />
       </div>
-      <ProfilePage />
-    </div>
-  );
-}
+    );
+  }
+
+  if (view.key === "modeSelect") {
+    const isMp = view.from === "mp";
+    const confirmLabel = view.next.mode === "mp" ? "Launch Match" : "Start Run";
+    const backLabel = isMp ? "← Back to Lobby" : "← Back to Main Menu";
+
+    return (
+      <ModeSelect
+        initialMode={gameMode}
+        backLabel={backLabel}
+        confirmLabel={confirmLabel}
+        onBack={() => {
+          setView({ key: view.from });
+          setMpPayload(null);
+        }}
+        onConfirm={(mode) => {
+          setGameMode(mode);
+
+          if (view.next.mode === "mp") {
+            const payload = view.next.mpPayload ?? mpPayload;
+            if (!payload) {
+              setView({ key: "mp" });
+              return;
+            }
+            setMpPayload(payload);
+            setView({ key: "game", mode: "mp", mpPayload: payload });
+            return;
+          }
+
+          setView({ key: "game", mode: "solo" });
+        }}
+      />
+    );
+  }
 
   // ---- view.key === "game" ----
   // (unchanged)
@@ -94,6 +138,7 @@ export default function AppShell() {
       players={players}
       seed={seed}
       onExit={exitToMenu}
+      gameMode={gameMode}
       {...extraProps}
     />
   );
