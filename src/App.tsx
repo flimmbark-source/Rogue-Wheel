@@ -67,7 +67,7 @@ type AblyChannel = ReturnType<AblyRealtime["channels"]["get"]>;
 
 // keep your local alias
 type LegacySide = "player" | "enemy";
-
+// ---- Shared per-side/per-wheel state helpers (from codex branch)
 type SideState<T> = Record<LegacySide, T>;
 type WheelSideState<T> = [SideState<T>, SideState<T>, SideState<T>];
 
@@ -77,11 +77,7 @@ const createWheelSideState = <T,>(value: T): WheelSideState<T> => [
   { player: value, enemy: value },
 ];
 
-const createWheelLockState = (): [boolean, boolean, boolean] => [
-  false,
-  false,
-  false,
-];
+const createWheelLockState = (): [boolean, boolean, boolean] => [false, false, false];
 
 const createPointerShiftState = (): [number, number, number] => [0, 0, 0];
 
@@ -90,9 +86,45 @@ const createReservePenaltyState = (): SideState<number> => ({
   enemy: 0,
 });
 
+// keep pending spell descriptor
 type PendingSpellDescriptor = { side: LegacySide; spell: SpellDefinition };
 
+// ---- Lane spell state (from Spells branch)
+type LaneSpellState = {
+  locked: boolean;
+  damageModifier: number;
+  mirrorTargetCardId: string | null;
+  occupantCardId: string | null;
+};
+
+const createEmptyLaneSpellState = (): LaneSpellState => ({
+  locked: false,
+  damageModifier: 0,
+  mirrorTargetCardId: null,
+  occupantCardId: null,
+});
+
+const laneSpellStatesEqual = (a: LaneSpellState, b: LaneSpellState) =>
+  a.locked === b.locked &&
+  a.damageModifier === b.damageModifier &&
+  a.mirrorTargetCardId === b.mirrorTargetCardId &&
+  a.occupantCardId === b.occupantCardId;
+
 // your existing MPIntent union (merged from conflict)
+type SpellTargetIntentPayload = {
+  kind?: string;
+  side?: LegacySide | null;
+  lane?: number | null;
+  cardId?: string | null;
+  [key: string]: unknown;
+};
+
+type SpellResolutionIntentPayload = {
+  manaSpent?: number;
+  result?: Record<string, unknown> | null;
+  [key: string]: unknown;
+};
+
 type MPIntent =
   | { type: "assign"; lane: number; side: LegacySide; card: Card }
   | { type: "clear"; lane: number; side: LegacySide }
@@ -101,7 +133,31 @@ type MPIntent =
   | { type: "rematch"; side: LegacySide }
   | { type: "reserve"; side: LegacySide; reserve: number; round: number }
   | { type: "archetypeSelect"; side: LegacySide; archetype: ArchetypeId }
-  | { type: "archetypeReady"; side: LegacySide; ready: boolean };
+  | { type: "archetypeReady"; side: LegacySide; ready: boolean }
+  | { type: "archetypeReadyAck"; side: LegacySide; ready: boolean }
+  | { type: "spellSelect"; side: LegacySide; spellId: string | null }
+  | {
+      type: "spellTarget";
+      side: LegacySide;
+      spellId: string;
+      target: SpellTargetIntentPayload | null;
+    }
+  | {
+      type: "spellFireballCost";
+      side: LegacySide;
+      spellId: string;
+      cost: number;
+    }
+  | {
+      type: "spellResolve";
+      side: LegacySide;
+      spellId: string;
+      manaAfter: number;
+      payload?: SpellResolutionIntentPayload | null;
+    };
+
+  { type: "spellState"; side: LegacySide; lane: number; state: LaneSpellState };
+
 
 // ---------------- Constants ----------------
 const MIN_WHEEL = 160;
@@ -259,23 +315,60 @@ const effectiveGameMode: GameMode =
   );
   const [round, setRound] = useState(1);
 
-  const resetRoundTransientState = useCallback(() => {
-    setPendingSpell(null);
-    setWheelDamage(createWheelSideState(0));
-    setWheelMirror(createWheelSideState(false));
-    setWheelLocks(createWheelLockState());
-    setReservePenalties(createReservePenaltyState());
-    setPointerShifts(createPointerShiftState());
-    setInitiativeOverride(null);
-  }, [
-    setPendingSpell,
-    setWheelDamage,
-    setWheelMirror,
-    setWheelLocks,
-    setReservePenalties,
-    setPointerShifts,
-    setInitiativeOverride,
-  ]);
+// ---- Spells sync state (from Spells)
+type SpellSyncEntry = {
+  selectedSpellId: string | null;
+  target: SpellTargetIntentPayload | null;
+  fireballCost: number | null;
+  lastResolvedSpellId: string | null;
+  lastResolutionPayload: SpellResolutionIntentPayload | null;
+  lastKnownMana: number | null;
+};
+
+const createSpellSyncEntry = (): SpellSyncEntry => ({
+  selectedSpellId: null,
+  target: null,
+  fireballCost: null,
+  lastResolvedSpellId: null,
+  lastResolutionPayload: null,
+  lastKnownMana: null,
+});
+
+const [spellSyncState, setSpellSyncState] = useState<Record<LegacySide, SpellSyncEntry>>({
+  player: createSpellSyncEntry(),
+  enemy: createSpellSyncEntry(),
+});
+const spellSyncStateRef = useRef(spellSyncState);
+useEffect(() => {
+  spellSyncStateRef.current = spellSyncState;
+}, [spellSyncState]);
+
+// ---- Round-transient reset (from codex), plus clear transient spell selections
+const resetRoundTransientState = useCallback(() => {
+  setPendingSpell(null);
+  setWheelDamage(createWheelSideState(0));
+  setWheelMirror(createWheelSideState(false));
+  setWheelLocks(createWheelLockState());
+  setReservePenalties(createReservePenaltyState());
+  setPointerShifts(createPointerShiftState());
+  setInitiativeOverride(null);
+
+  // Optional: clear only transient parts of spell sync (keep lastKnownMana / lastResolved if you want)
+  setSpellSyncState((prev) => ({
+    player: { ...prev.player, selectedSpellId: null, target: null, fireballCost: null },
+    enemy:  { ...prev.enemy,  selectedSpellId: null, target: null, fireballCost: null },
+  }));
+}, [
+  setPendingSpell,
+  setWheelDamage,
+  setWheelMirror,
+  setWheelLocks,
+  setReservePenalties,
+  setPointerShifts,
+  setInitiativeOverride,
+  setSpellSyncState, // <- include the new setter in deps
+]);
+
 
   const [archetypeSelections, setArchetypeSelections] = useState<
     Record<LegacySide, ArchetypeId | null>
@@ -283,6 +376,10 @@ const effectiveGameMode: GameMode =
   const [archetypeReady, setArchetypeReady] = useState<Record<LegacySide, boolean>>(
     createInitialArchetypeReady
   );
+  const [archetypeReadyAck, setArchetypeReadyAck] = useState<Record<LegacySide, boolean>>({
+    player: false,
+    enemy: false,
+  });
 
   const archetypeSpellIdsBySide = useMemo(
     () => ({
@@ -314,6 +411,9 @@ const effectiveGameMode: GameMode =
         ? { player: false, enemy: false }
         : { player: true, enemy: true }
     );
+    setArchetypeReadyAck({ player: false, enemy: false });
+
+    setSpellSyncState({ player: createSpellSyncEntry(), enemy: createSpellSyncEntry() });
   }, [isGrimoireMode, setArchetypeReady, setArchetypeSelections]);
 
   useEffect(() => {
@@ -620,6 +720,16 @@ const reserveReportsRef = useRef<
   enemy: null,
 });
 
+const pendingSpellRef = useRef<SpellDefinition | null>(null);
+const wheelModifiersRef = useRef<[string | null, string | null, string | null]>([
+  null,
+  null,
+  null,
+]);
+const reservePenaltyRef = useRef<Record<LegacySide, number>>({ player: 0, enemy: 0 });
+const pointerShiftRef = useRef<[number, number, number]>([0, 0, 0]);
+const initiativeOverrideRef = useRef<LegacySide | null>(null);
+
 const storeReserveReport = useCallback(
   (side: LegacySide, reserve: number, roundValue: number) => {
     const prev = reserveReportsRef.current[side];
@@ -647,6 +757,112 @@ const storeReserveReport = useCallback(
   );
 
 
+  const [laneSpellStates, setLaneSpellStates] = useState<LaneSpellState[]>(() => [
+    createEmptyLaneSpellState(),
+    createEmptyLaneSpellState(),
+    createEmptyLaneSpellState(),
+  ]);
+  const laneSpellStatesRef = useRef(laneSpellStates);
+  useEffect(() => {
+    laneSpellStatesRef.current = laneSpellStates;
+  }, [laneSpellStates]);
+
+  const updateLaneSpellState = useCallback(
+    (
+      laneIndex: number,
+      compute: (current: LaneSpellState) => LaneSpellState,
+      opts?: { skipBroadcast?: boolean }
+    ) => {
+      setLaneSpellStates((prev) => {
+        if (!Number.isInteger(laneIndex) || laneIndex < 0 || laneIndex >= prev.length) {
+          return prev;
+        }
+        const current = prev[laneIndex] ?? createEmptyLaneSpellState();
+        const next = compute(current);
+        if (laneSpellStatesEqual(current, next)) {
+          return prev;
+        }
+        if (!opts?.skipBroadcast && isMultiplayer) {
+          sendIntent({ type: "spellState", side: localLegacySide, lane: laneIndex, state: next });
+        }
+        const updated = [...prev];
+        updated[laneIndex] = next;
+        laneSpellStatesRef.current = updated;
+        return updated;
+      });
+    },
+    [isMultiplayer, localLegacySide, sendIntent]
+  );
+
+  const ensureLaneOccupant = useCallback(
+    (laneIndex: number, occupantCardId: string, opts?: { skipBroadcast?: boolean }) => {
+      updateLaneSpellState(
+        laneIndex,
+        (current) => {
+          if (current.occupantCardId === occupantCardId) {
+            return current;
+          }
+          return { ...current, occupantCardId };
+        },
+        opts
+      );
+    },
+    [updateLaneSpellState]
+  );
+
+  const refreshLaneSpellEffects = useCallback(
+    (laneIndex: number, occupantCardId: string, opts?: { skipBroadcast?: boolean }) => {
+      updateLaneSpellState(
+        laneIndex,
+        (current) => ({
+          ...current,
+          occupantCardId,
+          damageModifier: 0,
+          mirrorTargetCardId: null,
+        }),
+        opts
+      );
+    },
+    [updateLaneSpellState]
+  );
+
+  const clearLaneSpellEffects = useCallback(
+    (laneIndex: number, opts?: { skipBroadcast?: boolean }) => {
+      updateLaneSpellState(
+        laneIndex,
+        () => createEmptyLaneSpellState(),
+        opts
+      );
+    },
+    [updateLaneSpellState]
+  );
+
+  const applyRemoteLaneSpellState = useCallback(
+    (laneIndex: number, incoming: LaneSpellState) => {
+      const sanitized = createEmptyLaneSpellState();
+      sanitized.locked = !!incoming.locked;
+      sanitized.damageModifier =
+        typeof incoming.damageModifier === "number" && Number.isFinite(incoming.damageModifier)
+          ? incoming.damageModifier
+          : 0;
+      sanitized.mirrorTargetCardId = incoming.mirrorTargetCardId ?? null;
+      sanitized.occupantCardId = incoming.occupantCardId ?? null;
+      updateLaneSpellState(laneIndex, () => sanitized, { skipBroadcast: true });
+    },
+    [updateLaneSpellState]
+  );
+
+  const resetLaneSpellStates = useCallback(() => {
+    const next = [
+      createEmptyLaneSpellState(),
+      createEmptyLaneSpellState(),
+      createEmptyLaneSpellState(),
+    ];
+    laneSpellStatesRef.current = next;
+    setLaneSpellStates(next);
+  }, []);
+
+
   const broadcastLocalReserve = useCallback(() => {
     const lane = localLegacySide === "player" ? assignRef.current.player : assignRef.current.enemy;
     const reserve = computeReserveSum(localLegacySide, lane);
@@ -655,6 +871,107 @@ const storeReserveReport = useCallback(
       sendIntent({ type: "reserve", side: localLegacySide, reserve, round });
     }
   }, [isMultiplayer, localLegacySide, round, sendIntent, storeReserveReport, player, enemy]);
+
+
+  const syncLocalSpellSelection = useCallback(
+    (spellId: string | null) => {
+      setSpellSyncState((prev) => {
+        const current = prev[localLegacySide];
+        const next: SpellSyncEntry = {
+          ...current,
+          selectedSpellId: spellId,
+        };
+        if (!spellId) {
+          next.target = null;
+          next.fireballCost = null;
+        }
+        return { ...prev, [localLegacySide]: next };
+      });
+      if (isMultiplayer) {
+        sendIntent({ type: "spellSelect", side: localLegacySide, spellId });
+      }
+    },
+    [isMultiplayer, localLegacySide, sendIntent, setSpellSyncState]
+  );
+
+  const syncLocalSpellTarget = useCallback(
+    (spellId: string, target: SpellTargetIntentPayload | null) => {
+      setSpellSyncState((prev) => {
+        const current = prev[localLegacySide];
+        const next: SpellSyncEntry = {
+          ...current,
+          selectedSpellId: spellId ?? current.selectedSpellId,
+          target: target ?? null,
+        };
+        return { ...prev, [localLegacySide]: next };
+      });
+      if (isMultiplayer) {
+        sendIntent({ type: "spellTarget", side: localLegacySide, spellId, target });
+      }
+    },
+    [isMultiplayer, localLegacySide, sendIntent, setSpellSyncState]
+  );
+
+  const syncLocalFireballCost = useCallback(
+    (spellId: string, cost: number) => {
+      const normalizedCost = Number.isFinite(cost) ? cost : 0;
+      setSpellSyncState((prev) => {
+        const current = prev[localLegacySide];
+        const next: SpellSyncEntry = {
+          ...current,
+          selectedSpellId: spellId ?? current.selectedSpellId,
+          fireballCost: normalizedCost,
+        };
+        return { ...prev, [localLegacySide]: next };
+      });
+      if (isMultiplayer) {
+        sendIntent({
+          type: "spellFireballCost",
+          side: localLegacySide,
+          spellId,
+          cost: normalizedCost,
+        });
+      }
+    },
+    [isMultiplayer, localLegacySide, sendIntent, setSpellSyncState]
+  );
+
+  const syncLocalSpellResolve = useCallback(
+    (
+      spellId: string,
+      manaAfter: number,
+      payload: SpellResolutionIntentPayload | null = null
+    ) => {
+      const safeMana = Number.isFinite(manaAfter) ? manaAfter : 0;
+      setSpellSyncState((prev) => {
+        const current = prev[localLegacySide];
+        const next: SpellSyncEntry = {
+          ...current,
+          selectedSpellId: null,
+          target: null,
+          fireballCost: null,
+          lastResolvedSpellId: spellId,
+          lastResolutionPayload: payload,
+          lastKnownMana: safeMana,
+        };
+        return { ...prev, [localLegacySide]: next };
+      });
+      setMana((prev) => {
+        if (prev[localLegacySide] === safeMana) return prev;
+        return { ...prev, [localLegacySide]: safeMana };
+      });
+      if (isMultiplayer) {
+        sendIntent({
+          type: "spellResolve",
+          side: localLegacySide,
+          spellId,
+          manaAfter: safeMana,
+          payload,
+        });
+      }
+    },
+    [isMultiplayer, localLegacySide, sendIntent, setMana, setSpellSyncState]
+  );
 
 
   // Drag state + tap-to-assign selected id
@@ -735,21 +1052,35 @@ const storeReserveReport = useCallback(
   const handleSpellActivate = useCallback(
     (spell: SpellDefinition) => {
       if (gameMode !== "grimoire") return;
-      setPendingSpell({ side: localLegacySide, spell });
-      spellCastRequestRef.current(spell);
-      setShowGrimoire(false);
-    },
-    [gameMode, localLegacySide, setPendingSpell]
+setPendingSpell({ side: localLegacySide, spell }); // local pending state
+syncLocalSpellSelection(spell.id);                  // sync to peer/remote UI
+spellCastRequestRef.current(spell);
+setShowGrimoire(false);
   );
 
   const canReveal = useMemo(() => {
     if (!archetypeGateOpen) return false;
     const lane = localLegacySide === "player" ? assign.player : assign.enemy;
     return lane.every((c, i) => !active[i] || !!c);
-  }, [assign, active, archetypeGateOpen, localLegacySide]);
+  }, [gameMode, localLegacySide, setPendingSpell, syncLocalSpellSelection]);
 
   // Wheel refs for imperative token updates
   const wheelRefs = [useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null)];
+
+  const resetRoundTransientState = useCallback(
+    (opts?: { includePointerReset?: boolean }) => {
+      pendingSpellRef.current = null;
+      wheelModifiersRef.current = [null, null, null] as [string | null, string | null, string | null];
+      reservePenaltyRef.current = { player: 0, enemy: 0 };
+      pointerShiftRef.current = [0, 0, 0];
+      initiativeOverrideRef.current = null;
+
+      if (opts?.includePointerReset) {
+        wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
+      }
+    },
+    [wheelRefs]
+  );
 
   // ---- Assignment helpers (batched) ----
   const assignToWheelFor = useCallback(
@@ -761,9 +1092,18 @@ const storeReserveReport = useCallback(
       const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
       const prevAtLane = lane[laneIndex];
       const fromIdx = lane.findIndex((c) => c?.id === card.id);
+      const laneSpell = laneSpellStatesRef.current[laneIndex] ?? createEmptyLaneSpellState();
 
 
       if (prevAtLane && prevAtLane.id === card.id && fromIdx === laneIndex) {
+        if (side === localLegacySide) {
+          setSelectedCardId(null);
+        }
+        ensureLaneOccupant(laneIndex, card.id, { skipBroadcast: side !== localLegacySide });
+        return false;
+      }
+
+      if (laneSpell.locked && (!prevAtLane || prevAtLane.id !== card.id)) {
         if (side === localLegacySide) {
           setSelectedCardId(null);
         }
@@ -771,6 +1111,18 @@ const storeReserveReport = useCallback(
       }
 
       const isPlayer = side === "player";
+      const shouldBroadcastSpells = side === localLegacySide;
+      const occupantChanged = !prevAtLane || prevAtLane.id !== card.id;
+
+      if (occupantChanged) {
+        refreshLaneSpellEffects(laneIndex, card.id, { skipBroadcast: !shouldBroadcastSpells });
+      } else {
+        ensureLaneOccupant(laneIndex, card.id, { skipBroadcast: !shouldBroadcastSpells });
+      }
+
+      if (fromIdx !== -1 && fromIdx !== laneIndex) {
+        clearLaneSpellEffects(fromIdx, { skipBroadcast: !shouldBroadcastSpells });
+      }
 
       startTransition(() => {
         setAssign((prev) => {
@@ -809,7 +1161,15 @@ const storeReserveReport = useCallback(
 
       return true;
     },
-    [active, archetypeGateOpen, clearResolveVotes, localLegacySide]
+    [
+      active,
+      archetypeGateOpen,
+      clearLaneSpellEffects,
+      clearResolveVotes,
+      ensureLaneOccupant,
+      localLegacySide,
+      refreshLaneSpellEffects,
+    ]
 
   );
 
@@ -821,6 +1181,9 @@ const storeReserveReport = useCallback(
       if (!prev) return false;
 
       const isPlayer = side === "player";
+      const shouldBroadcastSpells = side === localLegacySide;
+
+      clearLaneSpellEffects(laneIndex, { skipBroadcast: !shouldBroadcastSpells });
 
       startTransition(() => {
         setAssign((prevState) => {
@@ -848,13 +1211,11 @@ const storeReserveReport = useCallback(
         }
       });
 
-
       clearResolveVotes();
-
 
       return true;
     },
-    [archetypeGateOpen, clearResolveVotes, localLegacySide]
+    [archetypeGateOpen, clearLaneSpellEffects, clearResolveVotes, localLegacySide]
   );
 
   function assignToWheelLocal(i: number, card: Card) {
@@ -1147,12 +1508,11 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
       clearResolveVotes();
       clearAdvanceVotes();
+      resetRoundTransientState({ includePointerReset: true });
 
       const currentAssign = assignRef.current;
       const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
       const enemyPlayed  = currentAssign.enemy.filter((c): c is Card => !!c);
-
-      wheelRefs.forEach(ref => ref.current?.setVisualToken(0));
 
       setFreezeLayout(false);
       setLockedWheelSize(null);
@@ -1162,6 +1522,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
       setWheelSections(generateWheelSet());
       setAssign({ player: [null, null, null], enemy: [null, null, null] });
+      resetLaneSpellStates();
 
       setSelectedCardId(null);
       setDragCardId(null);
@@ -1197,6 +1558,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       setWheelSections,
       setRound,
       resetRoundTransientState,
+      resetLaneSpellStates,
       wheelRefs
     ]
   );
@@ -1238,6 +1600,23 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
             if (prev[msg.side] === msg.ready) return prev;
             return { ...prev, [msg.side]: !!msg.ready };
           });
+          if (isMultiplayer) {
+            try {
+              sendIntent({
+                type: "archetypeReadyAck",
+                side: localLegacySide,
+                ready: !!msg.ready,
+              });
+            } catch {}
+          }
+          break;
+        }
+        case "archetypeReadyAck": {
+          if (msg.side === localLegacySide) break;
+          setArchetypeReadyAck((prev) => {
+            if (prev[msg.side] === !!msg.ready) return prev;
+            return { ...prev, [msg.side]: !!msg.ready };
+          });
           break;
         }
         case "reveal": {
@@ -1263,22 +1642,101 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
           }
           break;
         }
-        default:
+
+        case "spellSelect": {
+          if (msg.side === localLegacySide) break;
+          setSpellSyncState((prev) => {
+            const current = prev[msg.side];
+            const next: SpellSyncEntry = {
+              ...current,
+              selectedSpellId: msg.spellId ?? null,
+            };
+            if (!msg.spellId) {
+              next.target = null;
+              next.fireballCost = null;
+            }
+            return { ...prev, [msg.side]: next };
+          });
           break;
-      }
-    },
-    [
+        }
+        case "spellTarget": {
+          if (msg.side === localLegacySide) break;
+          setSpellSyncState((prev) => {
+            const current = prev[msg.side];
+            const next: SpellSyncEntry = {
+              ...current,
+              target: msg.target ?? null,
+              selectedSpellId: msg.spellId ?? current.selectedSpellId,
+            };
+            return { ...prev, [msg.side]: next };
+          });
+          break;
+        }
+        case "spellFireballCost": {
+          if (msg.side === localLegacySide) break;
+          setSpellSyncState((prev) => {
+            const current = prev[msg.side];
+            const next: SpellSyncEntry = {
+              ...current,
+              fireballCost: Number.isFinite(msg.cost) ? msg.cost : current.fireballCost,
+              selectedSpellId: msg.spellId ?? current.selectedSpellId,
+            };
+            return { ...prev, [msg.side]: next };
+          });
+          break;
+        }
+        case "spellResolve": {
+  if (msg.side === localLegacySide) break;
+  setSpellSyncState((prev) => {
+    const current = prev[msg.side];
+    const next: SpellSyncEntry = {
+      ...current,
+      selectedSpellId: null,
+      target: null,
+      fireballCost: null,
+      lastResolvedSpellId: msg.spellId ?? null,
+      lastResolutionPayload: msg.payload ?? null,
+      lastKnownMana: msg.manaAfter ?? current.lastKnownMana,
+    };
+    return { ...prev, [msg.side]: next };
+  });
+  setMana((prev) => {
+    const nextMana = msg.manaAfter;
+    if (typeof nextMana !== "number" || !Number.isFinite(nextMana)) return prev;
+    if (prev[msg.side] === nextMana) return prev;
+    return { ...prev, [msg.side]: nextMana };
+  });
+  break; // ✅ end the spellResolve case
+}
+
+case "spellState": {
+  if (msg.side === localLegacySide) break;
+  if (typeof msg.lane !== "number" || !msg.state) break;
+  applyRemoteLaneSpellState(msg.lane, msg.state);
+break;
+}
+
+default:
+  break;
+}
+
+}, [
       assignToWheelFor,
       clearAssignFor,
+      isMultiplayer,
+      applyRemoteLaneSpellState,
       localLegacySide,
       markAdvanceVote,
       markRematchVote,
       markResolveVote,
+      sendIntent,
       storeReserveReport,
+      setArchetypeReadyAck,
       setArchetypeReady,
       setArchetypeSelections,
-    ]
-  );
+      setSpellSyncState,
+      setMana,
+    ]);
 
   useEffect(() => {
     handleMPIntentRef.current = handleMPIntent;
@@ -1373,7 +1831,7 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
 
     reserveReportsRef.current = { player: null, enemy: null };
 
-    wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
+    resetRoundTransientState({ includePointerReset: true });
 
     setFreezeLayout(false);
     setLockedWheelSize(null);
@@ -1405,11 +1863,15 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     };
     assignRef.current = emptyAssign;
     setAssign(emptyAssign);
+    resetLaneSpellStates();
 
     setSelectedCardId(null);
     setDragCardId(null);
     dragOverRef.current = null;
     _setDragOverWheel(null);
+
+    setShowRef(false);
+    setShowGrimoire(false);
 
     setTokens([0, 0, 0]);
     setReserveSums(null);
@@ -1445,13 +1907,18 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
     setRound,
     setSelectedCardId,
     setManaPools,
+    setShowGrimoire,
+    setShowRef,
+    setMana,
     setTokens,
     setWheelHUD,
     setWheelSections,
     setWins,
     resetRoundTransientState,
     _setDragOverWheel,
-    wheelRefs
+    resetRoundTransientState,
+    wheelRefs,
+    resetLaneSpellStates
   ]);
 
   useEffect(() => {
@@ -1547,9 +2014,20 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       return { ...prev, [localLegacySide]: toggled };
     });
     if (nextReady !== null) {
+      setArchetypeReadyAck((prev) => {
+        if (prev[localLegacySide] === false) return prev;
+        return { ...prev, [localLegacySide]: false };
+      });
       sendIntent({ type: "archetypeReady", side: localLegacySide, ready: nextReady });
     }
-  }, [isMultiplayer, localLegacySide, localSelection, sendIntent, setArchetypeReady]);
+  }, [
+    isMultiplayer,
+    localLegacySide,
+    localSelection,
+    sendIntent,
+    setArchetypeReady,
+    setArchetypeReadyAck,
+  ]);
 
   const readyButtonLabel = isMultiplayer
     ? localReady
