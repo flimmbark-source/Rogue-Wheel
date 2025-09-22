@@ -1049,14 +1049,19 @@ const storeReserveReport = useCallback(
     };
   }, [showRef, showGrimoire]);
 
-  const handleSpellActivate = useCallback(
-    (spell: SpellDefinition) => {
-      if (gameMode !== "grimoire") return;
-setPendingSpell({ side: localLegacySide, spell }); // local pending state
-syncLocalSpellSelection(spell.id);                  // sync to peer/remote UI
-spellCastRequestRef.current(spell);
-setShowGrimoire(false);
-  );
+// keep this near the other callbacks
+const handleSpellActivate = useCallback(
+  (spell: SpellDefinition) => {
+    if (gameMode !== "grimoire") return;
+
+    // if you’re syncing selection to MP
+    syncLocalSpellSelection?.(spell.id);
+
+    spellCastRequestRef.current(spell);
+    setShowGrimoire(false);
+  },
+  [gameMode, syncLocalSpellSelection] // <-- dependency array, then close the hook
+);
 
   const canReveal = useMemo(() => {
     if (!archetypeGateOpen) return false;
