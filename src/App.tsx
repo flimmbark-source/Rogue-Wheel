@@ -1479,7 +1479,6 @@ function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
       resetRoundTransientState
       resetLaneSpellStates,
       wheelRefs
-
     ]
   );
 
