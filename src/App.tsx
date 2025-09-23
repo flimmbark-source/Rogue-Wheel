@@ -627,11 +627,6 @@ const renderWheelPanel = (i: number) => {
   );
 };
 
-
-              </div>
-            )}
-          </div>
-
           <div
             data-drop="wheel"
             data-idx={i}
