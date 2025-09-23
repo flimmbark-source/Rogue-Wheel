@@ -598,25 +598,25 @@ const renderWheelPanel = (i: number) => {
       : null;
 
   const xpProgressPercent = xpDisplay ? Math.min(100, xpDisplay.percent * 100) : 0;
-  const [victoryCollapsed, setVictoryCollapsed] = useState(false); // or true if you want banner-first
+  const [victoryCollapsed, setVictoryCollapsed] = useState(false);
   useEffect(() => {
-    if (phase !== "ended") setVictoryCollapsed(false); // reset when leaving "ended"
+    if (phase !== "ended") setVictoryCollapsed(false);
   }, [phase]);
 
   const rootModeClassName = isGrimoireMode ? "grimoire-mode" : "classic-mode";
   const grimoireAttrValue = isGrimoireMode ? "true" : "false";
 
   return (
-
-    <div className={`h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2 ${rootModeClassName}`}
-  style={{ gridTemplateRows: "auto auto 1fr auto" }}
-  data-game-mode={effectiveGameMode}         // <- use your resolved mode var
-  data-mana-enabled={grimoireAttrValue}
-  data-spells-enabled={grimoireAttrValue}
-  data-archetypes-enabled={grimoireAttrValue}
-  data-pending-spell={pendingSpell ? pendingSpell.spell.id : ""}
-  data-local-mana={localMana}
->
+    <div
+      className={`h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2 ${rootModeClassName}`}
+      style={{ gridTemplateRows: "auto auto 1fr auto" }}
+      data-game-mode={effectiveGameMode}
+      data-mana-enabled={grimoireAttrValue}
+      data-spells-enabled={grimoireAttrValue}
+      data-archetypes-enabled={grimoireAttrValue}
+      data-pending-spell={pendingSpell ? pendingSpell.spell.id : ""}
+      data-local-mana={localMana}
+    >
       {showArchetypeModal && (
         <ArchetypeModal
           isMultiplayer={isMultiplayer}
@@ -637,15 +637,25 @@ const renderWheelPanel = (i: number) => {
         />
       )}
 
-
       {/* Controls */}
       <div className="flex items-center justify-between text-[12px] min-h-[24px]">
         <div className="flex items-center gap-3">
-          <div><span className="opacity-70">Round</span> <span className="font-semibold">{round}</span></div>
-          <div><span className="opacity-70">Phase</span> <span className="font-semibold">{phase}</span></div>
-          <div><span className="opacity-70">Goal</span> <span className="font-semibold">First to {winGoal} wins</span></div>
+          <div>
+            <span className="opacity-70">Round</span>{" "}
+            <span className="font-semibold">{round}</span>
+          </div>
+          <div>
+            <span className="opacity-70">Phase</span>{" "}
+            <span className="font-semibold">{phase}</span>
+          </div>
+          <div>
+            <span className="opacity-70">Goal</span>{" "}
+            <span className="font-semibold">First to {winGoal} wins</span>
+          </div>
         </div>
+
         <div ref={infoPopoverRootRef} className="flex items-center gap-2 relative">
+          {/* Reference button + popover */}
           <div className="relative">
             <button
               onClick={() =>
@@ -659,6 +669,7 @@ const renderWheelPanel = (i: number) => {
             >
               Reference
             </button>
+
             {showRef && (
               <div className="absolute top-[110%] right-0 w-80 rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50">
                 <div className="flex items-center justify-between mb-1">
@@ -672,7 +683,11 @@ const renderWheelPanel = (i: number) => {
                 </div>
                 <div className="text-[12px] space-y-2">
                   <div>
-                    Place <span className="font-semibold">1 card next to each wheel</span>, then <span className="font-semibold">press the Resolve button</span>. Where the <span className="font-semibold">token stops</span> decides the winnning rule, and the player who matches it gets <span className="font-semibold">1 win</span>. First to <span className="font-semibold">{winGoal}</span> wins takes the match.
+                    Place <span className="font-semibold">1 card next to each wheel</span>, then{" "}
+                    <span className="font-semibold">press the Resolve button</span>. Where the{" "}
+                    <span className="font-semibold">token stops</span> decides the winnning rule, and
+                    the player who matches it gets <span className="font-semibold">1 win</span>.
+                    First to <span className="font-semibold">{winGoal}</span> wins takes the match.
                   </div>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>💥 Strongest — higher value wins</li>
@@ -682,224 +697,261 @@ const renderWheelPanel = (i: number) => {
                     <li>⚑ Initiative — initiative holder wins</li>
                     <li>
                       <span className="font-semibold">0 Start</span> — no one wins
-                    </li>
+                      </li>
                   </ul>
                 </div>
               </div>
             )}
           </div>
-{gameMode === "grimoire" && (
-  <div className="relative">
-    <button
-      onClick={() =>
-        setShowGrimoire((prev) => {
-          const next = !prev;
-          if (next) setShowRef(false);
-          return next;
-        })
-      }
-      className="px-2.5 py-0.5 rounded bg-slate-700 text-white border border-slate-600 hover:bg-slate-600"
-    >
-      Grimoire
-    </button>
 
-    {showGrimoire && (
-      <>
-        {/* Backdrop for mobile-only modal */}
-        <div
-          className="fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-sm sm:hidden"
-          onClick={() => setShowGrimoire(false)}
-          aria-hidden
-        />
-
-        {/* Desktop (>= sm) anchored popover */}
-        <div className="absolute top-[110%] right-0 z-[80] hidden sm:block w-80 max-w-xs sm:max-w-sm">
-          <div className="rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
-            <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-4 py-3">
-              <div className="text-base font-semibold text-slate-100">Grimoire</div>
+          {/* Grimoire button + popover/modal */}
+          {gameMode === "grimoire" && (
+            <div className="relative">
               <button
-                onClick={() => setShowGrimoire(false)}
-                className="text-xl leading-none text-slate-300 transition hover:text-white"
-                aria-label="Close grimoire"
+                onClick={() =>
+                  setShowGrimoire((prev) => {
+                    const next = !prev;
+                    if (next) setShowRef(false);
+                    return next;
+                  })
+                }
+                className="px-2.5 py-0.5 rounded bg-slate-700 text-white border border-slate-600 hover:bg-slate-600"
               >
-                ×
+                Grimoire
               </button>
+
+              {showGrimoire && (
+                <>
+                  {/* Backdrop for mobile-only modal */}
+                  <div
+                    className="fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-sm sm:hidden"
+                    onClick={() => setShowGrimoire(false)}
+                    aria-hidden
+                  />
+
+                  {/* Desktop (>=sm) anchored popover */}
+                  <div className="absolute top-[110%] right-0 z-[80] hidden sm:block w-80 max-w-xs sm:max-w-sm">
+                    <div className="rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-4 py-3">
+                        <div className="text-base font-semibold text-slate-100">Grimoire</div>
+                        <button
+                          onClick={() => setShowGrimoire(false)}
+                          className="text-xl leading-none text-slate-300 transition hover:text-white"
+                          aria-label="Close grimoire"
+                        >
+                          ×
+                        </button>
+                      </div>
+
+                      {/* Shared content */}
+                      <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
+                        <div className="flex items-center justify-between text-[11px] text-slate-300">
+                          <span className="flex items-center gap-1">
+                            <span aria-hidden className="text-sky-300">🔹</span>
+                            <span>Mana</span>
+                          </span>
+                          <span className="font-semibold text-slate-100">{localMana}</span>
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                          {localSpellDefinitions.length === 0 ? (
+                            <div className="italic text-slate-400">No spells learned yet.</div>
+                          ) : (
+                            <ul className="space-y-2">
+                              {localSpellDefinitions.map((spell) => {
+                                const allowedPhases = spell.allowedPhases ?? ["choose"];
+                                const phaseAllowed = allowedPhases.includes(phase);
+                                const computedCostRaw = spell.variableCost
+                                  ? spell.variableCost({
+                                      caster: casterFighter,
+                                      opponent: opponentFighter,
+                                      phase,
+                                      state: {},
+                                    })
+                                  : spell.cost;
+                                const effectiveCost = Number.isFinite(computedCostRaw)
+                                  ? Math.max(0, Math.round(computedCostRaw as number))
+                                  : spell.cost;
+                                const canAfford = localMana >= effectiveCost;
+                                const disabled = !phaseAllowed || !canAfford;
+
+                                return (
+                                  <li key={spell.id}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSpellActivate(spell)}
+                                      disabled={disabled}
+                                      className={`w-full rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-left transition ${
+                                        disabled
+                                          ? "cursor-not-allowed opacity-50"
+                                          : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
+                                          {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
+                                          <span>{spell.name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 text-[11px] text-sky-200">
+                                          <span aria-hidden className="text-[14px] leading-none">🔹</span>
+                                          <span>{effectiveCost}</span>
+                                        </div>
+                                      </div>
+                                      <div className="mt-1 text-[11px] leading-snug text-slate-300">
+                                        {spell.description}
+                                      </div>
+                                      {!phaseAllowed && (
+                                        <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
+                                          Unavailable this phase
+                                        </div>
+                                      )}
+                                      {!canAfford && (
+                                        <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
+                                          Not enough mana
+                                        </div>
+                                      )}
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mobile (<sm) centered modal */}
+                  <div className="fixed inset-x-4 top-20 z-[80] sm:hidden flex justify-center">
+                    <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-4 py-3">
+                        <div className="text-base font-semibold text-slate-100">Grimoire</div>
+                        <button
+                          onClick={() => setShowGrimoire(false)}
+                          className="text-xl leading-none text-slate-300 transition hover:text-white"
+                          aria-label="Close grimoire"
+                        >
+                          ×
+                        </button>
+                      </div>
+
+                      {/* Same shared content as above */}
+                      <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
+                        <div className="flex items-center justify-between text-[11px] text-slate-300">
+                          <span className="flex items-center gap-1">
+                            <span aria-hidden className="text-sky-300">🔹</span>
+                            <span>Mana</span>
+                          </span>
+                          <span className="font-semibold text-slate-100">{localMana}</span>
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                          {localSpellDefinitions.length === 0 ? (
+                            <div className="italic text-slate-400">No spells learned yet.</div>
+                          ) : (
+                            <ul className="space-y-2">
+                              {localSpellDefinitions.map((spell) => {
+                                const allowedPhases = spell.allowedPhases ?? ["choose"];
+                                const phaseAllowed = allowedPhases.includes(phase);
+                                const computedCostRaw = spell.variableCost
+                                  ? spell.variableCost({
+                                      caster: casterFighter,
+                                      opponent: opponentFighter,
+                                      phase,
+                                      state: {},
+                                    })
+                                  : spell.cost;
+                                const effectiveCost = Number.isFinite(computedCostRaw)
+                                  ? Math.max(0, Math.round(computedCostRaw as number))
+                                  : spell.cost;
+                                const canAfford = localMana >= effectiveCost;
+                                const disabled = !phaseAllowed || !canAfford;
+
+                                return (
+                                  <li key={spell.id}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSpellActivate(spell)}
+                                      disabled={disabled}
+                                      className={`w-full rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-left transition ${
+                                        disabled
+                                          ? "cursor-not-allowed opacity-50"
+                                          : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
+                                      }`}
+                                    >
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
+                                          {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
+                                          <span>{spell.name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 text-[11px] text-sky-200">
+                                          <span aria-hidden className="text-[14px] leading-none">🔹</span>
+                                          <span>{effectiveCost}</span>
+                                        </div>
+                                      </div>
+                                      <div className="mt-1 text-[11px] leading-snug text-slate-300">
+                                        {spell.description}
+                                      </div>
+                                      {!phaseAllowed && (
+                                        <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
+                                          Unavailable this phase
+                                        </div>
+                                      )}
+                                      {!canAfford && (
+                                        <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
+                                          Not enough mana
+                                        </div>
+                                      )}
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
-
-            {/* Shared content */}
-            <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
-              <div className="flex items-center justify-between text-[11px] text-slate-300">
-                <span className="flex items-center gap-1">
-                  <span aria-hidden className="text-sky-300">🔹</span>
-                  <span>Mana</span>
-                </span>
-                <span className="font-semibold text-slate-100">{localMana}</span>
-              </div>
-
-              <div className="mt-3 space-y-2">
-                {localSpellDefinitions.length === 0 ? (
-                  <div className="italic text-slate-400">No spells learned yet.</div>
-                ) : (
-                  <ul className="space-y-2">
-                    {localSpellDefinitions.map((spell) => {
-                      const allowedPhases = spell.allowedPhases ?? ["choose"];
-                      const phaseAllowed = allowedPhases.includes(phase);
-                      const computedCostRaw = spell.variableCost
-                        ? spell.variableCost({
-                            caster: casterFighter,
-                            opponent: opponentFighter,
-                            phase,
-                            state: {},
-                          })
-                        : spell.cost;
-                      const effectiveCost = Number.isFinite(computedCostRaw)
-                        ? Math.max(0, Math.round(computedCostRaw as number))
-                        : spell.cost;
-                      const canAfford = localMana >= effectiveCost;
-                      const disabled = !phaseAllowed || !canAfford;
-
-                      return (
-                        <li key={spell.id}>
-                          <button
-                            type="button"
-                            onClick={() => handleSpellActivate(spell)}
-                            disabled={disabled}
-                            className={`w-full rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-left transition ${
-                              disabled
-                                ? "cursor-not-allowed opacity-50"
-                                : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
-                                {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
-                                <span>{spell.name}</span>
-                              </div>
-                              <div className="flex items-center gap-1 text-[11px] text-sky-200">
-                                <span aria-hidden className="text-[14px] leading-none">🔹</span>
-                                <span>{effectiveCost}</span>
-                              </div>
-                            </div>
-                            <div className="mt-1 text-[11px] leading-snug text-slate-300">
-                              {spell.description}
-                            </div>
-                            {!phaseAllowed && (
-                              <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
-                                Unavailable this phase
-                              </div>
-                            )}
-                            {!canAfford && (
-                              <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
-                                Not enough mana
-                              </div>
-                            )}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Mobile (< sm) centered modal */}
-        <div className="fixed inset-x-4 top-20 z-[80] sm:hidden flex justify-center">
-          <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
-            <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-4 py-3">
-              <div className="text-base font-semibold text-slate-100">Grimoire</div>
-              <button
-                onClick={() => setShowGrimoire(false)}
-                className="text-xl leading-none text-slate-300 transition hover:text-white"
-                aria-label="Close grimoire"
-              >
-                ×
-              </button>
-            </div>
-
-            {/* Same shared content as above */}
-            <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
-              <div className="flex items-center justify-between text-[11px] text-slate-300">
-                <span className="flex items-center gap-1">
-                  <span aria-hidden className="text-sky-300">🔹</span>
-                  <span>Mana</span>
-                </span>
-                <span className="font-semibold text-slate-100">{localMana}</span>
-              </div>
-
-              <div className="mt-3 space-y-2">
-                {localSpellDefinitions.length === 0 ? (
-                  <div className="italic text-slate-400">No spells learned yet.</div>
-                ) : (
-                  <ul className="space-y-2">
-                    {localSpellDefinitions.map((spell) => {
-                      const allowedPhases = spell.allowedPhases ?? ["choose"];
-                      const phaseAllowed = allowedPhases.includes(phase);
-                      const computedCostRaw = spell.variableCost
-                        ? spell.variableCost({
-                            caster: casterFighter,
-                            opponent: opponentFighter,
-                            phase,
-                            state: {},
-                          })
-                        : spell.cost;
-                      const effectiveCost = Number.isFinite(computedCostRaw)
-                        ? Math.max(0, Math.round(computedCostRaw as number))
-                        : spell.cost;
-                      const canAfford = localMana >= effectiveCost;
-                      const disabled = !phaseAllowed || !canAfford;
-
-                      return (
-                        <li key={spell.id}>
-                          <button
-                            type="button"
-                            onClick={() => handleSpellActivate(spell)}
-                            disabled={disabled}
-                            className={`w-full rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-left transition ${
-                              disabled
-                                ? "cursor-not-allowed opacity-50"
-                                : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
-                                {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
-                                <span>{spell.name}</span>
-                              </div>
-                              <div className="flex items-center gap-1 text-[11px] text-sky-200">
-                                <span aria-hidden className="text-[14px] leading-none">🔹</span>
-                                <span>{effectiveCost}</span>
-                              </div>
-                            </div>
-                            <div className="mt-1 text-[11px] leading-snug text-slate-300">
-                              {spell.description}
-                            </div>
-                            {!phaseAllowed && (
-                              <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
-                                Unavailable this phase
-                              </div>
-                            )}
-                            {!canAfford && (
-                              <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
-                                Not enough mana
-                              </div>
-                            )}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            </div>
+        {/* Resolve/Next controls (right side) */}
+        {phase === "choose" && (
+          <div className="flex flex-col items-end gap-1">
+            <button
+              disabled={resolveButtonDisabled}
+              onClick={handleRevealClick}
+              className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold disabled:opacity-50"
+            >
+              {resolveButtonLabel}
+            </button>
+            {isMultiplayer && resolveStatusText && (
+              <span className="text-[11px] italic text-amber-200 text-right leading-tight">
+                {resolveStatusText}
+              </span>
+            )}
           </div>
-        </div>
-      </>
-    )}
-  </div>
-)}
-
+        )}
+        {phase === "roundEnd" && (
+          <div className="flex flex-col items-end gap-1">
+            <button
+              disabled={advanceButtonDisabled}
+              onClick={handleNextClick}
+              className="px-2.5 py-0.5 rounded bg-emerald-500 text-slate-900 font-semibold disabled:opacity-50"
+            >
+              {advanceButtonLabel}
+            </button>
+            {isMultiplayer && advanceStatusText && (
+              <span className="text-[11px] italic text-emerald-200 text-right leading-tight">
+                {advanceStatusText}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* HUD */}
       <div className="relative z-10">
@@ -1001,10 +1053,9 @@ const renderWheelPanel = (i: number) => {
           onExit={onExit}
         />
       )}
-  
-      </div>
-    );
-  }
+    </div>
+  );
+}
 
 // ---------------- Dev Self-Tests (lightweight) ----------------
 if (typeof window !== 'undefined') {
