@@ -12,7 +12,7 @@ import React, {
   useCallback,
 } from "react";
 import { Realtime } from "ably";
-]
+
 
 
 /**
