@@ -356,6 +356,45 @@ export default function ThreeWheel_WinsOnly({
     [casterFighter, opponentFighter, phase]
   );
 
+  const resolvePendingSpell = useCallback(
+    (
+      descriptor: PendingSpellDescriptor,
+      targetOverride?: SpellTargetInstance | null
+    ) => {
+      const manualTargetRequired =
+        descriptor.spell.target.type === "card" &&
+        descriptor.spell.target.automatic !== true;
+
+      const finalTarget =
+        targetOverride !== undefined
+          ? targetOverride
+          : descriptor.target ?? null;
+
+      if (manualTargetRequired && !finalTarget) {
+        setPendingSpell({ ...descriptor, target: null });
+        return;
+      }
+
+      const context = {
+        caster: casterFighter,
+        opponent: opponentFighter,
+        phase,
+        target: finalTarget ?? undefined,
+        state: spellRuntimeStateRef.current,
+      } as const;
+
+      try {
+        descriptor.spell.resolver(context);
+      } catch (error) {
+        console.error("Spell resolution failed", error);
+      } finally {
+        setPendingSpell(null);
+        setShowGrimoire(false);
+      }
+    },
+    [casterFighter, opponentFighter, phase, setPendingSpell, setShowGrimoire]
+  );
+
   const handleSpellActivate = useCallback(
     (spell: SpellDefinition) => {
       if (pendingSpell) return;
@@ -395,12 +434,19 @@ export default function ThreeWheel_WinsOnly({
         }
       })();
 
-      setPendingSpell({
+      const descriptor: PendingSpellDescriptor = {
         side: localLegacySide,
         spell,
         target: initialTarget,
         spentMana: effectiveCost,
-      });
+      };
+
+      if (requiresManualTarget) {
+        setPendingSpell({ ...descriptor, target: null });
+        return;
+      }
+
+      resolvePendingSpell(descriptor, initialTarget);
     },
     [
       computeSpellCost,
@@ -408,39 +454,12 @@ export default function ThreeWheel_WinsOnly({
       localMana,
       pendingSpell,
       phase,
+      resolvePendingSpell,
       setShowGrimoire,
       setManaPools,
       setPendingSpell,
     ]
   );
-
-  useEffect(() => {
-    if (!pendingSpell) return;
-
-    const { spell, target } = pendingSpell;
-    const awaitingCardTarget =
-      spell.target.type === "card" && spell.target.automatic !== true && !target;
-    if (awaitingCardTarget) {
-      return;
-    }
-
-    const context = {
-      caster: casterFighter,
-      opponent: opponentFighter,
-      phase,
-      target: target ?? undefined,
-      state: spellRuntimeStateRef.current,
-    } as const;
-
-    try {
-      spell.resolver(context);
-    } catch (error) {
-      console.error("Spell resolution failed", error);
-    } finally {
-      setPendingSpell(null);
-      setShowGrimoire(false);
-    }
-  }, [casterFighter, opponentFighter, pendingSpell, phase, setPendingSpell, setShowGrimoire]);
 
   const handlePendingSpellCancel = useCallback(
     (refundMana: boolean) => {
@@ -464,35 +483,33 @@ export default function ThreeWheel_WinsOnly({
 
   const handleSpellTargetSelect = useCallback(
     (cardId: string, ownerSide: LegacySide, cardName: string) => {
-      setPendingSpell((current) => {
-        if (!current) return current;
+      if (!pendingSpell) return;
 
-        const definition = current.spell.target;
-        if (definition.type !== "card" || definition.automatic === true) {
-          return current;
-        }
+      const definition = pendingSpell.spell.target;
+      if (definition.type !== "card" || definition.automatic === true) {
+        return;
+      }
 
-        const candidateOwnership: SpellTargetOwnership =
-          ownerSide === current.side ? "ally" : "enemy";
+      const candidateOwnership: SpellTargetOwnership =
+        ownerSide === pendingSpell.side ? "ally" : "enemy";
 
-        const allowedOwnership = definition.ownership;
-        const isAllowed =
-          allowedOwnership === "any" || allowedOwnership === candidateOwnership;
-        if (!isAllowed) {
-          return current;
-        }
+      const allowedOwnership = definition.ownership;
+      const isAllowed =
+        allowedOwnership === "any" || allowedOwnership === candidateOwnership;
+      if (!isAllowed) {
+        return;
+      }
 
-        const nextTarget: SpellTargetInstance = {
-          type: "card",
-          cardId,
-          owner: candidateOwnership,
-          cardName,
-        };
+      const nextTarget: SpellTargetInstance = {
+        type: "card",
+        cardId,
+        owner: candidateOwnership,
+        cardName,
+      };
 
-        return { ...current, target: nextTarget };
-      });
+      resolvePendingSpell(pendingSpell, nextTarget);
     },
-    [setPendingSpell]
+    [pendingSpell, resolvePendingSpell]
   );
 
   const awaitingSpellTarget =
