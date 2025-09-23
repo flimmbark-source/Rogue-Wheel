@@ -391,113 +391,6 @@ const renderWheelPanel = (i: number) => {
       setDragCardId(null);
       return;
     }
-    const isLocalPlayer = localLegacySide === "player";
-    const fromHand  = (isLocalPlayer ? player.hand  : enemy.hand ).find((c) => c.id === id);
-    const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as
-      | Card | undefined;
-    const card = fromHand || fromSlots || null;
-    if (card) assignToWheelLocal(i, card as Card);
-    setDragOverWheel(null);
-    setDragCardId(null);
-  };
-  const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
-    e.preventDefault();
-    handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
-  };
-
-  const tapAssignIfSelected = () => {
-    if (!selectedCardId) return;
-    const isLocalPlayer = localLegacySide === "player";
-    const card =
-      (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === selectedCardId) ||
-      (isLocalPlayer ? assign.player : assign.enemy).find((c) => c?.id === selectedCardId) ||
-      null;
-    if (card) assignToWheelLocal(i, card as Card);
-  };
-
-  // --- Only the center wheel + right slot (your focus) ---
-  return (
-    <div className="flex items-center justify-center gap-2" style={{ height: ws + 16 }}>
-      {/* Center wheel */}
-      <div
-        data-drop="wheel"
-        data-idx={i}
-        className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
-        style={{ width: ws, height: ws }}
-        onDragOver={onZoneDragOver}
-        onDragEnter={onZoneDragOver}
-        onDragLeave={onZoneLeave}
-        onDrop={onZoneDrop}
-        onClick={(e) => {
-          e.stopPropagation();
-          tapAssignIfSelected();
-        }}
-        aria-label={`Wheel ${i + 1}`}
-      >
-        <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-full"
-          style={{
-            boxShadow: dragOverWheel === i ? "0 0 0 2px rgba(251,191,36,0.7) inset" : "none",
-          }}
-        />
-      </div>
-
-      {/* Right slot */}
-      <div
-        className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-        style={{
-          backgroundColor:
-            dragOverWheel === i || isRightSelected ? "rgba(182,138,78,.12)" : THEME.slotBg,
-          borderColor:
-            dragOverWheel === i || isRightSelected ? THEME.brass : THEME.slotBorder,
-          boxShadow: isRightSelected ? "0 0 0 1px rgba(251,191,36,0.7)" : "none",
-        }}
-        aria-label={`Wheel ${i + 1} right slot`}
-        data-drop="slot"
-        data-idx={i}
-        onDragOver={onZoneDragOver}
-        onDragEnter={onZoneDragOver}
-        onDragLeave={onZoneLeave}
-        onDrop={(e) => onZoneDrop(e, "enemy")}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (rightSlot.side !== localLegacySide) return;
-          if (selectedCardId) {
-            tapAssignIfSelected();
-          } else if (rightSlot.card) {
-            setSelectedCardId(rightSlot.card.id);
-          }
-        }}
-      >
-        {shouldShowRightCard ? (
-          renderSlotCard(rightSlot, isRightSelected /* <- coming from your outer scope */)
-        ) : (
-          <div className="text-[11px] opacity-60 text-center">
-            {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-  const onZoneDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (dragCardId && active[i]) setDragOverWheel(i);
-  };
-  const onZoneLeave = () => {
-    if (dragCardId) setDragOverWheel(null);
-  };
-  const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
-    if (!id || !active[i]) return;
-    const intendedSide = targetSide ?? localLegacySide;
-    if (intendedSide !== localLegacySide) {
-      setDragOverWheel(null);
-      setDragCardId(null);
-      return;
-    }
 
     const isLocalPlayer = localLegacySide === "player";
     const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
@@ -909,137 +802,97 @@ const renderWheelPanel = (i: number) => {
       </div>
     </div>
   </div>
+{/* Mobile / <sm: centered modal */}
+<div className="fixed inset-x-4 top-20 z-[80] sm:hidden flex justify-center">
+  <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
+    <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-4 py-3">
+      <div className="text-base font-semibold text-slate-100">Grimoire</div>
+      <button
+        onClick={() => setShowGrimoire(false)}
+        className="text-xl leading-none text-slate-300 transition hover:text-white"
+        aria-label="Close grimoire"
+      >
+        ×
+      </button>
+    </div>
 
-  {/* Mobile / <sm: centered modal */}
-  <div className="fixed inset-x-4 top-20 z-[80] sm:hidden flex justify-center">
-    <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
-      <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-4 py-3">
-        <div className="text-base font-semibold text-slate-100">Grimoire</div>
-        <button
-          onClick={() => setShowGrimoire(false)}
-          className="text-xl leading-none text-slate-300 transition hover:text-white"
-          aria-label="Close grimoire"
-        >
-          ×
-        </button>
+    {/* Same shared content as above */}
+    <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
+      <div className="flex items-center justify-between text-[11px] text-slate-300">
+        <span className="flex items-center gap-1">
+          <span aria-hidden className="text-sky-300">🔹</span>
+          <span>Mana</span>
+        </span>
+        <span className="font-semibold text-slate-100">{localMana}</span>
       </div>
 
-      {/* Same shared content as above */}
-      <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
-        <div className="flex items-center justify-between text-[11px] text-slate-300">
-          <span className="flex items-center gap-1">
-            <span aria-hidden className="text-sky-300">🔹</span>
-            <span>Mana</span>
-          </span>
-          <span className="font-semibold text-slate-100">{localMana}</span>
-        </div>
+      <div className="mt-3 space-y-2">
+        {localSpellDefinitions.length === 0 ? (
+          <div className="italic text-slate-400">No spells learned yet.</div>
+        ) : (
+          <ul className="space-y-2">
+            {localSpellDefinitions.map((spell) => {
+              const allowedPhases = spell.allowedPhases ?? ["choose"];
+              const phaseAllowed = allowedPhases.includes(phase);
+              const computedCostRaw = spell.variableCost
+                ? spell.variableCost({
+                    caster: casterFighter,
+                    opponent: opponentFighter,
+                    phase,
+                    state: {},
+                  })
+                : spell.cost;
+              const effectiveCost = Number.isFinite(computedCostRaw)
+                ? Math.max(0, Math.round(computedCostRaw as number))
+                : spell.cost;
+              const canAfford = localMana >= effectiveCost;
+              const disabled = !phaseAllowed || !canAfford;
 
-        <div className="mt-3 space-y-2">
-          {localSpellDefinitions.length === 0 ? (
-            <div className="italic text-slate-400">No spells learned yet.</div>
-          ) : (
-            <ul className="space-y-2">
-              {localSpellDefinitions.map((spell) => {
-                const allowedPhases = spell.allowedPhases ?? ["choose"];
-                const phaseAllowed = allowedPhases.includes(phase);
-                const computedCostRaw = spell.variableCost
-                  ? spell.variableCost({
-                      caster: casterFighter,
-                      opponent: opponentFighter,
-                      phase,
-                      state: {},
-                    })
-                  : spell.cost;
-                const effectiveCost = Number.isFinite(computedCostRaw)
-                  ? Math.max(0, Math.round(computedCostRaw as number))
-                  : spell.cost;
-                const canAfford = localMana >= effectiveCost;
-                const disabled = !phaseAllowed || !canAfford;
-
-                return (
-                  <li key={spell.id}>
-                    <button
-                      type="button"
-                      onClick={() => handleSpellActivate(spell)}
-                      disabled={disabled}
-                      className={`w-full rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-left transition ${
-                        disabled
-                          ? "cursor-not-allowed opacity-50"
-                          : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
-                          {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
-                          <span>{spell.name}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[11px] text-sky-200">
-                          <span aria-hidden className="text-[14px] leading-none">🔹</span>
-                          <span>{effectiveCost}</span>
-                        </div>
+              return (
+                <li key={spell.id}>
+                  <button
+                    type="button"
+                    onClick={() => handleSpellActivate(spell)}
+                    disabled={disabled}
+                    className={`w-full rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-left transition ${
+                      disabled
+                        ? "cursor-not-allowed opacity-50"
+                        : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
+                        {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
+                        <span>{spell.name}</span>
                       </div>
-                      <div className="mt-1 text-[11px] leading-snug text-slate-300">
-                        {spell.description}
-                      </div>
-                      {!phaseAllowed && (
-                        <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
-                          Unavailable this phase
-                        </div>
-                      )}
-                      {!canAfford && (
-                        <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
-                          Not enough mana
-                        </div>
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-    
+                      <div className="flex items-center gap-1 text-[11px] text-sky-200">
+                        <span aria-hidden className="text-[14px] leading-none">🔹</span>
+                        <span>{effectiveCost}</span>
                       </div>
                     </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-          {phase === "choose" && (
-            <div className="flex flex-col items-end gap-1">
-              <button
-                disabled={resolveButtonDisabled}
-                onClick={handleRevealClick}
-                className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold disabled:opacity-50"
-              >
-                {resolveButtonLabel}
-              </button>
-              {isMultiplayer && resolveStatusText && (
-                <span className="text-[11px] italic text-amber-200 text-right leading-tight">
-                  {resolveStatusText}
-                </span>
-              )}
-            </div>
-          )}
-          {phase === "roundEnd" && (
-            <div className="flex flex-col items-end gap-1">
-              <button
-                disabled={advanceButtonDisabled}
-                onClick={handleNextClick}
-                className="px-2.5 py-0.5 rounded bg-emerald-500 text-slate-900 font-semibold disabled:opacity-50"
-              >
-                {advanceButtonLabel}
-              </button>
-              {isMultiplayer && advanceStatusText && (
-                <span className="text-[11px] italic text-emerald-200 text-right leading-tight">
-                  {advanceStatusText}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+                    <div className="mt-1 text-[11px] leading-snug text-slate-300">
+                      {spell.description}
+                    </div>
+                    {!phaseAllowed && (
+                      <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
+                        Unavailable this phase
+                      </div>
+                    )}
+                    {!canAfford && (
+                      <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
+                        Not enough mana
+                      </div>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
+    </div> {/* end scroll area */}
+  </div>   {/* end modal card */}
+</div>     {/* end centered modal container */}
 
       {/* HUD */}
       <div className="relative z-10">
