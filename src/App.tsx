@@ -260,25 +260,58 @@ export default function ThreeWheel_WinsOnly({
   const pendingSpell: PendingSpellDescriptor | null = null;
   const manaPools = useMemo(() => ({ player: 0, enemy: 0 }), []);
   const localMana = manaPools[localLegacySide];
-  const localSpells = useMemo<string[]>(() => [], []);
-  const remoteSpells = useMemo<string[]>(() => [], []);
+
+  const [localSelection, setLocalSelection] = useState<ArchetypeId>(
+    () => DEFAULT_ARCHETYPE
+  );
+  const remoteSelection: ArchetypeId = DEFAULT_ARCHETYPE;
+  const [localReady, setLocalReady] = useState(() => !isGrimoireMode);
+  const remoteReady = true;
+  const [showArchetypeModal, setShowArchetypeModal] = useState(isGrimoireMode);
+  const [archetypeGateOpen, setArchetypeGateOpen] = useState(
+    () => !isGrimoireMode
+  );
+
+  useEffect(() => {
+    if (isGrimoireMode) {
+      setLocalSelection(DEFAULT_ARCHETYPE);
+      setLocalReady(false);
+      setShowArchetypeModal(true);
+      setArchetypeGateOpen(false);
+    } else {
+      setLocalReady(true);
+      setShowArchetypeModal(false);
+      setArchetypeGateOpen(true);
+    }
+  }, [isGrimoireMode]);
+
+  const localSpells = useMemo<string[]>(() => {
+    const def = ARCHETYPE_DEFINITIONS[localSelection];
+    return def ? def.spellIds : [];
+  }, [localSelection]);
+
+  const remoteSpells = useMemo<string[]>(() => {
+    const def = ARCHETYPE_DEFINITIONS[remoteSelection];
+    return def ? def.spellIds : [];
+  }, [remoteSelection]);
+
   const localSpellDefinitions = useMemo(
     () => getSpellDefinitions(localSpells),
     [localSpells]
   );
-  const showArchetypeModal = false;
-  const archetypeGateOpen = true;
-  const localSelection: ArchetypeId | null = null;
-  const remoteSelection: ArchetypeId | null = null;
-  const localReady = true;
-  const remoteReady = true;
+
   const readyButtonLabel = isMultiplayer ? "Ready" : "Next";
-  const readyButtonDisabled = false;
-  const handleLocalArchetypeSelect = useCallback((_: ArchetypeId) => {
-    console.warn("Archetype selection is not yet implemented.");
+  const readyButtonDisabled = localReady;
+
+  const handleLocalArchetypeSelect = useCallback((id: ArchetypeId) => {
+    setLocalSelection(id);
+    setLocalReady(false);
   }, []);
+
   const handleLocalArchetypeReady = useCallback(() => {
-    console.warn("Archetype ready handling is not yet implemented.");
+    setLocalReady(true);
+    setShowArchetypeModal(false);
+    setArchetypeGateOpen(true);
   }, []);
   const handleSpellActivate = useCallback((spell: SpellDefinition) => {
     console.warn("Spell activation is not yet implemented.", spell);
