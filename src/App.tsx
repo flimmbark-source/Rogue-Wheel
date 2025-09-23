@@ -290,6 +290,7 @@ export default function ThreeWheel_WinsOnly({
   const reservePenalties = useMemo(() => createReservePenaltyState(), []);
   const initiativeOverride: LegacySide | null = null;
 
+  const infoPopoverRootRef = useRef<HTMLDivElement | null>(null);
   const [showRef, setShowRef] = useState(false);
   const [showGrimoire, setShowGrimoire] = useState(false);
 
