@@ -312,7 +312,6 @@ export default function ThreeWheel_WinsOnly({
 
   const casterFighter = localLegacySide === "player" ? player : enemy;
   const opponentFighter = localLegacySide === "player" ? enemy : player;
-  const readyButtonLabel = isMultiplayer ? "Ready" : "Next";
   const readyButtonDisabled = localReady;
 
   const handleLocalArchetypeSelect = useCallback((id: ArchetypeId) => {
@@ -632,7 +631,6 @@ const renderWheelPanel = (i: number) => {
           remoteSpells={remoteSpells}
           onSelect={handleLocalArchetypeSelect}
           onReady={handleLocalArchetypeReady}
-          readyButtonLabel={readyButtonLabel}
           readyButtonDisabled={readyButtonDisabled}
         />
       )}
