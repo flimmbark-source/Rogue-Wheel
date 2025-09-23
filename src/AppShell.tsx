@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import App from "./App";
 import HubRoute from "./HubRoute";
 import MultiplayerRoute from "./MultiplayerRoute";
-import type { Players, Side } from "./game/types";
+import { TARGET_WINS, type Players, type Side } from "./game/types";
 import ProfilePage from "./ProfilePage";
 import ModeSelect from "./ModeSelect";
 import { DEFAULT_GAME_MODE, type GameMode } from "./gameModes";
@@ -25,6 +25,7 @@ export default function AppShell() {
   const [view, setView] = useState<View>({ key: "hub" });
   const [mpPayload, setMpPayload] = useState<MPStartPayload | null>(null);
   const [gameMode, setGameMode] = useState<GameMode>(DEFAULT_GAME_MODE);
+  const [soloTargetWins, setSoloTargetWins] = useState<number>(TARGET_WINS);
 
   if (view.key === "hub") {
     return (
@@ -71,17 +72,22 @@ export default function AppShell() {
     const isMp = view.from === "mp";
     const confirmLabel = view.next.mode === "mp" ? "Launch Match" : "Start Run";
     const backLabel = isMp ? "← Back to Lobby" : "← Back to Main Menu";
+    const initialTargetWins = view.next.mode === "mp"
+      ? view.next.mpPayload?.targetWins ?? mpPayload?.targetWins ?? TARGET_WINS
+      : soloTargetWins;
 
     return (
       <ModeSelect
         initialMode={gameMode}
+        initialTargetWins={initialTargetWins}
+        showTargetWinsInput={view.next.mode === "solo"}
         backLabel={backLabel}
         confirmLabel={confirmLabel}
         onBack={() => {
           setView({ key: view.from });
           setMpPayload(null);
         }}
-        onConfirm={(mode) => {
+        onConfirm={(mode, winsGoal) => {
           setGameMode(mode);
 
           if (view.next.mode === "mp") {
@@ -90,11 +96,13 @@ export default function AppShell() {
               setView({ key: "mp" });
               return;
             }
-            setMpPayload(payload);
-            setView({ key: "game", mode: "mp", mpPayload: payload });
+            const nextPayload = { ...payload, targetWins: winsGoal };
+            setMpPayload(nextPayload);
+            setView({ key: "game", mode: "mp", mpPayload: nextPayload });
             return;
           }
 
+          setSoloTargetWins(winsGoal);
           setView({ key: "game", mode: "solo" });
         }}
       />
@@ -124,6 +132,7 @@ export default function AppShell() {
     };
     localSide = "left";
     localPlayerId = "local";
+    extraProps = { targetWins: soloTargetWins };
   }
 
   const exitToMenu = () => {
