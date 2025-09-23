@@ -357,137 +357,18 @@ export default function ThreeWheel_WinsOnly({
   }, [wins]);
 
   // --- render helpers ---
-  type SlotView = { side: LegacySide; card: Card | null; name: string };
-
-  const renderWheelPanel = (i: number) => {
-    const pc = assign.player[i];
-    const ec = assign.enemy[i];
-
-    const leftSlot: SlotView = { side: "player", card: pc, name: namesByLegacy.player };
-    const rightSlot: SlotView = { side: "enemy", card: ec, name: namesByLegacy.enemy };
-
-    const ws = Math.round(lockedWheelSize ?? wheelSize);
-
-    const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
-    const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
-
-    const shouldShowLeftCard =
-      !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
-    const shouldShowRightCard =
-      !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
-
-    // --- layout numbers that must match the classes below ---
-    const slotW = 80;
-    const gapX = 16;   // gap-2 => 8px, twice between three items => 16
-    const paddingX = 16; // p-2 => 8 + 8
-    const borderX = 4;   // border-2 => 2 + 2
-    const EXTRA_H = 16;
-
-    // panel width (border-box) so wheel is visually centered
-    const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
-
-    const renderSlotCard = (slot: SlotView, isSlotSelected: boolean) => {
-      if (!slot.card) return null;
-      const card = slot.card;
-      const interactable = slot.side === localLegacySide && phase === "choose";
-
-      const handlePick = () => {
-        if (!interactable) return;
-        if (selectedCardId) {
-          tapAssignIfSelected();
-        } else {
-          setSelectedCardId(card.id);
-        }
-      };
-
-      const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
-        if (!interactable) return;
-        setSelectedCardId(card.id);
-        setDragCardId(card.id);
-        try {
-          e.dataTransfer.setData("text/plain", card.id);
-        } catch {}
-        e.dataTransfer.effectAllowed = "move";
-      };
-
-      const handleDragEnd = () => {
-        setDragCardId(null);
-        setDragOverWheel(null);
-      };
-
-      const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-        if (!interactable) return;
-        e.stopPropagation();
-        startPointerDrag(card, e);
-      };
-
-      return (
-        <StSCard
-          card={card}
-          size="sm"
-          disabled={!interactable}
-          selected={isSlotSelected}
-          onPick={handlePick}
-          draggable={interactable}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onPointerDown={handlePointerDown}
-        />
-      );
-    };
-
-    const onZoneDragOver = (e: React.DragEvent) => {
-      e.preventDefault();
-      if (dragCardId && active[i]) setDragOverWheel(i);
-    };
-    const onZoneLeave = () => {
-      if (dragCardId) setDragOverWheel(null);
-    };
-    const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
-      if (!id || !active[i]) return;
-      const intendedSide = targetSide ?? localLegacySide;
-      if (intendedSide !== localLegacySide) {
-        setDragOverWheel(null);
-        setDragCardId(null);
-        return;
-      }
-
-      const isLocalPlayer = localLegacySide === "player";
-      const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
-      const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as
-        | Card
-        | undefined;
-      const card = fromHand || fromSlots || null;
-      if (card) assignToWheelLocal(i, card as Card);
-      setDragOverWheel(null);
-      setDragCardId(null);
-    };
-    const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
-      e.preventDefault();
-      handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
-    };
-
-    const tapAssignIfSelected = () => {
-      if (!selectedCardId) return;
-      const isLocalPlayer = localLegacySide === "player";
-      const card =
-        (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === selectedCardId) ||
-        (isLocalPlayer ? assign.player : assign.enemy).find((c) => c?.id === selectedCardId) ||
-        null;
-      if (card) assignToWheelLocal(i, card as Card);
-    };
 type SlotView = { side: LegacySide; card: Card | null; name: string };
 
 const renderWheelPanel = (i: number) => {
   const pc = assign.player[i];
   const ec = assign.enemy[i];
 
-  const leftSlot: SlotView = { side: "player", card: pc, name: namesByLegacy.player };
-  const rightSlot: SlotView = { side: "enemy", card: ec, name: namesByLegacy.enemy };
+  const leftSlot: SlotView  = { side: "player", card: pc, name: namesByLegacy.player };
+  const rightSlot: SlotView = { side: "enemy",  card: ec, name: namesByLegacy.enemy  };
 
   const ws = Math.round(lockedWheelSize ?? wheelSize);
 
-  const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
+  const isLeftSelected  = !!leftSlot.card  && selectedCardId === leftSlot.card.id;
   const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
 
   const shouldShowLeftCard =
@@ -495,15 +376,25 @@ const renderWheelPanel = (i: number) => {
   const shouldShowRightCard =
     !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
 
-  // --- layout numbers that must match the classes below ---
-  const slotW = 80;     // w-[80px] on both slots
-  const gapX = 16;      // gap-2 => 8px, two gaps between three items => 16
-  const paddingX = 16;  // p-2 => 8px left + 8px right
-  const borderX = 4;    // border-2 => 2px left + 2px right
-  const EXTRA_H = 16;   // extra breathing room inside the panel (change to tweak height)
+  // layout numbers
+  const slotW = 80;
+  const gapX = 16;   // gap-2 (8px) * 2
+  const paddingX = 16; // p-2 (8px + 8px)
+  const borderX = 4;   // border-2 (2px + 2px)
+  const EXTRA_H = 16;
 
   // panel width (border-box) so wheel is visually centered
   const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
+
+  const tapAssignIfSelected = () => {
+    if (!selectedCardId) return;
+    const isLocalPlayer = localLegacySide === "player";
+    const card =
+      (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === selectedCardId) ||
+      (isLocalPlayer ? assign.player : assign.enemy).find((c) => c?.id === selectedCardId) ||
+      null;
+    if (card) assignToWheelLocal(i, card as Card);
+  };
 
   const renderSlotCard = (slot: SlotView, isSlotSelected: boolean) => {
     if (!slot.card) return null;
@@ -586,16 +477,6 @@ const renderWheelPanel = (i: number) => {
     handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
   };
 
-  const tapAssignIfSelected = () => {
-    if (!selectedCardId) return;
-    const isLocalPlayer = localLegacySide === "player";
-    const card =
-      (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === selectedCardId) ||
-      (isLocalPlayer ? assign.player : assign.enemy).find((c) => c?.id === selectedCardId) ||
-      null;
-    if (card) assignToWheelLocal(i, card as Card);
-  };
-
   const panelShadow =
     "0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)";
 
@@ -623,10 +504,8 @@ const renderWheelPanel = (i: number) => {
             style={{
               width: 10,
               height: 10,
-              background:
-                wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : "transparent",
-              borderColor:
-                wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : THEME.panelBorder,
+              background: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : "transparent",
+              borderColor: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : THEME.panelBorder,
               boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
             }}
           />
@@ -636,10 +515,8 @@ const renderWheelPanel = (i: number) => {
             style={{
               width: 10,
               height: 10,
-              background:
-                wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : "transparent",
-              borderColor:
-                wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : THEME.panelBorder,
+              background: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : "transparent",
+              borderColor: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : THEME.panelBorder,
               boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
             }}
           />
@@ -750,6 +627,7 @@ const renderWheelPanel = (i: number) => {
   );
 };
 
+
               </div>
             )}
           </div>
@@ -819,280 +697,6 @@ const renderWheelPanel = (i: number) => {
     );
   };
 
-const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
-  const dockRef = useRef<HTMLDivElement | null>(null);
-  const [liftPx, setLiftPx] = useState<number>(18);
-
-  useEffect(() => {
-    const compute = () => {
-      const root = dockRef.current;
-      if (!root) return;
-      const sample = root.querySelector("[data-hand-card]") as HTMLElement | null;
-      if (!sample) return;
-      const h = sample.getBoundingClientRect().height || 96;
-      const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
-      setLiftPx(nextLift);
-      const clearance = Math.round(h + nextLift + 12);
-      onMeasure?.(clearance);
-    };
-    compute();
-    window.addEventListener("resize", compute);
-    window.addEventListener("orientationchange", compute);
-    return () => {
-      window.removeEventListener("resize", compute);
-      window.removeEventListener("orientationchange", compute);
-    };
-  }, [onMeasure]);
-
-  const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
-
-  return (
-    <div
-      ref={dockRef}
-      className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none"
-      style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) - 30px)" }}
-    >
-      <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
-        {localFighter.hand.map((card, idx) => {
-          const isSelected = selectedCardId === card.id;
-          return (
-            <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
-              <motion.div
-                data-hand-card
-                initial={false}
-                animate={{
-                  y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx,
-                  opacity: 1,
-                  scale: isSelected ? 1.06 : 1,
-                }}
-                whileHover={{
-                  y: -Math.max(8, liftPx - 10),
-                  opacity: 1,
-                  scale: 1.04,
-                }}
-                transition={{ type: "spring", stiffness: 320, damping: 22 }}
-                className={`drop-shadow-xl ${isSelected ? "ring-2 ring-amber-300" : ""}`}
-              >
-                <button
-                  data-hand-card
-                  className="pointer-events-auto"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!selectedCardId) {
-                      setSelectedCardId(card.id);
-                      return;
-                    }
-                    if (selectedCardId === card.id) {
-                      setSelectedCardId(null);
-                      return;
-                    }
-                    const lane =
-                      localLegacySide === "player" ? assign.player : assign.enemy;
-                    const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
-                    if (slotIdx !== -1) {
-                      assignToWheelLocal(slotIdx, card);
-                      return;
-                    }
-                    setSelectedCardId(card.id);
-                  }}
-                  draggable
-                  onDragStart={(e) => {
-                    setDragCardId(card.id);
-                    try {
-                      e.dataTransfer.setData("text/plain", card.id);
-                    } catch {}
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragEnd={() => setDragCardId(null)}
-                  onPointerDown={(e) => startPointerDrag(card, e)}
-                  aria-pressed={isSelected}
-                  aria-label={`Select ${card.name}`}
-                >
-                  <StSCard card={card} />
-                </button>
-              </motion.div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Touch drag ghost */}
-      {isPtrDragging && ptrDragCard && (
-        <div
-          style={{
-            position: "fixed",
-            left: 0,
-            top: 0,
-            transform: `translate(${ptrPos.current.x - 48}px, ${ptrPos.current.y - 64}px)`,
-            pointerEvents: "none",
-            zIndex: 9999,
-          }}
-        >
-          <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
-            <StSCard card={ptrDragCard} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-type HandDockProps = {
-  localLegacySide: LegacySide;
-  player: Fighter;
-  enemy: Fighter;
-  selectedCardId: string | null;
-  setSelectedCardId: (id: string | null) => void;
-  assign: { player: (Card | null)[]; enemy: (Card | null)[] };
-  assignToWheelLocal: (idx: number, card: Card) => void;
-  setDragCardId: (id: string | null) => void;
-  startPointerDrag: (card: Card, e: React.PointerEvent | PointerEvent) => void;
-  isPtrDragging: boolean;
-  ptrDragCard: Card | null;
-  ptrPos: { current: { x: number; y: number } };
-  onMeasure?: (px: number) => void;
-};
-
-const HandDock: React.FC<HandDockProps> = ({
-  localLegacySide,
-  player,
-  enemy,
-  selectedCardId,
-  setSelectedCardId,
-  assign,
-  assignToWheelLocal,
-  setDragCardId,
-  startPointerDrag,
-  isPtrDragging,
-  ptrDragCard,
-  ptrPos,
-  onMeasure,
-}) => {
-  const dockRef = useRef<HTMLDivElement | null>(null);
-  const [liftPx, setLiftPx] = useState<number>(18);
-
-  useEffect(() => {
-    const compute = () => {
-      const root = dockRef.current;
-      if (!root) return;
-      const sample = root.querySelector("[data-hand-card]") as HTMLElement | null;
-      if (!sample) return;
-      const h = sample.getBoundingClientRect().height || 96;
-      const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
-      setLiftPx(nextLift);
-      const clearance = Math.round(h + nextLift + 12);
-      onMeasure?.(clearance);
-    };
-    compute();
-    window.addEventListener("resize", compute);
-    window.addEventListener("orientationchange", compute);
-    return () => {
-      window.removeEventListener("resize", compute);
-      window.removeEventListener("orientationchange", compute);
-    };
-  }, [onMeasure]);
-
-  const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
-
-  return (
-    <div
-      ref={dockRef}
-      className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none"
-      style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) - 30px)" }}
-    >
-      <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
-        {localFighter.hand.map((card, idx) => {
-          const isSelected = selectedCardId === card.id;
-          return (
-            <div
-              key={card.id}
-              className="group relative pointer-events-auto"
-              style={{ zIndex: 10 + idx }}
-            >
-              <motion.div
-                data-hand-card
-                initial={false}
-                animate={{
-                  y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx,
-                  opacity: 1,
-                  scale: isSelected ? 1.06 : 1,
-                }}
-                whileHover={{
-                  y: -Math.max(8, liftPx - 10),
-                  opacity: 1,
-                  scale: 1.04,
-                }}
-                transition={{ type: "spring", stiffness: 320, damping: 22 }}
-                className={`drop-shadow-xl ${isSelected ? "ring-2 ring-amber-300" : ""}`}
-              >
-                <button
-                  data-hand-card
-                  className="pointer-events-auto"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!selectedCardId) {
-                      setSelectedCardId(card.id);
-                      return;
-                    }
-                    if (selectedCardId === card.id) {
-                      setSelectedCardId(null);
-                      return;
-                    }
-                    const lane =
-                      localLegacySide === "player" ? assign.player : assign.enemy;
-                    const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
-                    if (slotIdx !== -1) {
-                      assignToWheelLocal(slotIdx, card);
-                      return;
-                    }
-                    setSelectedCardId(card.id);
-                  }}
-                  draggable
-                  onDragStart={(e) => {
-                    setDragCardId(card.id);
-                    try {
-                      e.dataTransfer.setData("text/plain", card.id);
-                    } catch {}
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragEnd={() => setDragCardId(null)}
-                  onPointerDown={(e) => startPointerDrag(card, e)}
-                  aria-pressed={isSelected}
-                  aria-label={`Select ${card.name}`}
-                >
-                  <StSCard card={card} />
-                </button>
-              </motion.div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Touch drag ghost (mobile) */}
-      {isPtrDragging && ptrDragCard && (
-        <div
-          style={{
-            position: "fixed",
-            left: 0,
-            top: 0,
-            transform: `translate(${ptrPos.current.x - 48}px, ${ptrPos.current.y - 64}px)`,
-            pointerEvents: "none",
-            zIndex: 9999,
-          }}
-          aria-hidden
-        >
-          <div
-            style={{
-              transform: "scale(0.9)",
-              filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))",
-            }}
-          >
-            <StSCard card={ptrDragCard} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 
   const localResolveReady = resolveVotes[localLegacySide];
