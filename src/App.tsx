@@ -255,7 +255,42 @@ export default function ThreeWheel_WinsOnly({
     handleExitClick,
   } = actions;
 
+  const isGrimoireMode = gameMode === "grimoire";
+  const effectiveGameMode = gameMode;
+  const pendingSpell: PendingSpellDescriptor | null = null;
+  const manaPools = useMemo(() => ({ player: 0, enemy: 0 }), []);
+  const localMana = manaPools[localLegacySide];
+  const localSpells = useMemo<string[]>(() => [], []);
+  const remoteSpells = useMemo<string[]>(() => [], []);
+  const localSpellDefinitions = useMemo(
+    () => getSpellDefinitions(localSpells),
+    [localSpells]
+  );
+  const showArchetypeModal = false;
+  const archetypeGateOpen = true;
+  const localSelection: ArchetypeId | null = null;
+  const remoteSelection: ArchetypeId | null = null;
+  const localReady = true;
+  const remoteReady = true;
+  const readyButtonLabel = isMultiplayer ? "Ready" : "Next";
+  const readyButtonDisabled = false;
+  const handleLocalArchetypeSelect = useCallback((_: ArchetypeId) => {
+    console.warn("Archetype selection is not yet implemented.");
+  }, []);
+  const handleLocalArchetypeReady = useCallback(() => {
+    console.warn("Archetype ready handling is not yet implemented.");
+  }, []);
+  const handleSpellActivate = useCallback((spell: SpellDefinition) => {
+    console.warn("Spell activation is not yet implemented.", spell);
+  }, []);
+  const wheelDamage = useMemo(() => createWheelSideState(0), []);
+  const wheelMirror = useMemo(() => createWheelSideState(false), []);
+  const wheelLocks = useMemo(() => createWheelLockState(), []);
+  const pointerShifts = useMemo(() => createPointerShiftState(), []);
+  const reservePenalties = useMemo(() => createReservePenaltyState(), []);
+  const initiativeOverride: LegacySide | null = null;
 
+  const infoPopoverRootRef = useRef<HTMLDivElement | null>(null);
   const [showRef, setShowRef] = useState(false);
   const [showGrimoire, setShowGrimoire] = useState(false);
 
