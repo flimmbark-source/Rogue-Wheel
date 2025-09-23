@@ -197,14 +197,22 @@ export default function MultiplayerRoute({
   }
 
   // Centralized member refresh that waits for sync to avoid partial sets
+  type PresencePage = PresenceMessage[] | { items?: PresenceMessage[] | undefined };
+
+  const normalizePresenceList = (page: PresencePage | null | undefined): PresenceMessage[] => {
+    if (Array.isArray(page)) return page.filter(Boolean) as PresenceMessage[];
+    if (page && Array.isArray(page.items)) {
+      return page.items.filter(Boolean) as PresenceMessage[];
+    }
+    return [];
+  };
+
   async function refreshMembers(chan: ReturnType<Realtime["channels"]["get"]>) {
     try {
       const page = await chan.presence.get({ waitForSync: true } as any);
-      const list = Array.isArray(page) ? page : page?.items ?? [];
-      const sorted = Array.from(list).sort(
-        (a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0)
-      );
-      applySnapshot(sorted as any);
+      const list = normalizePresenceList(page);
+      const sorted = [...list].sort((a, b) => (a?.timestamp ?? 0) - (b?.timestamp ?? 0));
+      applySnapshot(sorted);
     } catch (e: any) {
       setStatus(`Presence get error: ${e?.message ?? e}`);
     }
@@ -231,7 +239,7 @@ export default function MultiplayerRoute({
       if (options.requireExistingMembers) {
         try {
           const existing = await chan.presence.get({ waitForSync: true } as any);
-          const items = Array.isArray(existing) ? existing : existing?.items ?? [];
+          const items = normalizePresenceList(existing);
           const others = items.filter((p) => p.clientId && p.clientId !== clientId);
           if (others.length === 0) {
             log(`Room ${code} not found. Ask the host to create it before joining.`);
