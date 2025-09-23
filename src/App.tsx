@@ -80,15 +80,25 @@ type LegacySide = "player" | "enemy";
 type SideState<T> = Record<LegacySide, T>;
 type WheelSideState<T> = [SideState<T>, SideState<T>, SideState<T>];
 
-const createWheelSideState = <T,>(value: T): WheelSideState<T> => [
-  { player: value, enemy: value },
-  { player: value, enemy: value },
-  { player: value, enemy: value },
-];
+function createWheelSideState<T>(value: T): WheelSideState<T> {
+  return [
+    { player: value, enemy: value },
+    { player: value, enemy: value },
+    { player: value, enemy: value },
+  ];
+}
 
-const createWheelLockState = (): [boolean, boolean, boolean] => [false, false, false];
-const createPointerShiftState = (): [number, number, number] => [0, 0, 0];
-const createReservePenaltyState = (): SideState<number> => ({ player: 0, enemy: 0 });
+function createWheelLockState(): [boolean, boolean, boolean] {
+  return [false, false, false];
+}
+
+function createPointerShiftState(): [number, number, number] {
+  return [0, 0, 0];
+}
+
+function createReservePenaltyState(): SideState<number> {
+  return { player: 0, enemy: 0 };
+}
 
 // Spells-related state/types
 type PendingSpellDescriptor = { side: LegacySide; spell: SpellDefinition };
@@ -99,6 +109,7 @@ type LaneSpellState = {
   mirrorTargetCardId: string | null;
   occupantCardId: string | null;
 };
+
 
 const createEmptyLaneSpellState = (): LaneSpellState => ({
   locked: false,
@@ -384,10 +395,6 @@ export default function ThreeWheel_WinsOnly({
         if (!interactable) return;
         if (selectedCardId) {
           tapAssignIfSelected();
-        } else {
-          setSelectedCardId(card.id);
-        }
-      };
         } else {
           setSelectedCardId(card.id);
         }
