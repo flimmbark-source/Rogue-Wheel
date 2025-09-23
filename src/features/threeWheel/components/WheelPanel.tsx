@@ -2,6 +2,11 @@ import React from "react";
 import CanvasWheel, { WheelHandle } from "../../../components/CanvasWheel";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter, Phase, Section } from "../../../game/types";
+import type {
+  SpellDefinition,
+  SpellTargetInstance,
+  SpellTargetOwnership,
+} from "../../../game/spells";
 
 export type LegacySide = "player" | "enemy";
 
@@ -47,6 +52,13 @@ export interface WheelPanelProps {
   initiativeOverride: LegacySide | null;
   startPointerDrag: (card: Card, e: React.PointerEvent<HTMLButtonElement>) => void;
   wheelHudColor: string | null;
+  pendingSpell: {
+    side: LegacySide;
+    spell: SpellDefinition;
+    target: SpellTargetInstance | null;
+  } | null;
+  onSpellTargetSelect?: (cardId: string, ownerSide: LegacySide, cardName: string) => void;
+  isAwaitingSpellTarget: boolean;
 }
 
 const slotWidthPx = 80;
@@ -86,6 +98,9 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   initiativeOverride,
   startPointerDrag,
   wheelHudColor,
+  pendingSpell,
+  onSpellTargetSelect,
+  isAwaitingSpellTarget,
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -95,6 +110,17 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const lockState = wheelLocked;
   const playerPenalty = reservePenalties.player;
   const enemyPenalty = reservePenalties.enemy;
+
+  const awaitingSpellTarget =
+    isAwaitingSpellTarget &&
+    pendingSpell &&
+    pendingSpell.spell.target.type === "card" &&
+    pendingSpell.spell.target.automatic !== true &&
+    !pendingSpell.target;
+
+  const pendingOwnership: SpellTargetOwnership | null = awaitingSpellTarget
+    ? pendingSpell!.spell.target.ownership
+    : null;
 
   const leftSlot = { side: "player" as const, card: playerCard, name: namesByLegacy.player };
   const rightSlot = { side: "enemy" as const, card: enemyCard, name: namesByLegacy.enemy };
@@ -109,16 +135,58 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const shouldShowRightCard =
     !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
 
+  const leftSlotOwnership: SpellTargetOwnership | null = pendingSpell
+    ? leftSlot.side === pendingSpell.side
+      ? "ally"
+      : "enemy"
+    : null;
+  const rightSlotOwnership: SpellTargetOwnership | null = pendingSpell
+    ? rightSlot.side === pendingSpell.side
+      ? "ally"
+      : "enemy"
+    : null;
+
+  const leftSlotTargetable =
+    awaitingSpellTarget &&
+    !!leftSlot.card &&
+    (pendingOwnership === "any" || pendingOwnership === leftSlotOwnership);
+
+  const rightSlotTargetable =
+    awaitingSpellTarget &&
+    !!rightSlot.card &&
+    (pendingOwnership === "any" || pendingOwnership === rightSlotOwnership);
+
   const panelWidth = ws + slotWidthPx * 2 + gapXPx + paddingXPx + borderXPx;
 
   const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
     if (!slot.card) return null;
     const card = slot.card;
-    const interactable =
-      slot.side === localLegacySide && phase === "choose" && archetypeGateOpen;
+    const slotOwnership: SpellTargetOwnership = pendingSpell
+      ? slot.side === pendingSpell.side
+        ? "ally"
+        : "enemy"
+      : "ally";
+
+    const isSlotTargetable =
+      awaitingSpellTarget &&
+      !!slot.card &&
+      (pendingOwnership === "any" || pendingOwnership === slotOwnership);
+
+    const canInteractNormally =
+      !awaitingSpellTarget &&
+      slot.side === localLegacySide &&
+      phase === "choose" &&
+      archetypeGateOpen &&
+      isWheelActive;
+
+    const cardInteractable = canInteractNormally || isSlotTargetable;
 
     const handlePick = () => {
-      if (!interactable) return;
+      if (isSlotTargetable && slot.card) {
+        onSpellTargetSelect?.(slot.card.id, slot.side, slot.card.name);
+        return;
+      }
+      if (!canInteractNormally) return;
       if (selectedCardId) {
         tapAssignIfSelected();
       } else {
@@ -127,7 +195,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     };
 
     const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
-      if (!interactable) return;
+      if (!canInteractNormally) return;
       setSelectedCardId(card.id);
       setDragCardId(card.id);
       try {
@@ -142,7 +210,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     };
 
     const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (!interactable) return;
+      if (!canInteractNormally) return;
       e.stopPropagation();
       startPointerDrag(card, e);
     };
@@ -151,19 +219,22 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       <StSCard
         card={card}
         size="sm"
-        disabled={!interactable}
+        disabled={!cardInteractable}
         selected={isSlotSelected}
         onPick={handlePick}
-        draggable={interactable}
+        draggable={canInteractNormally}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onPointerDown={handlePointerDown}
+        className={isSlotTargetable ? "ring-2 ring-sky-400" : undefined}
+        spellTargetable={isSlotTargetable}
       />
     );
   };
 
   const onZoneDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    if (awaitingSpellTarget) return;
     if (dragCardId && isWheelActive) setDragOverWheel(index);
   };
   const onZoneLeave = () => {
@@ -171,7 +242,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   };
 
   const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
-    if (!id || !isWheelActive) return;
+    if (!id || !isWheelActive || awaitingSpellTarget) return;
     const intendedSide = targetSide ?? localLegacySide;
     if (intendedSide !== localLegacySide) {
       setDragOverWheel(null);
@@ -194,7 +265,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   };
 
   const tapAssignIfSelected = () => {
-    if (!selectedCardId) return;
+    if (!selectedCardId || awaitingSpellTarget) return;
     const isLocalPlayer = localLegacySide === "player";
     const card =
       (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === selectedCardId) ||
@@ -270,6 +341,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           onDrop={(e) => onZoneDrop(e, "player")}
           onClick={(e) => {
             e.stopPropagation();
+            if (awaitingSpellTarget) return;
             if (leftSlot.side !== localLegacySide) return;
             if (selectedCardId) {
               tapAssignIfSelected();
@@ -281,8 +353,15 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           style={{
             backgroundColor:
               dragOverWheel === index || isLeftSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
-            borderColor: dragOverWheel === index || isLeftSelected ? theme.brass : theme.slotBorder,
-            boxShadow: isLeftSelected ? "0 0 0 1px rgba(251,191,36,0.7)" : "none",
+            borderColor:
+              dragOverWheel === index || isLeftSelected || leftSlotTargetable
+                ? theme.brass
+                : theme.slotBorder,
+            boxShadow: isLeftSelected
+              ? "0 0 0 1px rgba(251,191,36,0.7)"
+              : leftSlotTargetable
+              ? "0 0 0 2px rgba(56,189,248,0.55)"
+              : "none",
           }}
           aria-label={`Wheel ${index + 1} left slot`}
         >
@@ -306,6 +385,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           onDrop={onZoneDrop}
           onClick={(e) => {
             e.stopPropagation();
+            if (awaitingSpellTarget) return;
             tapAssignIfSelected();
           }}
           aria-label={`Wheel ${index + 1}`}
@@ -326,8 +406,15 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           style={{
             backgroundColor:
               dragOverWheel === index || isRightSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
-            borderColor: dragOverWheel === index || isRightSelected ? theme.brass : theme.slotBorder,
-            boxShadow: isRightSelected ? "0 0 0 1px rgba(251,191,36,0.7)" : "none",
+            borderColor:
+              dragOverWheel === index || isRightSelected || rightSlotTargetable
+                ? theme.brass
+                : theme.slotBorder,
+            boxShadow: isRightSelected
+              ? "0 0 0 1px rgba(251,191,36,0.7)"
+              : rightSlotTargetable
+              ? "0 0 0 2px rgba(56,189,248,0.55)"
+              : "none",
           }}
           aria-label={`Wheel ${index + 1} right slot`}
           data-drop="slot"
@@ -338,6 +425,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           onDrop={(e) => onZoneDrop(e, "enemy")}
           onClick={(e) => {
             e.stopPropagation();
+            if (awaitingSpellTarget) return;
             if (rightSlot.side !== localLegacySide) return;
             if (selectedCardId) {
               tapAssignIfSelected();

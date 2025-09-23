@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter } from "../../../game/types";
 import type { LegacySide } from "./WheelPanel";
+import type { SpellDefinition, SpellTargetInstance } from "../../../game/spells";
 
 interface HandDockProps {
   localLegacySide: LegacySide;
@@ -18,6 +19,12 @@ interface HandDockProps {
   ptrDragCard: Card | null;
   ptrPos: React.MutableRefObject<{ x: number; y: number }>;
   onMeasure?: (px: number) => void;
+  pendingSpell: {
+    side: LegacySide;
+    spell: SpellDefinition;
+    target: SpellTargetInstance | null;
+  } | null;
+  isAwaitingSpellTarget: boolean;
 }
 
 const HandDock: React.FC<HandDockProps> = ({
@@ -34,6 +41,8 @@ const HandDock: React.FC<HandDockProps> = ({
   ptrDragCard,
   ptrPos,
   onMeasure,
+  pendingSpell,
+  isAwaitingSpellTarget,
 }) => {
   const dockRef = useRef<HTMLDivElement | null>(null);
   const [liftPx, setLiftPx] = useState<number>(18);
@@ -63,11 +72,18 @@ const HandDock: React.FC<HandDockProps> = ({
 
   const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
+  const awaitingTarget =
+    isAwaitingSpellTarget &&
+    pendingSpell &&
+    pendingSpell.spell.target.type === "card" &&
+    pendingSpell.spell.target.automatic !== true;
+
   return (
     <div
       ref={dockRef}
       className="fixed left-0 right-0 bottom-0 z-40 pointer-events-none select-none"
       style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + -30px)" }}
+      data-awaiting-spell-target={awaitingTarget ? "true" : "false"}
     >
       <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
         {localFighter.hand.map((card, idx) => {
@@ -89,8 +105,10 @@ const HandDock: React.FC<HandDockProps> = ({
                 <button
                   data-hand-card
                   className="pointer-events-auto"
+                  disabled={awaitingTarget}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (awaitingTarget) return;
                     if (!selectedCardId) {
                       setSelectedCardId(card.id);
                       return;
@@ -110,8 +128,9 @@ const HandDock: React.FC<HandDockProps> = ({
 
                     setSelectedCardId(card.id);
                   }}
-                  draggable
+                  draggable={!awaitingTarget}
                   onDragStart={(e) => {
+                    if (awaitingTarget) return;
                     setDragCardId(card.id);
                     try {
                       e.dataTransfer.setData("text/plain", card.id);
@@ -119,7 +138,10 @@ const HandDock: React.FC<HandDockProps> = ({
                     e.dataTransfer.effectAllowed = "move";
                   }}
                   onDragEnd={() => setDragCardId(null)}
-                  onPointerDown={(e) => startPointerDrag(card, e)}
+                  onPointerDown={(e) => {
+                    if (awaitingTarget) return;
+                    startPointerDrag(card, e);
+                  }}
                   aria-pressed={isSelected}
                   aria-label={`Select ${card.name}`}
                 >
