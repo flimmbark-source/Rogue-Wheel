@@ -301,16 +301,6 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
                 {localReady ? "Ready" : "Not Ready"}
               </span>
             </div>
-            <div className="mt-2 text-xs text-slate-300/90">
-              {localArchetypeDef ? localArchetypeDef.name : "Select an archetype"}
-            </div>
-            <ul className="mt-3 space-y-1 text-xs text-slate-100/90">
-              {localSpells.length === 0 ? (
-                <li className="italic text-slate-400">No spells yet</li>
-              ) : (
-                localSpells.map((spell) => <li key={spell}>{formatSpellId(spell)}</li>)
-              )}
-            </ul>
           </div>
 
           <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-3 sm:p-4">
@@ -324,16 +314,6 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
                 {remoteReady ? "Ready" : "Waiting"}
               </span>
             </div>
-            <div className="mt-2 text-xs text-slate-300/90">
-              {remoteArchetypeDef ? remoteArchetypeDef.name : "Awaiting selection"}
-            </div>
-            <ul className="mt-3 space-y-1 text-xs text-slate-100/90">
-              {remoteSpells.length === 0 ? (
-                <li className="italic text-slate-400">Hidden</li>
-              ) : (
-                remoteSpells.map((spell) => <li key={spell}>{formatSpellId(spell)}</li>)
-              )}
-            </ul>
           </div>
         </div>
 
