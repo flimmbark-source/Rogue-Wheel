@@ -80,8 +80,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   fireball: {
     id: "fireball",
     name: "Fireball",
-    description:
-      "Hurl a blazing orb at an enemy card. Each successive cast costs 1 additional mana this combat.",
+    description: "Reduce an enemy card's value by 2. Each cast costs 1 more mana this combat.",
     cost: 2,
     variableCost: (context) => {
       const streak = (context.state.fireballStreak as number | undefined) ?? 0;
@@ -104,8 +103,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   iceShard: {
     id: "iceShard",
     name: "Ice Shard",
-    description:
-      "Freeze an exposed enemy card, reducing its effectiveness and marking it as chilled.",
+    description: "Freeze an enemy card and mark it chilled for the round.",
     cost: 1,
     icon: "❄️",
     allowedPhases: ["choose", "showEnemy"],
@@ -124,8 +122,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   mirrorImage: {
     id: "mirrorImage",
     name: "Mirror Image",
-    description:
-      "Create an illusion of one of your cards, storing a copy for later tricks and misdirection.",
+    description: "Copy one of your cards so you can reuse its number.",
     cost: 2,
     icon: "🪞",
     allowedPhases: ["choose", "showEnemy"],
@@ -144,8 +141,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   arcaneShift: {
     id: "arcaneShift",
     name: "Arcane Shift",
-    description:
-      "Twist the active wheel's victory condition toward the caster's preferred outcome.",
+    description: "Shift the active wheel's token toward your side.",
     cost: 2,
     icon: "🌀",
     allowedPhases: ["choose", "showEnemy", "anim"],
@@ -163,8 +159,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   hex: {
     id: "hex",
     name: "Hex",
-    description:
-      "Afflict an enemy card with a weakening charm, tracking the curse for later resolution.",
+    description: "Curse an enemy card, causing it to lose 1 value when replayed.",
     cost: 1,
     icon: "🕯️",
     allowedPhases: ["choose", "showEnemy"],
@@ -183,8 +178,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   timeTwist: {
     id: "timeTwist",
     name: "Time Twist",
-    description:
-      "Fold the timeline, granting the caster momentum while queuing a delayed surge for later phases.",
+    description: "Gain initiative now and bank a delayed surge.",
     cost: 3,
     icon: "⏳",
     allowedPhases: ["anim", "roundEnd"],

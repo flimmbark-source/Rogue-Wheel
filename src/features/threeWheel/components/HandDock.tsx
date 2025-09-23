@@ -66,7 +66,7 @@ const HandDock: React.FC<HandDockProps> = ({
   return (
     <div
       ref={dockRef}
-      className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none"
+      className="fixed left-0 right-0 bottom-0 z-40 pointer-events-none select-none"
       style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + -30px)" }}
     >
       <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">

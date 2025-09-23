@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useMemo } from "react";
 import {
   ARCHETYPE_DEFINITIONS,
   ARCHETYPE_IDS,
   type ArchetypeId,
 } from "../../../game/archetypes";
+import { getSpellDefinitions, type SpellDefinition } from "../../../game/spells";
 
 export type LegacySide = "player" | "enemy";
 
@@ -54,8 +55,20 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
     ? ARCHETYPE_DEFINITIONS[remoteSelection]
     : null;
 
+  const archetypeSpellDefs = useMemo(() => {
+    return ARCHETYPE_IDS.reduce<Record<string, SpellDefinition[]>>(
+      (acc, archetypeId) => {
+        acc[archetypeId] = getSpellDefinitions(
+          ARCHETYPE_DEFINITIONS[archetypeId]?.spellIds ?? []
+        );
+        return acc;
+      },
+      {}
+    );
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4 py-6">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4 py-6">
       <div className="w-full max-w-4xl space-y-6 rounded-2xl border border-slate-700 bg-slate-900/95 p-6 shadow-2xl">
         <div className="space-y-2 text-center">
           <h2 className="text-2xl font-semibold text-amber-200">Choose Your Archetype</h2>
@@ -68,6 +81,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
         <div className="grid gap-4 sm:grid-cols-3">
           {ARCHETYPE_IDS.map((id) => {
             const def = ARCHETYPE_DEFINITIONS[id];
+            const spells = archetypeSpellDefs[id] ?? [];
             const isLocalChoice = localSelection === id;
             const isRemoteChoice = remoteSelection === id;
             return (
@@ -115,11 +129,16 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
 
                 <div className="mt-3 flex-1 rounded-lg border border-slate-700/70 bg-slate-900/60 p-3">
                   <div className="text-xs font-semibold uppercase text-slate-300/80">Spells</div>
-                  <ul className="mt-2 space-y-1 text-xs text-slate-100/90">
-                    {def.spellIds.map((spell) => (
-                      <li key={spell} className="flex items-center gap-2">
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
-                        <span>{formatSpellId(spell)}</span>
+                  <ul className="mt-2 space-y-2 text-xs text-slate-100/90">
+                    {spells.map((spell) => (
+                      <li key={spell.id} className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
+                          <span className="font-semibold text-slate-100">{spell.name}</span>
+                        </div>
+                        <p className="pl-4 text-[11px] leading-snug text-slate-300">
+                          {spell.description}
+                        </p>
                       </li>
                     ))}
                   </ul>

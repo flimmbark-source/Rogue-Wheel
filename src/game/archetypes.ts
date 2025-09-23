@@ -15,21 +15,21 @@ const definitions: Record<ArchetypeId, ArchetypeDefinition> = {
     name: "Shade Bandit",
     description:
       "A cunning rogue who manipulates momentum with tricks and stolen reserves.",
-    spellIds: ["hex", "mirror-image", "ice-shard"],
+    spellIds: ["hex", "mirrorImage", "iceShard"],
   },
   sorcerer: {
     id: "sorcerer",
     name: "Chronomancer",
     description:
       "A master of temporal magic who bends slices and values to their will.",
-    spellIds: ["fireball", "arcane-shift", "time-twist"],
+    spellIds: ["fireball", "arcaneShift", "timeTwist"],
   },
   beast: {
     id: "beast",
     name: "Wildshifter",
     description:
       "A primal force that overwhelms foes with ferocity and relentless pressure.",
-    spellIds: ["fireball", "hex", "ice-shard"],
+    spellIds: ["fireball", "hex", "iceShard"],
   },
 };
 
