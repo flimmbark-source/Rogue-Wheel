@@ -33,14 +33,6 @@ import {
   type Section,
   type Fighter,
   type Players,
-// game modules
-import {
-  SLICES,
-  type Side as TwoSide,
-  type Card,
-  type Section,
-  type Fighter,
-  type Players,
   type Phase,
   type GameMode,
   LEGACY_FROM_SIDE,
@@ -70,8 +62,6 @@ import {
 } from "./features/threeWheel/utils/combat";
 
 // components
-import { motion } from "framer-motion";
-import { Realtime } from "ably";
 import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
 import WheelPanel from "./features/threeWheel/components/WheelPanel";
 import HandDock from "./features/threeWheel/components/HandDock";
