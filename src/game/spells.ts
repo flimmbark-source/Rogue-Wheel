@@ -89,7 +89,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
         : Number(context.state.fireballBaseCost);
     },
     icon: "🔥",
-    allowedPhases: ["choose", "showEnemy"],
+    allowedPhases: ["roundEnd", "showEnemy"],
     target: { type: "card", ownership: "enemy" },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -106,7 +106,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
     description: "Freeze an enemy card's number for the round.",
     cost: 1,
     icon: "❄️",
-    allowedPhases: ["choose", "showEnemy"],
+    allowedPhases: ["roundEnd", "showEnemy"],
     target: { type: "card", ownership: "enemy" },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -125,7 +125,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
     description: "Your card becomes a copy of the opposing card.",
     cost: 4,
     icon: "🪞",
-    allowedPhases: ["choose", "showEnemy"],
+    allowedPhases: ["roundEnd", "showEnemy"],
     target: { type: "card", ownership: "ally" },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -155,7 +155,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
     description: "Increase a wheel token by 1.",
     cost: 3,
     icon: "🌀",
-    allowedPhases: ["choose", "showEnemy", "anim"],
+    allowedPhases: ["roundEnd", "showEnemy", "anim"],
     target: { type: "wheel", scope: "current" },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -179,7 +179,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
     description: "Reduce the opponent's reserve by 2.",
     cost: 4,
     icon: "🕯️",
-    allowedPhases: ["choose", "showEnemy"],
+    allowedPhases: ["roundEnd", "showEnemy"],
     target: { type: "card", ownership: "enemy" },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -203,7 +203,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
     description: "Gain initiative.",
     cost: 5,
     icon: "⏳",
-    allowedPhases: ["anim", "roundEnd"],
+    allowedPhases: ["choose", "roundEnd"],
     target: { type: "self", automatic: true },
     resolver: (context) => {
       const log = ensureLog(context);
