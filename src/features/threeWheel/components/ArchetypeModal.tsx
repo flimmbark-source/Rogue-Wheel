@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ARCHETYPE_DEFINITIONS,
   ARCHETYPE_IDS,
@@ -51,6 +51,9 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
   const [hoveredSpellId, setHoveredSpellId] = useState<string | null>(null);
   const [pinnedSpellId, setPinnedSpellId] = useState<string | null>(null);
   const visibleSpellId = pinnedSpellId ?? hoveredSpellId;
+  const [mobilePreviewId, setMobilePreviewId] = useState<ArchetypeId>(
+    localSelection ?? ARCHETYPE_IDS[0]
+  );
 
   const localArchetypeDef = localSelection
     ? ARCHETYPE_DEFINITIONS[localSelection]
@@ -71,10 +74,160 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
     );
   }, []);
 
+  useEffect(() => {
+    if (localSelection) {
+      setMobilePreviewId(localSelection);
+    }
+  }, [localSelection]);
+
+  const renderSpellList = (
+    spells: SpellDefinition[],
+    idPrefix: string
+  ): React.ReactNode => (
+    <ul className="mt-2 space-y-1 text-xs text-slate-100/90">
+      {spells.map((spell) => {
+        const isActive = visibleSpellId === spell.id;
+        return (
+          <li key={`${idPrefix}-${spell.id}`} className="flex flex-col gap-1">
+            <button
+              type="button"
+              onPointerDown={(event) => {
+                if (event.pointerType === "touch") {
+                  setPinnedSpellId(spell.id);
+                }
+              }}
+              onPointerEnter={(event) => {
+                if (event.pointerType !== "touch") {
+                  setHoveredSpellId(spell.id);
+                }
+              }}
+              onPointerLeave={(event) => {
+                if (event.pointerType !== "touch") {
+                  setHoveredSpellId((current) =>
+                    current === spell.id ? null : current
+                  );
+                }
+              }}
+              onFocus={() => setHoveredSpellId(spell.id)}
+              onBlur={() =>
+                setHoveredSpellId((current) =>
+                  current === spell.id ? null : current
+                )
+              }
+              onClick={(event) => {
+                event.preventDefault();
+                setPinnedSpellId((current) =>
+                  current === spell.id ? null : spell.id
+                );
+              }}
+              className="flex items-center gap-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+              aria-pressed={pinnedSpellId === spell.id}
+              aria-controls={`${idPrefix}-spell-desc-${spell.id}`}
+              aria-expanded={isActive}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
+              <span className="font-semibold text-slate-100">{spell.name}</span>
+            </button>
+
+            <div
+              id={`${idPrefix}-spell-desc-${spell.id}`}
+              className={`pl-4 text-[11px] leading-snug text-slate-300 transition-all duration-150 ease-out ${
+                isActive ? "max-h-32 opacity-100" : "max-h-0 overflow-hidden opacity-0"
+              }`}
+              aria-hidden={!isActive}
+            >
+              {spell.description}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  );
+
+  const renderCardContent = (
+    id: ArchetypeId,
+    idPrefix: string,
+    options?: { compact?: boolean; onPreviewSelect?: (id: ArchetypeId) => void }
+  ): React.ReactNode => {
+    const def = ARCHETYPE_DEFINITIONS[id];
+    const spells = archetypeSpellDefs[id] ?? [];
+    const isLocalChoice = localSelection === id;
+    const isRemoteChoice = remoteSelection === id;
+
+    if (!def) {
+      return null;
+    }
+
+    const titleClass = options?.compact ? "text-base" : "text-lg";
+    const descriptionClass = options?.compact
+      ? "mt-1 text-[13px] leading-snug text-slate-300/80"
+      : "mt-1 text-xs text-slate-300/80 leading-snug";
+    const spellsContainerClass = `mt-3 rounded-lg border border-slate-700/70 bg-slate-900/60 p-3 ${
+      options?.compact ? "" : "flex-1"
+    }`;
+    const chooseButtonClass = `${
+      options?.compact ? "mt-3 w-full" : "mt-4"
+    } rounded-lg border border-amber-400/70 px-3 py-1.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:border-amber-200/40 disabled:text-amber-200/70`;
+
+    return (
+      <>
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className={`${titleClass} font-semibold text-slate-100`}>
+              {def.name}
+            </div>
+            <p className={descriptionClass}>{def.description}</p>
+          </div>
+          <div className="flex flex-col items-end gap-1 text-[10px] font-semibold uppercase tracking-wide">
+            {isLocalChoice && (
+              <span
+                className="rounded-full px-2 py-0.5"
+                style={{
+                  background: `${hudColors[localSide]}22`,
+                  color: hudColors[localSide],
+                }}
+              >
+                You
+              </span>
+            )}
+            {isRemoteChoice && (
+              <span
+                className="rounded-full px-2 py-0.5"
+                style={{
+                  background: `${hudColors[remoteSide]}22`,
+                  color: hudColors[remoteSide],
+                }}
+              >
+                {namesBySide[remoteSide]}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className={spellsContainerClass}>
+          <div className="text-xs font-semibold uppercase text-slate-300/80">
+            Spells
+          </div>
+          {renderSpellList(spells, idPrefix)}
+        </div>
+        <button
+          onClick={() => {
+            onSelect(id);
+            options?.onPreviewSelect?.(id);
+          }}
+          disabled={isLocalChoice}
+          className={chooseButtonClass}
+        >
+          {isLocalChoice ? "Selected" : "Choose"}
+        </button>
+      </>
+    );
+  };
+
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4 py-6">
-      <div className="w-full max-w-4xl space-y-6 rounded-2xl border border-slate-700 bg-slate-900/95 p-6 shadow-2xl">
-        <div className="space-y-2 text-center">
+    <div className="fixed inset-0 z-[120] flex items-start justify-center bg-slate-950/80 backdrop-blur-sm px-3 py-4 sm:items-center sm:px-4 sm:py-6">
+      <div className="w-full max-w-4xl space-y-5 overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900/95 p-4 shadow-2xl max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] sm:space-y-6 sm:p-6">
+        <div className="space-y-2 text-left sm:text-center">
           <h2 className="text-2xl font-semibold text-amber-200">Choose Your Archetype</h2>
           <p className="text-sm text-slate-200/80">
             Archetypes determine which spells appear in your grimoire. Pick one, then press {" "}
@@ -82,124 +235,62 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          {ARCHETYPE_IDS.map((id) => {
-            const def = ARCHETYPE_DEFINITIONS[id];
-            const spells = archetypeSpellDefs[id] ?? [];
-            const isLocalChoice = localSelection === id;
-            const isRemoteChoice = remoteSelection === id;
-            return (
-              <div
-                key={id}
-                className="relative flex h-full flex-col rounded-xl border border-slate-700/70 bg-slate-800/70 p-4 shadow"
-                style={{
-                  borderColor: isLocalChoice
+        <div className="space-y-3 sm:hidden">
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {ARCHETYPE_IDS.map((id) => {
+              const def = ARCHETYPE_DEFINITIONS[id];
+              const isActive = mobilePreviewId === id;
+
+              return (
+                <button
+                  key={`mobile-tab-${id}`}
+                  type="button"
+                  onClick={() => setMobilePreviewId(id)}
+                  className={`flex min-w-[140px] flex-col gap-1 rounded-xl border px-3 py-2 text-left transition ${
+                    isActive
+                      ? "border-amber-400/70 bg-slate-800/90"
+                      : "border-slate-700/60 bg-slate-800/50"
+                  }`}
+                >
+                  <span className="text-sm font-semibold text-slate-100">
+                    {def.name}
+                  </span>
+                  <span className="text-[11px] text-slate-300/80">
+                    {def.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-col rounded-xl border border-slate-700/70 bg-slate-800/70 p-4">
+            {renderCardContent(mobilePreviewId, `mobile-${mobilePreviewId}`, {
+              compact: true,
+              onPreviewSelect: setMobilePreviewId,
+            })}
+          </div>
+        </div>
+
+        <div className="hidden gap-4 sm:grid sm:grid-cols-3">
+          {ARCHETYPE_IDS.map((id) => (
+            <div
+              key={id}
+              className="relative flex h-full flex-col rounded-xl border border-slate-700/70 bg-slate-800/70 p-4 shadow"
+              style={{
+                borderColor:
+                  localSelection === id
                     ? hudColors[localSide]
-                    : isRemoteChoice
+                    : remoteSelection === id
                     ? hudColors[remoteSide]
                     : undefined,
-                }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-lg font-semibold text-slate-100">{def.name}</div>
-                    <p className="mt-1 text-xs text-slate-300/80 leading-snug">{def.description}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 text-[10px] font-semibold uppercase tracking-wide">
-                    {isLocalChoice && (
-                      <span
-                        className="rounded-full px-2 py-0.5"
-                        style={{
-                          background: `${hudColors[localSide]}22`,
-                          color: hudColors[localSide],
-                        }}
-                      >
-                        You
-                      </span>
-                    )}
-                    {isRemoteChoice && (
-                      <span
-                        className="rounded-full px-2 py-0.5"
-                        style={{
-                          background: `${hudColors[remoteSide]}22`,
-                          color: hudColors[remoteSide],
-                        }}
-                      >
-                        {namesBySide[remoteSide]}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-3 flex-1 rounded-lg border border-slate-700/70 bg-slate-900/60 p-3">
-                  <div className="text-xs font-semibold uppercase text-slate-300/80">Spells</div>
-<ul className="mt-2 space-y-1 text-xs text-slate-100/90">
-  {spells.map((spell) => {
-    const isActive = visibleSpellId === spell.id;
-    return (
-      <li key={spell.id} className="flex flex-col gap-1">
-        <button
-          type="button"
-          onPointerDown={(event) => {
-            if (event.pointerType === "touch") {
-              setPinnedSpellId(spell.id);
-            }
-          }}
-          onPointerEnter={(event) => {
-            if (event.pointerType !== "touch") {
-              setHoveredSpellId(spell.id);
-            }
-          }}
-          onPointerLeave={(event) => {
-            if (event.pointerType !== "touch") {
-              setHoveredSpellId((current) => (current === spell.id ? null : current));
-            }
-          }}
-          onFocus={() => setHoveredSpellId(spell.id)}
-          onBlur={() =>
-            setHoveredSpellId((current) => (current === spell.id ? null : current))
-          }
-          onClick={(event) => {
-            event.preventDefault();
-            setPinnedSpellId((current) => (current === spell.id ? null : spell.id));
-          }}
-          className="flex items-center gap-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
-          aria-pressed={pinnedSpellId === spell.id}
-          aria-controls={`spell-desc-${spell.id}`}
-          aria-expanded={isActive}
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
-          <span className="font-semibold text-slate-100">{spell.name}</span>
-        </button>
-
-        <div
-          id={`spell-desc-${spell.id}`}
-          className={`pl-4 text-[11px] leading-snug text-slate-300 transition-all duration-150 ease-out ${
-            isActive ? "opacity-100 max-h-32" : "opacity-0 max-h-0 overflow-hidden"
-          }`}
-          aria-hidden={!isActive}
-        >
-          {spell.description}
-        </div>
-      </li>
-    );
-  })}
-</ul>
-                </div>
-                <button
-                  onClick={() => onSelect(id)}
-                  disabled={isLocalChoice}
-                  className="mt-4 rounded-lg border border-amber-400/70 px-3 py-1.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:border-amber-200/40 disabled:text-amber-200/70"
-                >
-                  {isLocalChoice ? "Selected" : "Choose"}
-                </button>
-              </div>
-            );
-          })}
+              }}
+            >
+              {renderCardContent(id, `grid-${id}`)}
+            </div>
+          ))}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-4">
+        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
+          <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-3 sm:p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold text-slate-100">{namesBySide[localSide]}</div>
               <span
@@ -222,7 +313,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
             </ul>
           </div>
 
-          <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-4">
+          <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-3 sm:p-4">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold text-slate-100">{namesBySide[remoteSide]}</div>
               <span
@@ -247,7 +338,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-sm text-slate-300/90">
+          <div className="text-sm text-slate-300/90 sm:text-left">
             {isMultiplayer
               ? remoteReady
                 ? `${namesBySide[remoteSide]} is ready.`
