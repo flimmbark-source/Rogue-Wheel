@@ -258,10 +258,12 @@ export default function ThreeWheel_WinsOnly({
   const isGrimoireMode = gameMode === "grimoire";
   const effectiveGameMode = gameMode;
   const pendingSpell: PendingSpellDescriptor | null = null;
+
   const [manaPools, setManaPools] = useState<SideState<number>>({
     player: 0,
     enemy: 0,
   });
+
   const localMana = manaPools[localLegacySide];
 
   const [localSelection, setLocalSelection] = useState<ArchetypeId>(
@@ -305,10 +307,8 @@ export default function ThreeWheel_WinsOnly({
 
   const casterFighter = localLegacySide === "player" ? player : enemy;
   const opponentFighter = localLegacySide === "player" ? enemy : player;
-
   const readyButtonLabel = isMultiplayer ? "Ready" : "Next";
   const readyButtonDisabled = localReady;
-
   const handleLocalArchetypeSelect = useCallback((id: ArchetypeId) => {
     setLocalSelection(id);
     setLocalReady(false);
@@ -887,92 +887,199 @@ const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
                 Grimoire
               </button>
               {showGrimoire && (
-                <div className="absolute top-[110%] right-0 z-[80] w-80 max-w-xs sm:max-w-sm">
-                  <div className="rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
-                    <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-4 py-3">
-                      <div className="text-base font-semibold text-slate-100">Grimoire</div>
-                      <button
-                        onClick={() => setShowGrimoire(false)}
-                        className="text-xl leading-none text-slate-300 transition hover:text-white"
-                        aria-label="Close grimoire"
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
-                      <div className="flex items-center justify-between text-[11px] text-slate-300">
-                        <span className="flex items-center gap-1">
-                          <span aria-hidden className="text-sky-300">🔹</span>
-                          <span>Mana</span>
-                        </span>
-                        <span className="font-semibold text-slate-100">{localMana}</span>
+<>
+  {/* Backdrop for mobile-only modal */}
+  <div
+    className="fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-sm sm:hidden"
+    onClick={() => setShowGrimoire(false)}
+    aria-hidden
+  />
+
+  {/* Desktop / ≥sm: anchored popover under the button */}
+  <div className="absolute top-[110%] right-0 z-[80] hidden sm:block w-80 max-w-xs sm:max-w-sm">
+    <div className="rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-4 py-3">
+        <div className="text-base font-semibold text-slate-100">Grimoire</div>
+        <button
+          onClick={() => setShowGrimoire(false)}
+          className="text-xl leading-none text-slate-300 transition hover:text-white"
+          aria-label="Close grimoire"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Shared content */}
+      <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
+        <div className="flex items-center justify-between text-[11px] text-slate-300">
+          <span className="flex items-center gap-1">
+            <span aria-hidden className="text-sky-300">🔹</span>
+            <span>Mana</span>
+          </span>
+          <span className="font-semibold text-slate-100">{localMana}</span>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          {localSpellDefinitions.length === 0 ? (
+            <div className="italic text-slate-400">No spells learned yet.</div>
+          ) : (
+            <ul className="space-y-2">
+              {localSpellDefinitions.map((spell) => {
+                const allowedPhases = spell.allowedPhases ?? ["choose"];
+                const phaseAllowed = allowedPhases.includes(phase);
+                const computedCostRaw = spell.variableCost
+                  ? spell.variableCost({
+                      caster: casterFighter,
+                      opponent: opponentFighter,
+                      phase,
+                      state: {},
+                    })
+                  : spell.cost;
+                const effectiveCost = Number.isFinite(computedCostRaw)
+                  ? Math.max(0, Math.round(computedCostRaw as number))
+                  : spell.cost;
+                const canAfford = localMana >= effectiveCost;
+                const disabled = !phaseAllowed || !canAfford;
+
+                return (
+                  <li key={spell.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleSpellActivate(spell)}
+                      disabled={disabled}
+                      className={`w-full rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-left transition ${
+                        disabled
+                          ? "cursor-not-allowed opacity-50"
+                          : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
+                          {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
+                          <span>{spell.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[11px] text-sky-200">
+                          <span aria-hidden className="text-[14px] leading-none">🔹</span>
+                          <span>{effectiveCost}</span>
+                        </div>
                       </div>
-                      <div className="mt-3 space-y-2">
-                        {localSpellDefinitions.length === 0 ? (
-                          <div className="italic text-slate-400">No spells learned yet.</div>
-                        ) : (
-                          <ul className="space-y-2">
-                            {localSpellDefinitions.map((spell) => {
-                              const allowedPhases = spell.allowedPhases ?? ["choose"];
-                              const phaseAllowed = allowedPhases.includes(phase);
-                              const computedCostRaw = spell.variableCost
-                                ? spell.variableCost({
-                                    caster: casterFighter,
-                                    opponent: opponentFighter,
-                                    phase,
-                                    state: {},
-                                  })
-                                : spell.cost;
-                              const effectiveCost = Number.isFinite(computedCostRaw)
-                                ? Math.max(0, Math.round(computedCostRaw as number))
-                                : spell.cost;
-                              const canAfford = localMana >= effectiveCost;
-                              const disabled = !phaseAllowed || !canAfford;
-                              return (
-                                <li key={spell.id}>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSpellActivate(spell)}
-                                    disabled={disabled}
-                                    className={`w-full rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-left transition ${
-                                      disabled
-                                        ? "cursor-not-allowed opacity-50"
-                                        : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
-                                    }`}
-                                  >
-                                    <div className="flex items-center justify-between gap-3">
-                                      <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
-                                        {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
-                                        <span>{spell.name}</span>
-                                      </div>
-                                      <div className="flex items-center gap-1 text-[11px] text-sky-200">
-                                        <span aria-hidden className="text-[14px] leading-none">🔹</span>
-                                        <span>{effectiveCost}</span>
-                                      </div>
-                                    </div>
-                                    <div className="mt-1 text-[11px] leading-snug text-slate-300">
-                                      {spell.description}
-                                    </div>
-                                    {!phaseAllowed && (
-                                      <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
-                                        Unavailable this phase
-                                      </div>
-                                    )}
-                                    {!canAfford && (
-                                      <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
-                                        Not enough mana
-                                      </div>
-                                    )}
-                                  </button>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
+                      <div className="mt-1 text-[11px] leading-snug text-slate-300">
+                        {spell.description}
+                      </div>
+                      {!phaseAllowed && (
+                        <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
+                          Unavailable this phase
+                        </div>
+                      )}
+                      {!canAfford && (
+                        <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
+                          Not enough mana
+                        </div>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/* Mobile / <sm: centered modal */}
+  <div className="fixed inset-x-4 top-20 z-[80] sm:hidden flex justify-center">
+    <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-4 py-3">
+        <div className="text-base font-semibold text-slate-100">Grimoire</div>
+        <button
+          onClick={() => setShowGrimoire(false)}
+          className="text-xl leading-none text-slate-300 transition hover:text-white"
+          aria-label="Close grimoire"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Same shared content as above */}
+      <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
+        <div className="flex items-center justify-between text-[11px] text-slate-300">
+          <span className="flex items-center gap-1">
+            <span aria-hidden className="text-sky-300">🔹</span>
+            <span>Mana</span>
+          </span>
+          <span className="font-semibold text-slate-100">{localMana}</span>
+        </div>
+
+        <div className="mt-3 space-y-2">
+          {localSpellDefinitions.length === 0 ? (
+            <div className="italic text-slate-400">No spells learned yet.</div>
+          ) : (
+            <ul className="space-y-2">
+              {localSpellDefinitions.map((spell) => {
+                const allowedPhases = spell.allowedPhases ?? ["choose"];
+                const phaseAllowed = allowedPhases.includes(phase);
+                const computedCostRaw = spell.variableCost
+                  ? spell.variableCost({
+                      caster: casterFighter,
+                      opponent: opponentFighter,
+                      phase,
+                      state: {},
+                    })
+                  : spell.cost;
+                const effectiveCost = Number.isFinite(computedCostRaw)
+                  ? Math.max(0, Math.round(computedCostRaw as number))
+                  : spell.cost;
+                const canAfford = localMana >= effectiveCost;
+                const disabled = !phaseAllowed || !canAfford;
+
+                return (
+                  <li key={spell.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleSpellActivate(spell)}
+                      disabled={disabled}
+                      className={`w-full rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-left transition ${
+                        disabled
+                          ? "cursor-not-allowed opacity-50"
+                          : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
+                          {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
+                          <span>{spell.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[11px] text-sky-200">
+                          <span aria-hidden className="text-[14px] leading-none">🔹</span>
+                          <span>{effectiveCost}</span>
+                        </div>
+                      </div>
+                      <div className="mt-1 text-[11px] leading-snug text-slate-300">
+                        {spell.description}
+                      </div>
+                      {!phaseAllowed && (
+                        <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
+                          Unavailable this phase
+                        </div>
+                      )}
+                      {!canAfford && (
+                        <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
+                          Not enough mana
+                        </div>
+                      )}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+    
                       </div>
                     </div>
                   </div>
-                </div>
+                </>
               )}
             </div>
           )}

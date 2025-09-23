@@ -103,7 +103,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   iceShard: {
     id: "iceShard",
     name: "Ice Shard",
-    description: "Freeze an enemy card and mark it chilled for the round.",
+    description: "Freeze an enemy card's number for the round.",
     cost: 1,
     icon: "❄️",
     allowedPhases: ["choose", "showEnemy"],
@@ -178,8 +178,8 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   timeTwist: {
     id: "timeTwist",
     name: "Time Twist",
-    description: "Gain initiative now and bank a delayed surge.",
-    cost: 3,
+    description: "Gain initiative.",
+    cost: 5,
     icon: "⏳",
     allowedPhases: ["anim", "roundEnd"],
     target: { type: "self", automatic: true },
