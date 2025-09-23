@@ -1,4 +1,3 @@
-]
 import { motion } from "framer-motion";
 import { useThreeWheelGame } from "./features/threeWheel/hooks/useThreeWheelGame"
 import React, {
