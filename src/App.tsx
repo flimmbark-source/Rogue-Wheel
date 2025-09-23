@@ -72,6 +72,8 @@ import {
   getSpellDefinitions,
   type SpellDefinition,
   type SpellRuntimeState,
+  type SpellTargetInstance,
+  type SpellTargetOwnership,
 } from "./game/spells";
 import ArchetypeModal from "./features/threeWheel/components/ArchetypeModal";
 import StSCard from "./components/StSCard";
@@ -105,7 +107,12 @@ function createReservePenaltyState(): SideState<number> {
 }
 
 // Spells-related state/types
-type PendingSpellDescriptor = { side: LegacySide; spell: SpellDefinition };
+type PendingSpellDescriptor = {
+  side: LegacySide;
+  spell: SpellDefinition;
+  target: SpellTargetInstance | null;
+  spentMana: number;
+};
 
 type LaneSpellState = {
   locked: boolean;
@@ -377,7 +384,23 @@ export default function ThreeWheel_WinsOnly({
         setShowGrimoire(false);
       }
 
-      setPendingSpell({ side: localLegacySide, spell });
+      const initialTarget: SpellTargetInstance | null = (() => {
+        switch (spell.target.type) {
+          case "self":
+            return { type: "self" };
+          case "none":
+            return { type: "none" };
+          default:
+            return requiresManualTarget ? null : null;
+        }
+      })();
+
+      setPendingSpell({
+        side: localLegacySide,
+        spell,
+        target: initialTarget,
+        spentMana: effectiveCost,
+      });
     },
     [
       computeSpellCost,
@@ -394,11 +417,18 @@ export default function ThreeWheel_WinsOnly({
   useEffect(() => {
     if (!pendingSpell) return;
 
-    const { spell } = pendingSpell;
+    const { spell, target } = pendingSpell;
+    const awaitingCardTarget =
+      spell.target.type === "card" && spell.target.automatic !== true && !target;
+    if (awaitingCardTarget) {
+      return;
+    }
+
     const context = {
       caster: casterFighter,
       opponent: opponentFighter,
       phase,
+      target: target ?? undefined,
       state: spellRuntimeStateRef.current,
     } as const;
 
@@ -411,6 +441,65 @@ export default function ThreeWheel_WinsOnly({
       setShowGrimoire(false);
     }
   }, [casterFighter, opponentFighter, pendingSpell, phase, setPendingSpell, setShowGrimoire]);
+
+  const handlePendingSpellCancel = useCallback(
+    (refundMana: boolean) => {
+      setPendingSpell((current) => {
+        if (!current) return current;
+
+        if (refundMana && current.spentMana > 0) {
+          setManaPools((mana) => {
+            const next: SideState<number> = { ...mana };
+            next[current.side] = mana[current.side] + current.spentMana;
+            return next;
+          });
+        }
+
+        return null;
+      });
+      setShowGrimoire(false);
+    },
+    [setManaPools, setPendingSpell, setShowGrimoire]
+  );
+
+  const handleSpellTargetSelect = useCallback(
+    (cardId: string, ownerSide: LegacySide, cardName: string) => {
+      setPendingSpell((current) => {
+        if (!current) return current;
+
+        const definition = current.spell.target;
+        if (definition.type !== "card" || definition.automatic === true) {
+          return current;
+        }
+
+        const candidateOwnership: SpellTargetOwnership =
+          ownerSide === current.side ? "ally" : "enemy";
+
+        const allowedOwnership = definition.ownership;
+        const isAllowed =
+          allowedOwnership === "any" || allowedOwnership === candidateOwnership;
+        if (!isAllowed) {
+          return current;
+        }
+
+        const nextTarget: SpellTargetInstance = {
+          type: "card",
+          cardId,
+          owner: candidateOwnership,
+          cardName,
+        };
+
+        return { ...current, target: nextTarget };
+      });
+    },
+    [setPendingSpell]
+  );
+
+  const awaitingSpellTarget =
+    pendingSpell &&
+    pendingSpell.spell.target.type === "card" &&
+    pendingSpell.spell.target.automatic !== true &&
+    !pendingSpell.target;
 
   const wheelDamage = useMemo(() => createWheelSideState(0), []);
   const wheelMirror = useMemo(() => createWheelSideState(false), []);
@@ -697,6 +786,7 @@ const renderWheelPanel = (i: number) => {
 
   const rootModeClassName = isGrimoireMode ? "grimoire-mode" : "classic-mode";
   const grimoireAttrValue = isGrimoireMode ? "true" : "false";
+  const isAwaitingSpellTarget = Boolean(awaitingSpellTarget);
 
   return (
     <div
@@ -708,7 +798,30 @@ const renderWheelPanel = (i: number) => {
       data-archetypes-enabled={grimoireAttrValue}
       data-pending-spell={pendingSpell ? pendingSpell.spell.id : ""}
       data-local-mana={localMana}
+      data-awaiting-spell-target={isAwaitingSpellTarget ? "true" : "false"}
     >
+      {isAwaitingSpellTarget && pendingSpell ? (
+        <div className="pointer-events-none fixed inset-x-0 top-20 z-[90] flex justify-center px-3">
+          <div className="pointer-events-auto max-w-md w-full rounded-xl border border-sky-500/60 bg-slate-900/95 px-4 py-3 shadow-2xl">
+            <div className="text-sm font-semibold text-slate-100">
+              Select a target for {pendingSpell.spell.name}
+            </div>
+            <div className="mt-1 text-[12px] text-slate-300">
+              Tap a card that matches the spell's requirement to continue.
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => handlePendingSpellCancel(true)}
+                className="rounded border border-slate-600 px-3 py-1 text-[12px] text-slate-200 transition hover:border-slate-400 hover:text-white"
+              >
+                Cancel spell
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {showArchetypeModal && (
         <ArchetypeModal
           isMultiplayer={isMultiplayer}
@@ -1065,6 +1178,9 @@ const renderWheelPanel = (i: number) => {
                 initiativeOverride={initiativeOverride}
                 startPointerDrag={startPointerDrag}
                 wheelHudColor={wheelHUD[i]}
+                pendingSpell={pendingSpell}
+                onSpellTargetSelect={handleSpellTargetSelect}
+                isAwaitingSpellTarget={isAwaitingSpellTarget}
               />
             </div>
           ))}
@@ -1086,6 +1202,8 @@ const renderWheelPanel = (i: number) => {
         ptrDragCard={ptrDragCard}
         ptrPos={ptrPos}
         onMeasure={setHandClearance}
+        pendingSpell={pendingSpell}
+        isAwaitingSpellTarget={isAwaitingSpellTarget}
       />
 
       {/* Ended overlay (banner + modal) */}
