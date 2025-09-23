@@ -154,7 +154,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
             if (event.pointerType !== "touch") {
               setHoveredSpellId((current) => (current === spell.id ? null : current));
             }
-          })}
+          }}
           onFocus={() => setHoveredSpellId(spell.id)}
           onBlur={() =>
             setHoveredSpellId((current) => (current === spell.id ? null : current))
