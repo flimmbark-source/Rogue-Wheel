@@ -122,18 +122,29 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   mirrorImage: {
     id: "mirrorImage",
     name: "Mirror Image",
-    description: "Copy one of your cards so you can reuse its number.",
-    cost: 2,
+    description: "Your card becomes a copy of the opposing card.",
+    cost: 4,
     icon: "🪞",
     allowedPhases: ["choose", "showEnemy"],
     target: { type: "card", ownership: "ally" },
     resolver: (context) => {
       const log = ensureLog(context);
-      log.push(`${context.caster.name} weaves a mirror image of ${describeTarget(context.target)}.`);
+      log.push(
+        `${context.caster.name} twists ${describeTarget(
+          context.target
+        )} into an uncanny reflection of its foe.`
+      );
       if (context.target?.type === "card") {
-        const copies = (context.state.mirroredCards as Record<string, number> | undefined) ?? {};
-        copies[context.target.cardId] = (copies[context.target.cardId] ?? 0) + 1;
-        context.state.mirroredCards = copies;
+        const effects =
+          (context.state.mirrorCopyEffects as
+            | { targetCardId: string; mode: "opponent"; caster: string }[]
+            | undefined) ?? [];
+        effects.push({
+          targetCardId: context.target.cardId,
+          mode: "opponent",
+          caster: context.caster.name,
+        });
+        context.state.mirrorCopyEffects = effects;
       }
     },
   },
@@ -141,37 +152,48 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   arcaneShift: {
     id: "arcaneShift",
     name: "Arcane Shift",
-    description: "Shift the active wheel's token toward your side.",
-    cost: 2,
+    description: "Increase a wheel token by 1.",
+    cost: 3,
     icon: "🌀",
     allowedPhases: ["choose", "showEnemy", "anim"],
     target: { type: "wheel", scope: "current" },
     resolver: (context) => {
       const log = ensureLog(context);
-      log.push(`${context.caster.name} warps ${describeTarget(context.target)} with an Arcane Shift.`);
-      context.state.shiftedWheel = {
+      log.push(`${context.caster.name} empowers ${describeTarget(context.target)} with arcane momentum.`);
+      const adjustments =
+        (context.state.wheelTokenAdjustments as
+          | { target: SpellTargetInstance; amount: number; caster: string }[]
+          | undefined) ?? [];
+      adjustments.push({
         target: context.target ?? { type: "none" },
-        by: context.caster.name,
-      };
+        amount: 1,
+        caster: context.caster.name,
+      });
+      context.state.wheelTokenAdjustments = adjustments;
     },
   },
 
   hex: {
     id: "hex",
     name: "Hex",
-    description: "Curse an enemy card, causing it to lose 1 value when replayed.",
-    cost: 1,
+    description: "Reduce the opponent's reserve by 2.",
+    cost: 4,
     icon: "🕯️",
     allowedPhases: ["choose", "showEnemy"],
     target: { type: "card", ownership: "enemy" },
     resolver: (context) => {
       const log = ensureLog(context);
-      log.push(`${context.caster.name} hexes ${describeTarget(context.target)} with baleful energy.`);
-      if (context.target?.type === "card") {
-        const curses = (context.state.hexedCards as Record<string, number> | undefined) ?? {};
-        curses[context.target.cardId] = (curses[context.target.cardId] ?? 0) + 1;
-        context.state.hexedCards = curses;
-      }
+      log.push(`${context.caster.name} drains their foe's reserves with a wicked hex.`);
+      const drains =
+        (context.state.reserveDrains as
+          | { target: SpellTargetInstance; amount: number; caster: string }[]
+          | undefined) ?? [];
+      drains.push({
+        target: context.target ?? { type: "none" },
+        amount: 2,
+        caster: context.caster.name,
+      });
+      context.state.reserveDrains = drains;
     },
   },
 
