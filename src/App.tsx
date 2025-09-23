@@ -383,6 +383,8 @@ export default function ThreeWheel_WinsOnly({
     ]
   );
 
+  const [showGrimoire, setShowGrimoire] = useState(false);
+
   useEffect(() => {
     if (!pendingSpell) return;
 
@@ -413,7 +415,6 @@ export default function ThreeWheel_WinsOnly({
 
   const infoPopoverRootRef = useRef<HTMLDivElement | null>(null);
   const [showRef, setShowRef] = useState(false);
-  const [showGrimoire, setShowGrimoire] = useState(false);
 
   const handlePlayerManaToggle = useCallback(() => {
     if (!isGrimoireMode) return;
