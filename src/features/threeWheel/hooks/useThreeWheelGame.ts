@@ -174,7 +174,7 @@ export function useThreeWheelGame({
 
   const winGoal =
     typeof targetWins === "number" && Number.isFinite(targetWins)
-      ? Math.max(1, Math.min(15, Math.round(targetWins)))
+      ? Math.max(1, Math.min(25, Math.round(targetWins)))
       : TARGET_WINS;
 
   const hostLegacySide: LegacySide = (() => {

@@ -25,10 +25,11 @@ interface ArchetypeModalProps {
   readyButtonDisabled: boolean;
 }
 
-const formatSpellId = (spellId: string) =>
-  spellId
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/(^|\s)([a-z])/g, (_, prefix: string, char: string) => prefix + char.toUpperCase());
+// (kept in case you want it later; currently unused)
+// const formatSpellId = (spellId: string) =>
+//   spellId
+//     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+//     .replace(/(^|\s)([a-z])/g, (_, prefix: string, char: string) => prefix + char.toUpperCase());
 
 const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
   isMultiplayer,
@@ -73,9 +74,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
   }, []);
 
   useEffect(() => {
-    if (localSelection) {
-      setMobilePreviewId(localSelection);
-    }
+    if (localSelection) setMobilePreviewId(localSelection);
   }, [localSelection]);
 
   const renderSpellList = (
@@ -90,14 +89,10 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
             <button
               type="button"
               onPointerDown={(event) => {
-                if (event.pointerType === "touch") {
-                  setPinnedSpellId(spell.id);
-                }
+                if (event.pointerType === "touch") setPinnedSpellId(spell.id);
               }}
               onPointerEnter={(event) => {
-                if (event.pointerType !== "touch") {
-                  setHoveredSpellId(spell.id);
-                }
+                if (event.pointerType !== "touch") setHoveredSpellId(spell.id);
               }}
               onPointerLeave={(event) => {
                 if (event.pointerType !== "touch") {
@@ -152,9 +147,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
     const isLocalChoice = localSelection === id;
     const isRemoteChoice = remoteSelection === id;
 
-    if (!def) {
-      return null;
-    }
+    if (!def) return null;
 
     const titleClass = options?.compact ? "text-base" : "text-lg";
     const descriptionClass = options?.compact
@@ -163,6 +156,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
     const spellsContainerClass = `mt-3 rounded-lg border border-slate-700/70 bg-slate-900/60 p-3 ${
       options?.compact ? "" : "flex-1"
     }`;
+
     const buttonBaseClass = `${
       options?.compact ? "mt-3 w-full" : "mt-4"
     } rounded-lg px-3 py-1.5 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70`;
@@ -210,6 +204,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
           </div>
           {renderSpellList(spells, idPrefix)}
         </div>
+
         <button
           onClick={() => {
             if (!isLocalChoice) {
@@ -222,7 +217,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
           disabled={isLocalChoice ? readyButtonDisabled : false}
           className={isLocalChoice ? readyButtonClass : chooseButtonClass}
         >
-          {isLocalChoice ? "Ready" : "Choose"}
+          {isLocalChoice ? (isMultiplayer ? "Ready" : "Next") : "Choose"}
         </button>
       </>
     );
@@ -234,10 +229,12 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
         <div className="space-y-2 text-left sm:text-center">
           <h2 className="text-2xl font-semibold text-amber-200">Choose Your Archetype</h2>
           <p className="text-sm text-slate-200/80">
-            Archetypes determine which spells appear in your grimoire. Pick one, then press Ready to begin.
+            Archetypes determine which spells appear in your grimoire. Pick one, then press{" "}
+            {isMultiplayer ? "Ready" : "Next"} to begin.
           </p>
         </div>
 
+        {/* Mobile: tabs + single card */}
         <div className="space-y-3 sm:hidden">
           <div className="flex gap-2 overflow-x-auto pb-1">
             {ARCHETYPE_IDS.map((id) => {
@@ -265,6 +262,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
               );
             })}
           </div>
+
           <div className="flex flex-col rounded-xl border border-slate-700/70 bg-slate-800/70 p-4">
             {renderCardContent(mobilePreviewId, `mobile-${mobilePreviewId}`, {
               compact: true,
@@ -273,6 +271,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
           </div>
         </div>
 
+        {/* Desktop: grid */}
         <div className="hidden gap-4 sm:grid sm:grid-cols-3">
           {ARCHETYPE_IDS.map((id) => (
             <div
@@ -292,6 +291,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
           ))}
         </div>
 
+        {/* Ready states */}
         <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
           <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-3 sm:p-4">
             <div className="flex items-center justify-between gap-2">
@@ -320,14 +320,17 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
           </div>
         </div>
 
-        <div className="text-sm text-slate-300/90 sm:text-left">
-          {isMultiplayer
-            ? remoteReady
+        {/* Status line */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-sm text-slate-300/90 sm:text-left">
+            {isMultiplayer
+              ? remoteReady
+                ? `${namesBySide[remoteSide]} is ready.`
+                : `Waiting for ${namesBySide[remoteSide]}...`
+              : remoteArchetypeDef
               ? `${namesBySide[remoteSide]} is ready.`
-              : `Waiting for ${namesBySide[remoteSide]}...`
-            : remoteArchetypeDef
-            ? `${namesBySide[remoteSide]} is ready.`
-            : `${namesBySide[remoteSide]} is choosing an archetype...`}
+              : `${namesBySide[remoteSide]} is choosing an archetype...`}
+          </div>
         </div>
       </div>
     </div>
