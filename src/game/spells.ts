@@ -80,7 +80,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   fireball: {
     id: "fireball",
     name: "Fireball",
-    description: "Blast an enemy card. Each cast costs 1 more mana this combat.",
+    description: "Reduce an enemy card's value by 2. Each cast costs 1 more mana this combat.",
     cost: 2,
     variableCost: (context) => {
       const streak = (context.state.fireballStreak as number | undefined) ?? 0;
@@ -103,7 +103,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   iceShard: {
     id: "iceShard",
     name: "Ice Shard",
-    description: "Freeze an enemy card and mark it chilled.",
+    description: "Freeze an enemy card's number for the round.",
     cost: 1,
     icon: "❄️",
     allowedPhases: ["choose", "showEnemy"],
@@ -122,7 +122,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   mirrorImage: {
     id: "mirrorImage",
     name: "Mirror Image",
-    description: "Copy one of your cards for later tricks.",
+    description: "Copy one of your cards so you can reuse its number.",
     cost: 2,
     icon: "🪞",
     allowedPhases: ["choose", "showEnemy"],
@@ -141,7 +141,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   arcaneShift: {
     id: "arcaneShift",
     name: "Arcane Shift",
-    description: "Nudge the current wheel toward your victory.",
+    description: "Shift the active wheel's token toward your side.",
     cost: 2,
     icon: "🌀",
     allowedPhases: ["choose", "showEnemy", "anim"],
@@ -159,7 +159,7 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   hex: {
     id: "hex",
     name: "Hex",
-    description: "Curse an enemy card and track the mark.",
+    description: "Curse an enemy card, causing it to lose 1 value when replayed.",
     cost: 1,
     icon: "🕯️",
     allowedPhases: ["choose", "showEnemy"],
@@ -178,8 +178,8 @@ const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
   timeTwist: {
     id: "timeTwist",
     name: "Time Twist",
-    description: "Gain momentum now and queue a later surge.",
-    cost: 3,
+    description: "Gain initiative.",
+    cost: 5,
     icon: "⏳",
     allowedPhases: ["anim", "roundEnd"],
     target: { type: "self", automatic: true },

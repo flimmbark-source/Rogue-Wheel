@@ -50,7 +50,6 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
 }) => {
   const [hoveredSpellId, setHoveredSpellId] = useState<string | null>(null);
   const [pinnedSpellId, setPinnedSpellId] = useState<string | null>(null);
-
   const visibleSpellId = pinnedSpellId ?? hoveredSpellId;
 
   const localArchetypeDef = localSelection
@@ -134,64 +133,59 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
 
                 <div className="mt-3 flex-1 rounded-lg border border-slate-700/70 bg-slate-900/60 p-3">
                   <div className="text-xs font-semibold uppercase text-slate-300/80">Spells</div>
-                  <ul className="mt-2 space-y-1 text-xs text-slate-100/90">
-                    {spells.map((spell) => {
-                      const isActive = visibleSpellId === spell.id;
-                      return (
-                        <li key={spell.id} className="flex flex-col gap-1">
-                          <button
-                            type="button"
-                            onPointerDown={(event) => {
-                              if (event.pointerType === "touch") {
-                                setPinnedSpellId(spell.id);
-                              }
-                            }}
-                            onPointerEnter={(event) => {
-                              if (event.pointerType !== "touch") {
-                                setHoveredSpellId(spell.id);
-                              }
-                            }}
-                            onPointerLeave={(event) => {
-                              if (event.pointerType !== "touch") {
-                                setHoveredSpellId((current) =>
-                                  current === spell.id ? null : current
-                                );
-                              }
-                            }}
-                            onFocus={() => setHoveredSpellId(spell.id)}
-                            onBlur={() =>
-                              setHoveredSpellId((current) =>
-                                current === spell.id ? null : current
-                              )
-                            }
-                            onClick={(event) => {
-                              event.preventDefault();
-                              setPinnedSpellId((current) =>
-                                current === spell.id ? null : spell.id
-                              );
-                            }}
-                            className="flex items-center gap-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
-                            aria-pressed={pinnedSpellId === spell.id}
-                          >
-                            <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
-                            <span className="font-semibold text-slate-100">{spell.name}</span>
-                          </button>
-                          <div
-                            className={`pl-4 text-[11px] leading-snug text-slate-300 transition-all duration-150 ease-out ${
-                              isActive
-                                ? "opacity-100 max-h-32"
-                                : "opacity-0 max-h-0 overflow-hidden"
-                            }`}
-                            aria-hidden={!isActive}
-                          >
-                            {spell.description}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
+<ul className="mt-2 space-y-1 text-xs text-slate-100/90">
+  {spells.map((spell) => {
+    const isActive = visibleSpellId === spell.id;
+    return (
+      <li key={spell.id} className="flex flex-col gap-1">
+        <button
+          type="button"
+          onPointerDown={(event) => {
+            if (event.pointerType === "touch") {
+              setPinnedSpellId(spell.id);
+            }
+          }}
+          onPointerEnter={(event) => {
+            if (event.pointerType !== "touch") {
+              setHoveredSpellId(spell.id);
+            }
+          }}
+          onPointerLeave={(event) => {
+            if (event.pointerType !== "touch") {
+              setHoveredSpellId((current) => (current === spell.id ? null : current));
+            }
+          }}
+          onFocus={() => setHoveredSpellId(spell.id)}
+          onBlur={() =>
+            setHoveredSpellId((current) => (current === spell.id ? null : current))
+          }
+          onClick={(event) => {
+            event.preventDefault();
+            setPinnedSpellId((current) => (current === spell.id ? null : spell.id));
+          }}
+          className="flex items-center gap-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/70"
+          aria-pressed={pinnedSpellId === spell.id}
+          aria-controls={`spell-desc-${spell.id}`}
+          aria-expanded={isActive}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
+          <span className="font-semibold text-slate-100">{spell.name}</span>
+        </button>
 
+        <div
+          id={`spell-desc-${spell.id}`}
+          className={`pl-4 text-[11px] leading-snug text-slate-300 transition-all duration-150 ease-out ${
+            isActive ? "opacity-100 max-h-32" : "opacity-0 max-h-0 overflow-hidden"
+          }`}
+          aria-hidden={!isActive}
+        >
+          {spell.description}
+        </div>
+      </li>
+    );
+  })}
+</ul>
+                </div>
                 <button
                   onClick={() => onSelect(id)}
                   disabled={isLocalChoice}
