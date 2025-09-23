@@ -18,6 +18,7 @@ import {
   type Fighter,
   type SplitChoiceMap,
   type Players,
+  type CorePhase,
   LEGACY_FROM_SIDE,
 } from "../../../game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "../../../game/math";
@@ -61,7 +62,7 @@ export type ThreeWheelGameState = {
   round: number;
   freezeLayout: boolean;
   lockedWheelSize: number | null;
-  phase: "choose" | "showEnemy" | "anim" | "roundEnd" | "ended";
+  phase: CorePhase;
   resolveVotes: { player: boolean; enemy: boolean };
   advanceVotes: { player: boolean; enemy: boolean };
   rematchVotes: { player: boolean; enemy: boolean };
@@ -199,7 +200,7 @@ export function useThreeWheelGame({
   const [round, setRound] = useState(1);
   const [freezeLayout, setFreezeLayout] = useState(false);
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
-  const [phase, setPhase] = useState<"choose" | "showEnemy" | "anim" | "roundEnd" | "ended">("choose");
+  const [phase, setPhase] = useState<CorePhase>("choose");
   const [resolveVotes, setResolveVotes] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,

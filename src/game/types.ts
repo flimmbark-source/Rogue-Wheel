@@ -61,7 +61,15 @@ export type Fighter = {
   discard: Card[];
 };
 
-export type Phase = "choose" | "showEnemy" | "anim" | "roundEnd" | "ended";
+export type Phase =
+  | "choose"
+  | "showEnemy"
+  | "anim"
+  | "roundEnd"
+  | "ended"
+  | "spellTargeting";
+
+export type CorePhase = Exclude<Phase, "spellTargeting">;
 
 export type GameMode = "classic" | "grimoire";
 
