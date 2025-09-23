@@ -130,10 +130,12 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
   const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
 
+  const isPhaseChooseLike = phase === "choose" || phase === "spellTargeting";
+
   const shouldShowLeftCard =
-    !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
+    !!leftSlot.card && (leftSlot.side === localLegacySide || !isPhaseChooseLike);
   const shouldShowRightCard =
-    !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
+    !!rightSlot.card && (rightSlot.side === localLegacySide || !isPhaseChooseLike);
 
   const leftSlotOwnership: SpellTargetOwnership | null = pendingSpell
     ? leftSlot.side === pendingSpell.side

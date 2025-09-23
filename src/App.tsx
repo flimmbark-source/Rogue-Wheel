@@ -35,6 +35,7 @@ import {
   type Fighter,
   type Players,
   type Phase,
+  type CorePhase,
   type GameMode,
   LEGACY_FROM_SIDE,
 } from "./game/types";
@@ -224,7 +225,7 @@ export default function ThreeWheel_WinsOnly({
     initiative,
     wins,
     round,
-    phase,
+    phase: basePhase,
     resolveVotes,
     advanceVotes,
     rematchVotes,
@@ -328,6 +329,10 @@ export default function ThreeWheel_WinsOnly({
   const opponentFighter = localLegacySide === "player" ? enemy : player;
   const readyButtonDisabled = localReady;
 
+  const [phaseBeforeSpell, setPhaseBeforeSpell] = useState<CorePhase | null>(null);
+  const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
+  const phase: Phase = phaseBeforeSpell ? "spellTargeting" : basePhase;
+
   const handleLocalArchetypeSelect = useCallback((id: ArchetypeId) => {
     setLocalSelection(id);
     setLocalReady(false);
@@ -345,7 +350,7 @@ export default function ThreeWheel_WinsOnly({
         ? spell.variableCost({
             caster: casterFighter,
             opponent: opponentFighter,
-            phase,
+            phase: phaseForLogic,
             state: spellRuntimeStateRef.current,
           })
         : spell.cost;
@@ -353,7 +358,7 @@ export default function ThreeWheel_WinsOnly({
         ? Math.max(0, Math.round(computedCostRaw as number))
         : spell.cost;
     },
-    [casterFighter, opponentFighter, phase]
+    [casterFighter, opponentFighter, phaseForLogic]
   );
 
   const resolvePendingSpell = useCallback(
@@ -378,7 +383,7 @@ export default function ThreeWheel_WinsOnly({
       const context = {
         caster: casterFighter,
         opponent: opponentFighter,
-        phase,
+        phase: phaseForLogic,
         target: finalTarget ?? undefined,
         state: spellRuntimeStateRef.current,
       } as const;
@@ -390,9 +395,17 @@ export default function ThreeWheel_WinsOnly({
       } finally {
         setPendingSpell(null);
         setShowGrimoire(false);
+        setPhaseBeforeSpell(null);
       }
     },
-    [casterFighter, opponentFighter, phase, setPendingSpell, setShowGrimoire]
+    [
+      casterFighter,
+      opponentFighter,
+      phaseForLogic,
+      setPendingSpell,
+      setPhaseBeforeSpell,
+      setShowGrimoire,
+    ]
   );
 
   const handleSpellActivate = useCallback(
@@ -400,7 +413,7 @@ export default function ThreeWheel_WinsOnly({
       if (pendingSpell) return;
 
       const allowedPhases = spell.allowedPhases ?? ["choose"];
-      if (!allowedPhases.includes(phase)) return;
+      if (!allowedPhases.includes(phaseForLogic)) return;
 
       const effectiveCost = computeSpellCost(spell);
       if (localMana < effectiveCost) return;
@@ -417,6 +430,8 @@ export default function ThreeWheel_WinsOnly({
       });
 
       if (!didSpend) return;
+
+      setPhaseBeforeSpell((current) => current ?? phaseForLogic);
 
       const requiresManualTarget = spell.target.type === "card" && spell.target.automatic !== true;
       if (requiresManualTarget) {
@@ -453,8 +468,9 @@ export default function ThreeWheel_WinsOnly({
       localLegacySide,
       localMana,
       pendingSpell,
-      phase,
+      phaseForLogic,
       resolvePendingSpell,
+      setPhaseBeforeSpell,
       setShowGrimoire,
       setManaPools,
       setPendingSpell,
@@ -477,13 +493,18 @@ export default function ThreeWheel_WinsOnly({
         return null;
       });
       setShowGrimoire(false);
+      setPhaseBeforeSpell(null);
     },
-    [setManaPools, setPendingSpell, setShowGrimoire]
+    [setManaPools, setPendingSpell, setPhaseBeforeSpell, setShowGrimoire]
   );
 
   const handleSpellTargetSelect = useCallback(
     (cardId: string, ownerSide: LegacySide, cardName: string) => {
       if (!pendingSpell) return;
+
+      if (pendingSpell.side !== localLegacySide) {
+        return;
+      }
 
       const definition = pendingSpell.spell.target;
       if (definition.type !== "card" || definition.automatic === true) {
@@ -509,7 +530,7 @@ export default function ThreeWheel_WinsOnly({
 
       resolvePendingSpell(pendingSpell, nextTarget);
     },
-    [pendingSpell, resolvePendingSpell]
+    [localLegacySide, pendingSpell, resolvePendingSpell]
   );
 
   const awaitingSpellTarget =
@@ -517,6 +538,12 @@ export default function ThreeWheel_WinsOnly({
     pendingSpell.spell.target.type === "card" &&
     pendingSpell.spell.target.automatic !== true &&
     !pendingSpell.target;
+
+  useEffect(() => {
+    if (!pendingSpell) {
+      setPhaseBeforeSpell((current) => (current !== null ? null : current));
+    }
+  }, [pendingSpell]);
 
   const wheelDamage = useMemo(() => createWheelSideState(0), []);
   const wheelMirror = useMemo(() => createWheelSideState(false), []);
@@ -569,10 +596,12 @@ const renderWheelPanel = (i: number) => {
   const isLeftSelected  = !!leftSlot.card  && selectedCardId === leftSlot.card!.id;
   const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card!.id;
 
-  const shouldShowLeftCard  =
-    !!leftSlot.card  && (leftSlot.side  === localLegacySide || phase !== "choose");
+  const isPhaseChooseLike = phase === "choose" || phase === "spellTargeting";
+
+  const shouldShowLeftCard =
+    !!leftSlot.card && (leftSlot.side === localLegacySide || !isPhaseChooseLike);
   const shouldShowRightCard =
-    !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
+    !!rightSlot.card && (rightSlot.side === localLegacySide || !isPhaseChooseLike);
 
   const onZoneDragOver = (e: React.DragEvent) => {
     e.preventDefault();
