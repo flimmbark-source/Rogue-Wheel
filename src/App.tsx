@@ -1,3 +1,5 @@
+import { motion } from "framer-motion";
+import { useThreeWheelGame } from "./features/threeWheel/hooks/useThreeWheelGame"
 import React, {
   useMemo,
   useRef,
@@ -26,12 +28,18 @@ import { Realtime } from "ably";
 // game modules
 import {
   SLICES,
-  TARGET_WINS,
   type Side as TwoSide,
   type Card,
   type Section,
   type Fighter,
-  type SplitChoiceMap,
+  type Players,
+// game modules
+import {
+  SLICES,
+  type Side as TwoSide,
+  type Card,
+  type Section,
+  type Fighter,
   type Players,
   type Phase,
   type GameMode,
@@ -63,6 +71,7 @@ import {
 
 // components
 import { motion } from "framer-motion";
+import { Realtime } from "ably";
 import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
 import WheelPanel from "./features/threeWheel/components/WheelPanel";
 import HandDock from "./features/threeWheel/components/HandDock";
@@ -70,13 +79,13 @@ import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
 import { getSpellDefinitions, type SpellDefinition } from "./game/spells";
 import ArchetypeModal from "./features/threeWheel/components/ArchetypeModal";
+import StSCard from "./components/StSCard";
 
+// ---- Local aliases/types/state helpers
 type AblyRealtime = InstanceType<typeof Realtime>;
 type AblyChannel = ReturnType<AblyRealtime["channels"]["get"]>;
-
-// keep your local alias
 type LegacySide = "player" | "enemy";
-// ---- Shared per-side/per-wheel state helpers (from codex branch)
+
 type SideState<T> = Record<LegacySide, T>;
 type WheelSideState<T> = [SideState<T>, SideState<T>, SideState<T>];
 
@@ -87,18 +96,12 @@ const createWheelSideState = <T,>(value: T): WheelSideState<T> => [
 ];
 
 const createWheelLockState = (): [boolean, boolean, boolean] => [false, false, false];
-
 const createPointerShiftState = (): [number, number, number] => [0, 0, 0];
+const createReservePenaltyState = (): SideState<number> => ({ player: 0, enemy: 0 });
 
-const createReservePenaltyState = (): SideState<number> => ({
-  player: 0,
-  enemy: 0,
-});
-
-// keep pending spell descriptor
+// Spells-related state/types
 type PendingSpellDescriptor = { side: LegacySide; spell: SpellDefinition };
 
-// ---- Lane spell state (from Spells branch)
 type LaneSpellState = {
   locked: boolean;
   damageModifier: number;
@@ -119,7 +122,7 @@ const laneSpellStatesEqual = (a: LaneSpellState, b: LaneSpellState) =>
   a.mirrorTargetCardId === b.mirrorTargetCardId &&
   a.occupantCardId === b.occupantCardId;
 
-// your existing MPIntent union (merged from conflict)
+// Multiplayer intents
 type SpellTargetIntentPayload = {
   kind?: string;
   side?: LegacySide | null;
@@ -147,10 +150,14 @@ type MPIntent =
   | { type: "spellSelect"; side: LegacySide; spellId: string | null }
   | { type: "spellTarget"; side: LegacySide; spellId: string; target: SpellTargetIntentPayload | null }
   | { type: "spellFireballCost"; side: LegacySide; spellId: string; cost: number }
-  | { type: "spellResolve"; side: LegacySide; spellId: string; manaAfter: number; payload?: SpellResolutionIntentPayload | null }
+  | {
+      type: "spellResolve";
+      side: LegacySide;
+      spellId: string;
+      manaAfter: number;
+      payload?: SpellResolutionIntentPayload | null;
+    }
   | { type: "spellState"; side: LegacySide; lane: number; state: LaneSpellState };
-
-
 
 // ---------------- Constants ----------------
 const MAX_WHEEL = 200;
@@ -186,2194 +193,423 @@ export default function ThreeWheel_WinsOnly({
   targetWins?: number;
   onExit?: () => void;
 }) {
-  const mountedRef = useRef(true);
-  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; timeoutsRef.current.forEach(clearTimeout); timeoutsRef.current.clear(); }; }, []);
-  const timeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
-  const setSafeTimeout = (fn: () => void, ms: number) => { const id = setTimeout(() => { if (mountedRef.current) fn(); }, ms); timeoutsRef.current.add(id); return id; };
 
-  const localLegacySide: LegacySide = LEGACY_FROM_SIDE[localSide];
-  const remoteLegacySide: LegacySide = localLegacySide === "player" ? "enemy" : "player";
-
-  const HUD_COLORS = {
-    player: players.left.color ?? "#84cc16",
-    enemy: players.right.color ?? "#d946ef",
-  } as const;
-
-  const namesByLegacy: Record<LegacySide, string> = {
-    player: players.left.name,
-    enemy: players.right.name,
-  };
-
-
-  const hasGrimoireMarker = useMemo(() => {
-    const markerValues = [
-      players.left.id,
-      players.right.id,
-      players.left.name,
-      players.right.name,
-    ];
-    if (markerValues.some((value) => value.toLowerCase().includes("grimoire"))) {
-      return true;
-    }
-
-    if (typeof window !== "undefined") {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const modeParam = (params.get("mode") ?? params.get("ruleset") ?? "").toLowerCase();
-        if (modeParam.includes("grimoire")) {
-          return true;
-        }
-      } catch {
-        // ignore query parsing errors
-      }
-
-      const hash = (window.location.hash ?? "").toLowerCase();
-      if (hash.includes("grimoire")) {
-        return true;
-      }
-    }
-
-    return false;
-  }, [players.left.id, players.left.name, players.right.id, players.right.name]);
-
-  // raw value from players.* (or undefined)
-const rawGameMode =
-  (players as Players & { gameMode?: unknown }).gameMode ??
-  (players.left as Players["left"] & { gameMode?: unknown }).gameMode ??
-  (players.right as Players["right"] & { gameMode?: unknown }).gameMode;
-
-// USE THIS instead of 'const gameMode = ...'
-const effectiveGameMode: GameMode =
-  rawGameMode === "grimoire" ? "grimoire" : (gameMode ?? "classic");
-
-
-  const winGoal =
-    typeof targetWins === "number" && Number.isFinite(targetWins)
-      ? Math.max(1, Math.min(15, Math.round(targetWins)))
-      : TARGET_WINS;
-
-  const createInitialArchetypeSelection = () => ({
-    player: isGrimoireMode ? null : DEFAULT_ARCHETYPE,
-    enemy: isGrimoireMode ? null : DEFAULT_ARCHETYPE,
-  } satisfies Record<LegacySide, ArchetypeId | null>);
-
-  const createInitialArchetypeReady = () => ({
-    player: !isGrimoireMode,
-    enemy: !isGrimoireMode,
-  } satisfies Record<LegacySide, boolean>);
-
-
-  const hostLegacySide: LegacySide = (() => {
-    if (!hostId) return "player";
-    if (players.left.id === hostId) return "player";
-    if (players.right.id === hostId) return "enemy";
-    return "player";
-  })();
-
-  const isMultiplayer = !!roomCode;
-  const isGrimoireMode = effectiveGameMode === "grimoire" || hasGrimoireMarker;
-  const ablyRef = useRef<AblyRealtime | null>(null);
-  const chanRef = useRef<AblyChannel | null>(null);
-
-  // Fighters & initiative
-  const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
-  const [enemy, setEnemy] = useState<Fighter>(() => makeFighter("Shade Bandit"));
-  const [initiative, setInitiative] = useState<LegacySide>(() =>
-    hostId ? hostLegacySide : localLegacySide
-  );
-  const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
-  const [manaPools, setManaPools] = useState<SideState<number>>({
-    player: 0,
-    enemy: 0,
-  });
-  const [pendingSpell, setPendingSpell] = useState<PendingSpellDescriptor | null>(null);
-  const [wheelDamage, setWheelDamage] = useState<WheelSideState<number>>(() =>
-    createWheelSideState(0)
-  );
-  const [wheelMirror, setWheelMirror] = useState<WheelSideState<boolean>>(() =>
-    createWheelSideState(false)
-  );
-  const [wheelLocks, setWheelLocks] = useState<[boolean, boolean, boolean]>(
-    createWheelLockState
-  );
-  const [reservePenalties, setReservePenalties] = useState<SideState<number>>(
-    createReservePenaltyState
-  );
-  const [pointerShifts, setPointerShifts] = useState<[number, number, number]>(
-    createPointerShiftState
-  );
-  const [initiativeOverride, setInitiativeOverride] = useState<LegacySide | null>(
-    null
-  );
-  const [round, setRound] = useState(1);
-
-// ---- Spells sync state (from Spells)
-type SpellSyncEntry = {
-  selectedSpellId: string | null;
-  target: SpellTargetIntentPayload | null;
-  fireballCost: number | null;
-  lastResolvedSpellId: string | null;
-  lastResolutionPayload: SpellResolutionIntentPayload | null;
-  lastKnownMana: number | null;
-};
-
-const createSpellSyncEntry = (): SpellSyncEntry => ({
-  selectedSpellId: null,
-  target: null,
-  fireballCost: null,
-  lastResolvedSpellId: null,
-  lastResolutionPayload: null,
-  lastKnownMana: null,
-});
-
-const [spellSyncState, setSpellSyncState] = useState<Record<LegacySide, SpellSyncEntry>>({
-  player: createSpellSyncEntry(),
-  enemy: createSpellSyncEntry(),
-});
-const spellSyncStateRef = useRef(spellSyncState);
-useEffect(() => {
-  spellSyncStateRef.current = spellSyncState;
-}, [spellSyncState]);
-
-// ---- Round-transient reset (from codex), plus clear transient spell selections
-// Single source of truth — keep only this definition in the file
-const resetRoundTransientState = useCallback(
-  (opts?: { includePointerReset?: boolean }) => {
-    const includePointerReset = opts?.includePointerReset ?? true;
-
-    // Pending spell (support both state and ref if they exist in your file)
-    try { setPendingSpell?.(null); } catch {}
-    try { (pendingSpellRef as React.MutableRefObject<any> | undefined) && (pendingSpellRef.current = null); } catch {}
-
-    // Derived transient state (codex branch)
-    try { setWheelDamage(createWheelSideState(0)); } catch {}
-    try { setWheelMirror(createWheelSideState(false)); } catch {}
-    try { setWheelLocks(createWheelLockState()); } catch {}
-    try { setReservePenalties(createReservePenaltyState()); } catch {}
-    try { setPointerShifts(createPointerShiftState()); } catch {}
-    try { setInitiativeOverride?.(null); } catch {}
-
-    // Spell/lane transient (spells branch)
-    try { resetLaneSpellStates?.(); } catch {}
-
-    // Optionally zero the visual tokens/pointers
-    if (includePointerReset) {
-      try {
-        wheelRefs?.forEach((ref) => ref.current?.setVisualToken(0));
-      } catch {}
-    }
-  },
-  [
-    // keep deps minimal and stable
-    setPendingSpell,
-    setWheelDamage,
-    setWheelMirror,
-    setWheelLocks,
-    setReservePenalties,
-    setPointerShifts,
-    setInitiativeOverride,
-    resetLaneSpellStates,
-    wheelRefs,
-  ]
-);
-
-  const [archetypeSelections, setArchetypeSelections] = useState<
-    Record<LegacySide, ArchetypeId | null>
-  >(createInitialArchetypeSelection);
-  const [archetypeReady, setArchetypeReady] = useState<Record<LegacySide, boolean>>(
-    createInitialArchetypeReady
-  );
-  const [archetypeReadyAck, setArchetypeReadyAck] = useState<Record<LegacySide, boolean>>({
-    player: false,
-    enemy: false,
+  const { state, derived, refs, actions } = useThreeWheelGame({
+    localSide,
+    localPlayerId,
+    players,
+    seed,
+    roomCode,
+    hostId,
+    targetWins,
+    onExit,
   });
 
-  const archetypeSpellIdsBySide = useMemo(
-    () => ({
-      player: archetypeSelections.player
-        ? [...ARCHETYPE_DEFINITIONS[archetypeSelections.player].spellIds]
-        : [],
-      enemy: archetypeSelections.enemy
-        ? [...ARCHETYPE_DEFINITIONS[archetypeSelections.enemy].spellIds]
-        : [],
-    }),
-    [archetypeSelections]
-  );
+  const {
+    player,
+    enemy,
+    initiative,
+    wins,
+    round,
+    phase,
+    resolveVotes,
+    advanceVotes,
+    rematchVotes,
+    matchSummary,
+    xpDisplay,
+    levelUpFlash,
+    handClearance,
+    wheelSize,
+    wheelSections,
+    tokens,
+    active,
+    wheelHUD,
+    assign,
+    dragCardId,
+    dragOverWheel,
+    selectedCardId,
+    reserveSums,
+    isPtrDragging,
+    ptrDragCard,
+    lockedWheelSize,
+  } = state;
 
-  const archetypeGateOpen =
-    !isGrimoireMode ||
-    (!!archetypeSelections.player &&
-      !!archetypeSelections.enemy &&
-      archetypeReady.player &&
-      archetypeReady.enemy);
-
-  useEffect(() => {
-    setArchetypeSelections(
-      isGrimoireMode
-        ? { player: null, enemy: null }
-        : { player: DEFAULT_ARCHETYPE, enemy: DEFAULT_ARCHETYPE }
-    );
-    setArchetypeReady(
-      isGrimoireMode
-        ? { player: false, enemy: false }
-        : { player: true, enemy: true }
-    );
-    setArchetypeReadyAck({ player: false, enemy: false });
-
-    setSpellSyncState({ player: createSpellSyncEntry(), enemy: createSpellSyncEntry() });
-  }, [isGrimoireMode, setArchetypeReady, setArchetypeSelections]);
-
-  useEffect(() => {
-    if (!isGrimoireMode) return;
-    if (isMultiplayer) return;
-    const cpuSide = remoteLegacySide;
-    if (archetypeSelections[cpuSide]) return;
-
-    const timeoutId = setSafeTimeout(() => {
-      const ids = ARCHETYPE_IDS;
-      const pick = ids[Math.floor(Math.random() * ids.length)];
-      setArchetypeSelections((prev) => {
-        if (prev[cpuSide]) return prev;
-        return { ...prev, [cpuSide]: pick };
-      });
-      setArchetypeReady((prev) => {
-        if (prev[cpuSide]) return prev;
-        return { ...prev, [cpuSide]: true };
-      });
-      timeoutsRef.current.delete(timeoutId);
-    }, 450);
-
-    return () => {
-      clearTimeout(timeoutId);
-      timeoutsRef.current.delete(timeoutId);
-    };
-  }, [
-    archetypeSelections,
-    isGrimoireMode,
-    isMultiplayer,
+  const {
+    localLegacySide,
     remoteLegacySide,
-    setArchetypeReady,
-    setArchetypeSelections,
-  ]);
+    namesByLegacy,
+    HUD_COLORS,
+    winGoal,
+    isMultiplayer,
+    localWinsCount,
+    remoteWinsCount,
+    localWon,
+    winnerName,
+    localName,
+    remoteName,
+    canReveal,
+  } = derived;
 
-  // Freeze layout during resolution
-  const [freezeLayout, setFreezeLayout] = useState(false);
-  const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
+  const { wheelRefs, ptrPos } = refs;
 
-  // Phase state
-  const [phase, setPhase] = useState<Phase>("choose");
-
-  const [resolveVotes, setResolveVotes] = useState<{ player: boolean; enemy: boolean }>({
-    player: false,
-    enemy: false,
-  });
-
-  const markResolveVote = useCallback((side: LegacySide) => {
-    setResolveVotes((prev) => {
-      if (prev[side]) return prev;
-      return { ...prev, [side]: true };
-    });
-  }, []);
-
-  const clearResolveVotes = useCallback(() => {
-    setResolveVotes((prev) => {
-      if (!prev.player && !prev.enemy) return prev;
-      return { player: false, enemy: false };
-    });
-  }, []);
-
-  const [advanceVotes, setAdvanceVotes] = useState<{ player: boolean; enemy: boolean }>({
-    player: false,
-    enemy: false,
-  });
-
-  const markAdvanceVote = useCallback((side: LegacySide) => {
-    setAdvanceVotes((prev) => {
-      if (prev[side]) return prev;
-      return { ...prev, [side]: true };
-    });
-  }, []);
-
-  const clearAdvanceVotes = useCallback(() => {
-    setAdvanceVotes((prev) => {
-      if (!prev.player && !prev.enemy) return prev;
-      return { player: false, enemy: false };
-    });
-  }, []);
-
-  const [rematchVotes, setRematchVotes] = useState<{ player: boolean; enemy: boolean }>({
-    player: false,
-    enemy: false,
-  });
-
-  const markRematchVote = useCallback((side: LegacySide) => {
-    setRematchVotes((prev) => {
-      if (prev[side]) return prev;
-      return { ...prev, [side]: true };
-    });
-  }, []);
-
-  const clearRematchVotes = useCallback(() => {
-    setRematchVotes((prev) => {
-      if (!prev.player && !prev.enemy) return prev;
-      return { player: false, enemy: false };
-    });
-  }, []);
-
-  const [matchSummary, setMatchSummary] = useState<MatchResultSummary | null>(null);
-  const [xpDisplay, setXpDisplay] = useState<LevelProgress | null>(null);
-  const [levelUpFlash, setLevelUpFlash] = useState(false);
-  const hasRecordedResultRef = useRef(false);
-
-  const matchWinner: LegacySide | null =
-    wins.player >= winGoal ? "player" : wins.enemy >= winGoal ? "enemy" : null;
-  const localWinsCount = localLegacySide === "player" ? wins.player : wins.enemy;
-  const remoteWinsCount = localLegacySide === "player" ? wins.enemy : wins.player;
-  const localWon = matchWinner ? matchWinner === localLegacySide : false;
-  const winnerName = matchWinner ? namesByLegacy[matchWinner] : null;
-  const localName = namesByLegacy[localLegacySide];
-  const remoteName = namesByLegacy[remoteLegacySide];
-
-  useEffect(() => {
-    setInitiative(hostId ? hostLegacySide : localLegacySide);
-  }, [hostId, hostLegacySide, localLegacySide]);
-
-  useEffect(() => {
-    if (phase === "ended") {
-      if (!hasRecordedResultRef.current) {
-        const summary = recordMatchResult({ didWin: localWon });
-        hasRecordedResultRef.current = true;
-        setMatchSummary(summary);
-
-        if (summary.didWin) {
-          setXpDisplay(summary.before);
-          setLevelUpFlash(false);
-          if (summary.segments.length === 0) {
-            setXpDisplay(summary.after);
-          }
-          summary.segments.forEach((segment, idx) => {
-            setSafeTimeout(() => {
-              setXpDisplay({
-                level: segment.level,
-                exp: segment.exp,
-                expToNext: segment.expToNext,
-                percent: segment.percent,
-              });
-              if (segment.leveledUp) {
-                setLevelUpFlash(true);
-                setSafeTimeout(() => setLevelUpFlash(false), 900);
-              }
-            }, 600 * (idx + 1));
-          });
-        } else {
-          setXpDisplay(null);
-          setLevelUpFlash(false);
-        }
-      }
-    } else {
-      hasRecordedResultRef.current = false;
-      if (phase === "choose" && wins.player === 0 && wins.enemy === 0) {
-        setMatchSummary(null);
-        setXpDisplay(null);
-        setLevelUpFlash(false);
-      }
-    }
-  }, [phase, localWon, wins.player, wins.enemy]);
-
-  const [handClearance, setHandClearance] = useState<number>(0);
-
-  // --- Mobile pointer-drag support ---
-const [isPtrDragging, setIsPtrDragging] = useState(false);
-const [ptrDragCard, setPtrDragCard] = useState<Card | null>(null);
-const ptrPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-
-function addTouchDragCss(on: boolean) {
-  const root = document.documentElement;
-  if (on) {
-    // store previous to restore later
-    (root as any).__prevTouchAction = root.style.touchAction;
-    (root as any).__prevOverscroll = root.style.overscrollBehavior;
-    root.style.touchAction = 'none';
-    root.style.overscrollBehavior = 'contain';
-  } else {
-    root.style.touchAction = (root as any).__prevTouchAction ?? '';
-    root.style.overscrollBehavior = (root as any).__prevOverscroll ?? '';
-    delete (root as any).__prevTouchAction;
-    delete (root as any).__prevOverscroll;
-  }
-}
-
-function getDropTargetAt(x: number, y: number): { kind: 'wheel' | 'slot'; idx: number } | null {
-  let el = document.elementFromPoint(x, y) as HTMLElement | null;
-  while (el) {
-    const d = (el as HTMLElement).dataset;
-    if (d.drop && d.idx) {
-      if (d.drop === 'wheel') return { kind: 'wheel', idx: Number(d.idx) };
-      if (d.drop === 'slot')  return { kind: 'slot',  idx: Number(d.idx) };
-    }
-    el = el.parentElement;
-  }
-  return null;
-}
-
-function startPointerDrag(card: Card, e: React.PointerEvent) {
-  // only trigger for touch/pen; mouse still uses native DnD you already have
-  if (e.pointerType === 'mouse') return;
-  e.currentTarget.setPointerCapture?.(e.pointerId);
-  setSelectedCardId(card.id);
-  setDragCardId(card.id);
-  setPtrDragCard(card);
-  setIsPtrDragging(true);
-  addTouchDragCss(true);
-  ptrPos.current = { x: e.clientX, y: e.clientY };
-
-  const onMove = (ev: PointerEvent) => {
-    ptrPos.current = { x: ev.clientX, y: ev.clientY };
-    const t = getDropTargetAt(ev.clientX, ev.clientY);
-    setDragOverWheel(t && (t.kind === 'wheel' || t.kind === 'slot') ? t.idx : null);
-    // avoid scroll while dragging
-    ev.preventDefault?.();
-  };
-
-  const onUp = (ev: PointerEvent) => {
-    const t = getDropTargetAt(ev.clientX, ev.clientY);
-    if (t && active[t.idx]) {
-      // assign card to that wheel index (slot clicks already map to a wheel index)
-      assignToWheelLocal(t.idx, card);
-    }
-    cleanup();
-  };
-
-  const onCancel = () => cleanup();
-
-  function cleanup() {
-    window.removeEventListener('pointermove', onMove, { capture: true } as any);
-    window.removeEventListener('pointerup', onUp, { capture: true } as any);
-    window.removeEventListener('pointercancel', onCancel, { capture: true } as any);
-    setIsPtrDragging(false);
-    setPtrDragCard(null);
-    setDragOverWheel(null);
-    setDragCardId(null);
-    addTouchDragCss(false);
-  }
-
-  window.addEventListener('pointermove', onMove, { passive: false, capture: true });
-  window.addEventListener('pointerup', onUp, { passive: false, capture: true });
-  window.addEventListener('pointercancel', onCancel, { passive: false, capture: true });
-}
-  
-  // Responsive wheel size
-  const [wheelSize, setWheelSize] = useState<number>(() => (typeof window !== 'undefined' ? calcWheelSize(window.innerHeight, window.innerWidth, 0) : MAX_WHEEL));
-  useEffect(() => {
-    const onResize = () => { if (freezeLayout || lockedWheelSize !== null) return; setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth, handClearance)); };
-    window.addEventListener('resize', onResize); window.addEventListener('orientationchange', onResize);
-    const t = setTimeout(() => { if (!freezeLayout && lockedWheelSize === null) onResize(); }, 350);
-    return () => { window.removeEventListener('resize', onResize); window.removeEventListener('orientationchange', onResize); clearTimeout(t); };
-  }, [freezeLayout, handClearance, lockedWheelSize]);
-  useEffect(() => { if (typeof window !== 'undefined' && !freezeLayout && lockedWheelSize === null) { setWheelSize(calcWheelSize(window.innerHeight, window.innerWidth, handClearance)); } }, [handClearance, freezeLayout, lockedWheelSize]);
-
-  // Per-wheel sections & tokens & active
-  const wheelRngRef = useRef<() => number>(() => Math.random());
-  const [wheelSections, setWheelSections] = useState<Section[][]>(() => {
-    const seeded = createSeededRng(seed);
-    wheelRngRef.current = seeded;
-    return [
-      genWheelSections("bandit", seeded),
-      genWheelSections("sorcerer", seeded),
-      genWheelSections("beast", seeded),
-    ];
-  });
-
-  const generateWheelSet = useCallback((): Section[][] => {
-    const rng = wheelRngRef.current ?? Math.random;
-    return [
-      genWheelSections("bandit", rng),
-      genWheelSections("sorcerer", rng),
-      genWheelSections("beast", rng),
-    ];
-  }, []);
-
-  useEffect(() => {
-    wheelRngRef.current = createSeededRng(seed);
-    setWheelSections(generateWheelSet());
-  }, [seed, generateWheelSet]);
-
-  const [tokens, setTokens] = useState<[number, number, number]>([0, 0, 0]);
-  const [active] = useState<[boolean, boolean, boolean]>([true, true, true]);
-  const [wheelHUD, setWheelHUD] = useState<[string | null, string | null, string | null]>([null, null, null]);
-
-  // Assignments
-  const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>({ player: [null, null, null], enemy: [null, null, null] });
-  const assignRef = useRef(assign);
-  useEffect(() => {
-    assignRef.current = assign;
-  }, [assign]);
-
-const reserveReportsRef = useRef<
-  Record<LegacySide, { reserve: number; round: number } | null>
->({
-  player: null,
-  enemy: null,
-});
-
-const pendingSpellRef = useRef<SpellDefinition | null>(null);
-const wheelModifiersRef = useRef<[string | null, string | null, string | null]>([
-  null,
-  null,
-  null,
-]);
-const reservePenaltyRef = useRef<Record<LegacySide, number>>({ player: 0, enemy: 0 });
-const pointerShiftRef = useRef<[number, number, number]>([0, 0, 0]);
-const initiativeOverrideRef = useRef<LegacySide | null>(null);
-
-const storeReserveReport = useCallback(
-  (side: LegacySide, reserve: number, roundValue: number) => {
-    const prev = reserveReportsRef.current[side];
-    if (!prev || prev.reserve !== reserve || prev.round !== roundValue) {
-      reserveReportsRef.current[side] = { reserve, round: roundValue };
-      return true;
-    }
-    return false;
-  },
-  []
-);
-
-  const handleMPIntentRef = useRef<(intent: MPIntent) => void>(() => {});
-  const spellCastRequestRef = useRef<(spell: SpellDefinition) => void>(() => {});
-  const infoPopoverRootRef = useRef<HTMLDivElement | null>(null);
-
-  const sendIntent = useCallback(
-    (intent: MPIntent) => {
-      if (!roomCode) return;
-      try {
-        void chanRef.current?.publish("intent", intent);
-      } catch {}
-    },
-    [roomCode]
-  );
+  const {
+    setHandClearance,
+    setSelectedCardId,
+    setDragCardId,
+    setDragOverWheel,
+    startPointerDrag,
+    assignToWheelLocal,
+    handleRevealClick,
+    handleNextClick,
+    handleRematchClick,
+    handleExitClick,
+  } = actions;
 
 
-  const [laneSpellStates, setLaneSpellStates] = useState<LaneSpellState[]>(() => [
-    createEmptyLaneSpellState(),
-    createEmptyLaneSpellState(),
-    createEmptyLaneSpellState(),
-  ]);
-  const laneSpellStatesRef = useRef(laneSpellStates);
-  useEffect(() => {
-    laneSpellStatesRef.current = laneSpellStates;
-  }, [laneSpellStates]);
-
-  const updateLaneSpellState = useCallback(
-    (
-      laneIndex: number,
-      compute: (current: LaneSpellState) => LaneSpellState,
-      opts?: { skipBroadcast?: boolean }
-    ) => {
-      setLaneSpellStates((prev) => {
-        if (!Number.isInteger(laneIndex) || laneIndex < 0 || laneIndex >= prev.length) {
-          return prev;
-        }
-        const current = prev[laneIndex] ?? createEmptyLaneSpellState();
-        const next = compute(current);
-        if (laneSpellStatesEqual(current, next)) {
-          return prev;
-        }
-        if (!opts?.skipBroadcast && isMultiplayer) {
-          sendIntent({ type: "spellState", side: localLegacySide, lane: laneIndex, state: next });
-        }
-        const updated = [...prev];
-        updated[laneIndex] = next;
-        laneSpellStatesRef.current = updated;
-        return updated;
-      });
-    },
-    [isMultiplayer, localLegacySide, sendIntent]
-  );
-
-  const ensureLaneOccupant = useCallback(
-    (laneIndex: number, occupantCardId: string, opts?: { skipBroadcast?: boolean }) => {
-      updateLaneSpellState(
-        laneIndex,
-        (current) => {
-          if (current.occupantCardId === occupantCardId) {
-            return current;
-          }
-          return { ...current, occupantCardId };
-        },
-        opts
-      );
-    },
-    [updateLaneSpellState]
-  );
-
-  const refreshLaneSpellEffects = useCallback(
-    (laneIndex: number, occupantCardId: string, opts?: { skipBroadcast?: boolean }) => {
-      updateLaneSpellState(
-        laneIndex,
-        (current) => ({
-          ...current,
-          occupantCardId,
-          damageModifier: 0,
-          mirrorTargetCardId: null,
-        }),
-        opts
-      );
-    },
-    [updateLaneSpellState]
-  );
-
-  const clearLaneSpellEffects = useCallback(
-    (laneIndex: number, opts?: { skipBroadcast?: boolean }) => {
-      updateLaneSpellState(
-        laneIndex,
-        () => createEmptyLaneSpellState(),
-        opts
-      );
-    },
-    [updateLaneSpellState]
-  );
-
-  const applyRemoteLaneSpellState = useCallback(
-    (laneIndex: number, incoming: LaneSpellState) => {
-      const sanitized = createEmptyLaneSpellState();
-      sanitized.locked = !!incoming.locked;
-      sanitized.damageModifier =
-        typeof incoming.damageModifier === "number" && Number.isFinite(incoming.damageModifier)
-          ? incoming.damageModifier
-          : 0;
-      sanitized.mirrorTargetCardId = incoming.mirrorTargetCardId ?? null;
-      sanitized.occupantCardId = incoming.occupantCardId ?? null;
-      updateLaneSpellState(laneIndex, () => sanitized, { skipBroadcast: true });
-    },
-    [updateLaneSpellState]
-  );
-
-  const resetLaneSpellStates = useCallback(() => {
-    const next = [
-      createEmptyLaneSpellState(),
-      createEmptyLaneSpellState(),
-      createEmptyLaneSpellState(),
-    ];
-    laneSpellStatesRef.current = next;
-    setLaneSpellStates(next);
-  }, []);
-
-
-  const broadcastLocalReserve = useCallback(() => {
-    const lane = localLegacySide === "player" ? assignRef.current.player : assignRef.current.enemy;
-    const reserve = computeReserveSum(localLegacySide, lane, {
-      player: player.hand,
-      enemy: enemy.hand,
-    });
-    const updated = storeReserveReport(localLegacySide, reserve, round);
-    if (isMultiplayer && updated) {
-      sendIntent({ type: "reserve", side: localLegacySide, reserve, round });
-    }
-  }, [isMultiplayer, localLegacySide, round, sendIntent, storeReserveReport, player, enemy]);
-
-
-  const syncLocalSpellSelection = useCallback(
-    (spellId: string | null) => {
-      setSpellSyncState((prev) => {
-        const current = prev[localLegacySide];
-        const next: SpellSyncEntry = {
-          ...current,
-          selectedSpellId: spellId,
-        };
-        if (!spellId) {
-          next.target = null;
-          next.fireballCost = null;
-        }
-        return { ...prev, [localLegacySide]: next };
-      });
-      if (isMultiplayer) {
-        sendIntent({ type: "spellSelect", side: localLegacySide, spellId });
-      }
-    },
-    [isMultiplayer, localLegacySide, sendIntent, setSpellSyncState]
-  );
-
-  const syncLocalSpellTarget = useCallback(
-    (spellId: string, target: SpellTargetIntentPayload | null) => {
-      setSpellSyncState((prev) => {
-        const current = prev[localLegacySide];
-        const next: SpellSyncEntry = {
-          ...current,
-          selectedSpellId: spellId ?? current.selectedSpellId,
-          target: target ?? null,
-        };
-        return { ...prev, [localLegacySide]: next };
-      });
-      if (isMultiplayer) {
-        sendIntent({ type: "spellTarget", side: localLegacySide, spellId, target });
-      }
-    },
-    [isMultiplayer, localLegacySide, sendIntent, setSpellSyncState]
-  );
-
-  const syncLocalFireballCost = useCallback(
-    (spellId: string, cost: number) => {
-      const normalizedCost = Number.isFinite(cost) ? cost : 0;
-      setSpellSyncState((prev) => {
-        const current = prev[localLegacySide];
-        const next: SpellSyncEntry = {
-          ...current,
-          selectedSpellId: spellId ?? current.selectedSpellId,
-          fireballCost: normalizedCost,
-        };
-        return { ...prev, [localLegacySide]: next };
-      });
-      if (isMultiplayer) {
-        sendIntent({
-          type: "spellFireballCost",
-          side: localLegacySide,
-          spellId,
-          cost: normalizedCost,
-        });
-      }
-    },
-    [isMultiplayer, localLegacySide, sendIntent, setSpellSyncState]
-  );
-
-  const syncLocalSpellResolve = useCallback(
-    (
-      spellId: string,
-      manaAfter: number,
-      payload: SpellResolutionIntentPayload | null = null
-    ) => {
-      const safeMana = Number.isFinite(manaAfter) ? manaAfter : 0;
-      setSpellSyncState((prev) => {
-        const current = prev[localLegacySide];
-        const next: SpellSyncEntry = {
-          ...current,
-          selectedSpellId: null,
-          target: null,
-          fireballCost: null,
-          lastResolvedSpellId: spellId,
-          lastResolutionPayload: payload,
-          lastKnownMana: safeMana,
-        };
-        return { ...prev, [localLegacySide]: next };
-      });
-      setMana((prev) => {
-        if (prev[localLegacySide] === safeMana) return prev;
-        return { ...prev, [localLegacySide]: safeMana };
-      });
-      if (isMultiplayer) {
-        sendIntent({
-          type: "spellResolve",
-          side: localLegacySide,
-          spellId,
-          manaAfter: safeMana,
-          payload,
-        });
-      }
-    },
-    [isMultiplayer, localLegacySide, sendIntent, setMana, setSpellSyncState]
-  );
-
-
-  // Drag state + tap-to-assign selected id
-  const [dragCardId, setDragCardId] = useState<string | null>(null);
-  const [dragOverWheel, _setDragOverWheel] = useState<number | null>(null);
-  const dragOverRef = useRef<number | null>(null);
-  const setDragOverWheel = (i: number | null) => { dragOverRef.current = i; (window as any).requestIdleCallback ? (window as any).requestIdleCallback(() => _setDragOverWheel(dragOverRef.current)) : setTimeout(() => _setDragOverWheel(dragOverRef.current), 0); };
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-
-  // Reserve sums after resolve (HUD only)
-  const [reserveSums, setReserveSums] = useState<null | { player: number; enemy: number }>(null);
-
-  // Reference popover
   const [showRef, setShowRef] = useState(false);
   const [showGrimoire, setShowGrimoire] = useState(false);
 
-  const appendLog = (s: string) => setLog((prev) => [s, ...prev].slice(0, 60));
-  const START_LOG = "A Shade Bandit eyes your purse...";
-  const [log, setLog] = useState<string[]>([START_LOG]);
 
-  const spellDefinitionsBySide = useMemo(
-    () => ({
-      player: getSpellDefinitions(archetypeSpellIdsBySide.player),
-      enemy: getSpellDefinitions(archetypeSpellIdsBySide.enemy),
-    }),
-    [archetypeSpellIdsBySide]
-  );
+  type SlotView = { side: LegacySide; card: Card | null; name: string };
 
-  const localSpellDefinitions = useMemo(
-    () =>
-      isGrimoireMode
-        ? spellDefinitionsBySide[localLegacySide]
-        : ([] as SpellDefinition[]),
-    [isGrimoireMode, localLegacySide, spellDefinitionsBySide]
-  );
-
-  const localMana = manaPools[localLegacySide];
-
-  useEffect(() => {
-    if (!isGrimoireMode && showGrimoire) {
-      setShowGrimoire(false);
-    }
-    if (!isGrimoireMode) {
-      setPendingSpell(null);
-    }
-  }, [isGrimoireMode, setPendingSpell, showGrimoire]);
+  const renderWheelPanel = (i: number) => {
+    const pc = assign.player[i];
+    const ec = assign.enemy[i];
 
 
-  useEffect(() => {
-    if (!showRef && !showGrimoire) return;
-
-    const handlePointer = (event: MouseEvent | TouchEvent) => {
-      const target = event.target as Node | null;
-      if (!target) return;
-      if (infoPopoverRootRef.current?.contains(target)) return;
-      setShowRef(false);
-      setShowGrimoire(false);
-    };
-
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setShowRef(false);
-        setShowGrimoire(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handlePointer);
-    document.addEventListener("touchstart", handlePointer);
-    document.addEventListener("keydown", handleKey);
-
-    return () => {
-      document.removeEventListener("mousedown", handlePointer);
-      document.removeEventListener("touchstart", handlePointer);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [showRef, showGrimoire]);
-
-const handleSpellActivate = useCallback(
-  (spell: SpellDefinition) => {
-    if (effectiveGameMode !== "grimoire") return;
-    setPendingSpell({ side: localLegacySide, spell });
-    syncLocalSpellSelection(spell.id);
-    spellCastRequestRef.current(spell);
-    setShowGrimoire(false);
-  },
-  [effectiveGameMode, localLegacySide, setPendingSpell, syncLocalSpellSelection]
-);
-
-const canReveal = useMemo(() => {
-  if (!archetypeGateOpen) return false;
-  const lane = localLegacySide === "player" ? assign.player : assign.enemy;
-  return lane.every((c, i) => !active[i] || !!c);
-}, [archetypeGateOpen, assign, active, localLegacySide]);
-    
-  // Wheel refs for imperative token updates
-  const wheelRefs = [useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null), useRef<WheelHandle | null>(null)];
-
-  // ---- Assignment helpers (batched) ----
-  const assignToWheelFor = useCallback(
-    (side: LegacySide, laneIndex: number, card: Card) => {
-      if (!archetypeGateOpen) return false;
-      if (!active[laneIndex]) return false;
+    const leftSlot: SlotView = { side: "player", card: pc, name: namesByLegacy.player };
+    const rightSlot: SlotView = { side: "enemy", card: ec, name: namesByLegacy.enemy };
 
 
-      const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
-      const prevAtLane = lane[laneIndex];
-      const fromIdx = lane.findIndex((c) => c?.id === card.id);
-      const laneSpell = laneSpellStatesRef.current[laneIndex] ?? createEmptyLaneSpellState();
+    const ws = Math.round(lockedWheelSize ?? wheelSize);
+
+    const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
+    const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
+
+    const shouldShowLeftCard =
+      !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
+    const shouldShowRightCard =
+      !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
+
+    // --- layout numbers that must match the classes below ---
+    const slotW = 80; // w-[80px] on both slots
+    const gapX = 16; // gap-2 => 8px, two gaps between three items => 16
+    const paddingX = 16; // p-2 => 8px left + 8px right
+    const borderX = 4; // border-2 => 2px left + 2px right
+    const EXTRA_H = 16; // extra breathing room inside the panel (change to tweak height)
 
 
-      if (prevAtLane && prevAtLane.id === card.id && fromIdx === laneIndex) {
-        if (side === localLegacySide) {
-          setSelectedCardId(null);
-        }
-        ensureLaneOccupant(laneIndex, card.id, { skipBroadcast: side !== localLegacySide });
-        return false;
-      }
+    // panel width (border-box) so wheel is visually centered
+    const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
+    const renderSlotCard = (slot: SlotView, isSlotSelected: boolean) => {
+      if (!slot.card) return null;
+      const card = slot.card;
+      const interactable = slot.side === localLegacySide && phase === "choose";
 
-      if (laneSpell.locked && (!prevAtLane || prevAtLane.id !== card.id)) {
-        if (side === localLegacySide) {
-          setSelectedCardId(null);
-        }
-        return false;
-      }
 
-      const isPlayer = side === "player";
-      const shouldBroadcastSpells = side === localLegacySide;
-      const occupantChanged = !prevAtLane || prevAtLane.id !== card.id;
+      const handlePick = () => {
+        if (!interactable) return;
+        if (selectedCardId) {
+          tapAssignIfSelected();
 
-      if (occupantChanged) {
-        refreshLaneSpellEffects(laneIndex, card.id, { skipBroadcast: !shouldBroadcastSpells });
-      } else {
-        ensureLaneOccupant(laneIndex, card.id, { skipBroadcast: !shouldBroadcastSpells });
-      }
-
-      if (fromIdx !== -1 && fromIdx !== laneIndex) {
-        clearLaneSpellEffects(fromIdx, { skipBroadcast: !shouldBroadcastSpells });
-      }
-
-      startTransition(() => {
-        setAssign((prev) => {
-          const laneArr = isPlayer ? prev.player : prev.enemy;
-          const nextLane = [...laneArr];
-          const existingIdx = nextLane.findIndex((c) => c?.id === card.id);
-          if (existingIdx !== -1) nextLane[existingIdx] = null;
-          nextLane[laneIndex] = card;
-          return isPlayer ? { ...prev, player: nextLane } : { ...prev, enemy: nextLane };
-        });
-
-        if (isPlayer) {
-          setPlayer((p) => {
-            let hand = p.hand.filter((c) => c.id !== card.id);
-            if (prevAtLane && prevAtLane.id !== card.id && !hand.some((c) => c.id === prevAtLane.id)) {
-              hand = [...hand, prevAtLane];
-            }
-            return { ...p, hand };
-          });
         } else {
-          setEnemy((e) => {
-            let hand = e.hand.filter((c) => c.id !== card.id);
-            if (prevAtLane && prevAtLane.id !== card.id && !hand.some((c) => c.id === prevAtLane.id)) {
-              hand = [...hand, prevAtLane];
-            }
-            return { ...e, hand };
-          });
+          setSelectedCardId(card.id);
         }
-
-        if (side === localLegacySide) {
-          setSelectedCardId(null);
-        }
-      });
-
-      clearResolveVotes();
-
-      return true;
-    },
-    [
-      active,
-      archetypeGateOpen,
-      clearLaneSpellEffects,
-      clearResolveVotes,
-      ensureLaneOccupant,
-      localLegacySide,
-      refreshLaneSpellEffects,
-    ]
-
-  );
-
-  const clearAssignFor = useCallback(
-    (side: LegacySide, laneIndex: number) => {
-      if (!archetypeGateOpen) return false;
-      const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
-      const prev = lane[laneIndex];
-      if (!prev) return false;
-
-      const isPlayer = side === "player";
-      const shouldBroadcastSpells = side === localLegacySide;
-
-      clearLaneSpellEffects(laneIndex, { skipBroadcast: !shouldBroadcastSpells });
-
-      startTransition(() => {
-        setAssign((prevState) => {
-          const laneArr = isPlayer ? prevState.player : prevState.enemy;
-          if (!laneArr[laneIndex]) return prevState;
-          const nextLane = [...laneArr];
-          nextLane[laneIndex] = null;
-          return isPlayer ? { ...prevState, player: nextLane } : { ...prevState, enemy: nextLane };
-        });
-
-        if (isPlayer) {
-          setPlayer((p) => {
-            if (p.hand.some((c) => c.id === prev.id)) return p;
-            return { ...p, hand: [...p.hand, prev] };
-          });
-        } else {
-          setEnemy((e) => {
-            if (e.hand.some((c) => c.id === prev.id)) return e;
-            return { ...e, hand: [...e.hand, prev] };
-          });
-        }
-
-        if (side === localLegacySide) {
-          setSelectedCardId((sel) => (sel === prev.id ? null : sel));
-        }
-      });
-
-      clearResolveVotes();
-
-      return true;
-    },
-    [archetypeGateOpen, clearLaneSpellEffects, clearResolveVotes, localLegacySide]
-  );
-
-  function assignToWheelLocal(i: number, card: Card) {
-    const changed = assignToWheelFor(localLegacySide, i, card);
-    if (changed && isMultiplayer) {
-      sendIntent({ type: "assign", lane: i, side: localLegacySide, card });
-    }
-  }
-
-  function clearAssign(i: number) {
-    const changed = clearAssignFor(localLegacySide, i);
-    if (changed && isMultiplayer) {
-      sendIntent({ type: "clear", lane: i, side: localLegacySide });
-    }
-  }
+      };
 
 
-  useEffect(() => {
-    broadcastLocalReserve();
-  }, [broadcastLocalReserve, assign, player, enemy, localLegacySide, round, isMultiplayer]);
+      const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
+        if (!interactable) return;
+        setSelectedCardId(card.id);
+        setDragCardId(card.id);
+        try {
+          e.dataTransfer.setData("text/plain", card.id);
+        } catch {}
+        e.dataTransfer.effectAllowed = "move";
+      };
 
-  // ---------------- Reveal / Resolve ----------------
-  const revealRoundCore = useCallback(
-    (opts?: { force?: boolean }) => {
-      if (!opts?.force && !canReveal) return false;
 
-      clearResolveVotes();
+      const handleDragEnd = () => {
+        setDragCardId(null);
+        setDragOverWheel(null);
+      };
 
 
-      if (isMultiplayer) {
-        broadcastLocalReserve();
-      }
+      const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+        if (!interactable) return;
+        e.stopPropagation();
+        startPointerDrag(card, e);
+      };
 
-      setLockedWheelSize((s) => s ?? wheelSize);
-      setFreezeLayout(true);
-
-      let enemyPicks: (Card | null)[];
-
-      if (isMultiplayer) {
-        enemyPicks = [...assignRef.current.enemy];
-      } else {
-        enemyPicks = autoPickEnemy(enemy.hand);
-        if (enemyPicks.some(Boolean)) {
-          const pickIds = new Set((enemyPicks.filter(Boolean) as Card[]).map((c) => c.id));
-          setEnemy((prev) => ({
-            ...prev,
-            hand: prev.hand.filter((card) => !pickIds.has(card.id)),
-          }));
-        }
-        setAssign((a) => ({ ...a, enemy: enemyPicks }));
-      }
-
-      setPhase("showEnemy");
-      setSafeTimeout(() => {
-        if (!mountedRef.current) return;
-        setPhase("anim");
-        resolveRound(enemyPicks);
-      }, 600);
-
-      return true;
-    },
-
-    [broadcastLocalReserve, canReveal, clearResolveVotes, isMultiplayer, resolveRound, setAssign, setEnemy, setFreezeLayout, setLockedWheelSize, setPhase, setSafeTimeout, wheelSize]
-
-  );
-
-  const onReveal = useCallback(() => revealRoundCore(), [revealRoundCore]);
-
-  useEffect(() => {
-    if (!isMultiplayer) return;
-    if (phase !== "choose") return;
-    if (!canReveal) return;
-    if (!resolveVotes.player || !resolveVotes.enemy) return;
-    revealRoundCore();
-  }, [canReveal, isMultiplayer, phase, resolveVotes, revealRoundCore]);
-
-  function resolveRound(enemyPicks?: (Card | null)[]) {
-    const played = [0, 1, 2].map((i) => ({ p: assign.player[i] as Card | null, e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null }));
-
-    const localPlayed = localLegacySide === "player"
-      ? played.map((pe) => pe.p)
-      : played.map((pe) => pe.e);
-    const remotePlayed = remoteLegacySide === "player"
-      ? played.map((pe) => pe.p)
-      : played.map((pe) => pe.e);
-
-    const handMap = {
-      player: player.hand,
-      enemy: enemy.hand,
-    } as const;
-
-    const localReserve = computeReserveSum(localLegacySide, localPlayed, handMap);
-    let remoteReserve: number;
-    let usedRemoteReport = false;
-
-    if (!isMultiplayer) {
-      remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed, handMap);
-    } else {
-      const report = reserveReportsRef.current[remoteLegacySide];
-      if (report && report.round === round) {
-        remoteReserve = report.reserve;
-        usedRemoteReport = true;
-      } else {
-        remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed, handMap);
-      }
-    }
-
-    storeReserveReport(localLegacySide, localReserve, round);
-    if (!isMultiplayer || !usedRemoteReport) {
-      storeReserveReport(remoteLegacySide, remoteReserve, round);
-    }
-
-    const pReserve = localLegacySide === "player" ? localReserve : remoteReserve;
-    const eReserve = localLegacySide === "enemy" ? localReserve : remoteReserve;
-
-    // 🔸 show these during showEnemy/anim immediately
-    setReserveSums({ player: pReserve, enemy: eReserve });
-
-    type Outcome = { steps: number; targetSlice: number; section: Section; winner: LegacySide | null; tie: boolean; wheel: number; detail: string };
-    const outcomes: Outcome[] = [];
-
-    for (let w = 0; w < 3; w++) {
-      const secList = wheelSections[w];
-      const baseP = (played[w].p?.number ?? 0);
-      const baseE = (played[w].e?.number ?? 0);
-      const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
-      const targetSlice = (tokens[w] + steps) % SLICES;
-      const section = secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) || ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
-
-      const pVal = baseP; const eVal = baseE;
-      let winner: LegacySide | null = null; let tie = false; let detail = "";
-      switch (section.id) {
-        case "Strongest": if (pVal === eVal) tie = true; else winner = pVal > eVal ? "player" : "enemy"; detail = `Strongest ${pVal} vs ${eVal}`; break;
-        case "Weakest": if (pVal === eVal) tie = true; else winner = pVal < eVal ? "player" : "enemy"; detail = `Weakest ${pVal} vs ${eVal}`; break;
-        case "ReserveSum": if (pReserve === eReserve) tie = true; else winner = pReserve > eReserve ? "player" : "enemy"; detail = `Reserve ${pReserve} vs ${eReserve}`; break;
-        case "ClosestToTarget": {
-          const t = targetSlice === 0 ? (section.target ?? 0) : targetSlice;
-          const pd = Math.abs(pVal - t);
-          const ed = Math.abs(eVal - t);
-          if (pd === ed) tie = true;
-          else winner = pd < ed ? "player" : "enemy";
-          detail = `Closest to ${t}: ${pVal} vs ${eVal}`;
-          break;
-        }
-        case "Initiative": winner = initiative; detail = `Initiative -> ${winner}`; break;
-        default: tie = true; detail = `Slice 0: no section`; break;
-      }
-      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail });
-    }
-
-    const animateSpins = async () => {
-      const finalTokens: [number, number, number] = [...tokens] as [number, number, number];
-
-      for (const o of outcomes) {
-        const start = finalTokens[o.wheel]; const steps = o.steps; if (steps <= 0) continue;
-        const total = Math.max(220, Math.min(1000, 110 + 70 * steps));
-        const t0 = performance.now();
-        await new Promise<void>((resolve) => {
-          const frame = (now: number) => {
-            if (!mountedRef.current) return resolve();
-            const tt = Math.max(0, Math.min(1, (now - t0) / total));
-            const progressed = Math.floor(easeInOutCubic(tt) * steps);
-            wheelRefs[o.wheel].current?.setVisualToken((start + progressed) % SLICES);
-            if (tt < 1) requestAnimationFrame(frame); else { wheelRefs[o.wheel].current?.setVisualToken((start + steps) % SLICES); resolve(); }
-          };
-          requestAnimationFrame(frame);
-        });
-        finalTokens[o.wheel] = (start + steps) % SLICES;
-        await new Promise((r) => setTimeout(r, 90));
-      }
-
-      // Single commit after all wheels have finished
-      setTokens(finalTokens);
-
-      let pWins = wins.player, eWins = wins.enemy;
-      let pMana = manaPools.player, eMana = manaPools.enemy;
-      let hudColors: [string | null, string | null, string | null] = [null, null, null];
-      const roundWinsCount: Record<LegacySide, number> = { player: 0, enemy: 0 };
-      outcomes.forEach((o) => {
-        if (o.tie) { appendLog(`Wheel ${o.wheel + 1} tie: ${o.detail} — no win.`); }
-        else if (o.winner) {
-          hudColors[o.wheel] = HUD_COLORS[o.winner];
-          roundWinsCount[o.winner] += 1;
-          if (o.winner === "player") {
-            pWins++;
-            pMana++;
-          } else {
-            eWins++;
-            eMana++;
-          }
-          appendLog(`Wheel ${o.wheel + 1} win -> ${o.winner} (${o.detail}).`);
-        }
-      });
-
-      if (!mountedRef.current) return;
-
-      const prevInitiative = initiative;
-      const roundScore = `${roundWinsCount.player}-${roundWinsCount.enemy}`;
-      let nextInitiative: LegacySide;
-      let initiativeLog: string;
-      if (roundWinsCount.player === roundWinsCount.enemy) {
-        nextInitiative = prevInitiative === "player" ? "enemy" : "player";
-        initiativeLog = `Round ${round} tie (${roundScore}) — initiative swaps to ${namesByLegacy[nextInitiative]}.`;
-      } else if (roundWinsCount.player > roundWinsCount.enemy) {
-        nextInitiative = "player";
-        initiativeLog = `${namesByLegacy.player} wins the round ${roundScore} and takes initiative next round.`;
-      } else {
-        nextInitiative = "enemy";
-        initiativeLog = `${namesByLegacy.enemy} wins the round ${roundScore} and takes initiative next round.`;
-      }
-
-      setInitiative(nextInitiative);
-      appendLog(initiativeLog);
-
-      setWheelHUD(hudColors);
-      setWins({ player: pWins, enemy: eWins });
-      setManaPools({ player: pMana, enemy: eMana });
-      setReserveSums({ player: pReserve, enemy: eReserve });
-      resetRoundTransientState();
-      clearAdvanceVotes();
-      setPhase("roundEnd");
-      if (pWins >= winGoal || eWins >= winGoal) {
-        clearRematchVotes();
-        setPhase("ended");
-        const localWins = localLegacySide === "player" ? pWins : eWins;
-        appendLog(
-          localWins >= winGoal
-            ? "You win the match!"
-            : `${namesByLegacy[remoteLegacySide]} wins the match!`
-        );
-      }
+      return (
+        <StSCard
+          card={card}
+          size="sm"
+          disabled={!interactable}
+          selected={isSlotSelected}
+          onPick={handlePick}
+          draggable={interactable}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onPointerDown={handlePointerDown}
+        />
+      );
     };
 
-    animateSpins();
-  }
+    const onZoneDragOver = (e: React.DragEvent) => {
+      e.preventDefault();
+      if (dragCardId && active[i]) setDragOverWheel(i);
+    };
+    const onZoneLeave = () => {
+      if (dragCardId) setDragOverWheel(null);
+    };
+    const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
+      if (!id || !active[i]) return;
+      const intendedSide = targetSide ?? localLegacySide;
+      if (intendedSide !== localLegacySide) {
+        setDragOverWheel(null);
+        setDragCardId(null);
+        return;
+      }
 
-  const nextRoundCore = useCallback(
-    (opts?: { force?: boolean }) => {
-      const allow = opts?.force || phase === "roundEnd";
-      if (!allow) return false;
 
-      clearResolveVotes();
-      clearAdvanceVotes();
-      resetRoundTransientState({ includePointerReset: true });
-
-      const currentAssign = assignRef.current;
-      const playerPlayed = currentAssign.player.filter((c): c is Card => !!c);
-      const enemyPlayed  = currentAssign.enemy.filter((c): c is Card => !!c);
-
-      setFreezeLayout(false);
-      setLockedWheelSize(null);
-
-      setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
-      setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
-
-      setWheelSections(generateWheelSet());
-      setAssign({ player: [null, null, null], enemy: [null, null, null] });
-      resetLaneSpellStates();
-
-      setSelectedCardId(null);
-      setDragCardId(null);
+      const isLocalPlayer = localLegacySide === "player";
+      const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
+      const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as
+        | Card
+        | undefined;
+      const card = fromHand || fromSlots || null;
+      if (card) assignToWheelLocal(i, card as Card);
       setDragOverWheel(null);
-      setTokens([0, 0, 0]);
-      setReserveSums(null);
-      setWheelHUD([null, null, null]);
-
-      setPhase("choose");
-      setRound((r) => r + 1);
-
-      resetRoundTransientState();
-
-      return true;
-    },
-    [
-      clearResolveVotes,
-      clearAdvanceVotes,
-      generateWheelSet,
-      phase,
-      setAssign,
-      setDragCardId,
-      setDragOverWheel,
-      setEnemy,
-      setFreezeLayout,
-      setLockedWheelSize,
-      setPhase,
-      setPlayer,
-      setReserveSums,
-      setSelectedCardId,
-      setTokens,
-      setWheelHUD,
-      setWheelSections,
-      setRound,
-      resetRoundTransientState,
-      resetLaneSpellStates,
-      wheelRefs
-    ]
-  );
-
-  // ✅ stable wrapper (pick ONE of these)
-
-  // Option A: alias (simplest; same identity as memoized core)
-  const nextRound = nextRoundCore;
-
-  const handleMPIntent = useCallback(
-    (msg: MPIntent) => {
-      switch (msg.type) {
-        case "assign": {
-          if (msg.side === localLegacySide) break;
-          assignToWheelFor(msg.side, msg.lane, msg.card);
-          break;
-        }
-        case "clear": {
-          if (msg.side === localLegacySide) break;
-          clearAssignFor(msg.side, msg.lane);
-          break;
-        }
-        case "archetypeSelect": {
-          if (msg.side === localLegacySide) break;
-          if (!msg.archetype || !(msg.archetype in ARCHETYPE_DEFINITIONS)) break;
-          setArchetypeSelections((prev) => {
-            if (prev[msg.side] === msg.archetype) return prev;
-            return { ...prev, [msg.side]: msg.archetype };
-          });
-          setArchetypeReady((prev) => {
-            if (!prev[msg.side]) return prev;
-            return { ...prev, [msg.side]: false };
-          });
-          break;
-        }
-        case "archetypeReady": {
-          if (msg.side === localLegacySide) break;
-          setArchetypeReady((prev) => {
-            if (prev[msg.side] === msg.ready) return prev;
-            return { ...prev, [msg.side]: !!msg.ready };
-          });
-          if (isMultiplayer) {
-            try {
-              sendIntent({
-                type: "archetypeReadyAck",
-                side: localLegacySide,
-                ready: !!msg.ready,
-              });
-            } catch {}
-          }
-          break;
-        }
-        case "archetypeReadyAck": {
-          if (msg.side === localLegacySide) break;
-          setArchetypeReadyAck((prev) => {
-            if (prev[msg.side] === !!msg.ready) return prev;
-            return { ...prev, [msg.side]: !!msg.ready };
-          });
-          break;
-        }
-        case "reveal": {
-          if (msg.side === localLegacySide) break;
-
-          markResolveVote(msg.side);
-          break;
-        }
-        case "nextRound": {
-          if (msg.side === localLegacySide) break;
-          markAdvanceVote(msg.side);
-          break;
-        }
-        case "rematch": {
-          if (msg.side === localLegacySide) break;
-          markRematchVote(msg.side);
-          break;
-        }
-        case "reserve": {
-          if (msg.side === localLegacySide) break;
-          if (typeof msg.reserve === "number" && typeof msg.round === "number") {
-            storeReserveReport(msg.side, msg.reserve, msg.round);
-          }
-          break;
-        }
-
-        case "spellSelect": {
-          if (msg.side === localLegacySide) break;
-          setSpellSyncState((prev) => {
-            const current = prev[msg.side];
-            const next: SpellSyncEntry = {
-              ...current,
-              selectedSpellId: msg.spellId ?? null,
-            };
-            if (!msg.spellId) {
-              next.target = null;
-              next.fireballCost = null;
-            }
-            return { ...prev, [msg.side]: next };
-          });
-          break;
-        }
-        case "spellTarget": {
-          if (msg.side === localLegacySide) break;
-          setSpellSyncState((prev) => {
-            const current = prev[msg.side];
-            const next: SpellSyncEntry = {
-              ...current,
-              target: msg.target ?? null,
-              selectedSpellId: msg.spellId ?? current.selectedSpellId,
-            };
-            return { ...prev, [msg.side]: next };
-          });
-          break;
-        }
-        case "spellFireballCost": {
-          if (msg.side === localLegacySide) break;
-          setSpellSyncState((prev) => {
-            const current = prev[msg.side];
-            const next: SpellSyncEntry = {
-              ...current,
-              fireballCost: Number.isFinite(msg.cost) ? msg.cost : current.fireballCost,
-              selectedSpellId: msg.spellId ?? current.selectedSpellId,
-            };
-            return { ...prev, [msg.side]: next };
-          });
-          break;
-        }
-        case "spellResolve": {
-  if (msg.side === localLegacySide) break;
-  setSpellSyncState((prev) => {
-    const current = prev[msg.side];
-    const next: SpellSyncEntry = {
-      ...current,
-      selectedSpellId: null,
-      target: null,
-      fireballCost: null,
-      lastResolvedSpellId: msg.spellId ?? null,
-      lastResolutionPayload: msg.payload ?? null,
-      lastKnownMana: msg.manaAfter ?? current.lastKnownMana,
-    };
-    return { ...prev, [msg.side]: next };
-  });
-  setManaPools((prev) => {
-  const nextMana = msg.manaAfter;
-  if (typeof nextMana !== "number" || !Number.isFinite(nextMana)) return prev;
-  if (prev[msg.side] === nextMana) return prev;
-  return { ...prev, [msg.side]: nextMana };
-});
-  break; // ✅ end the spellResolve case
-}
-
-case "spellState": {
-  if (msg.side === localLegacySide) break;
-  if (typeof msg.lane !== "number" || !msg.state) break;
-  applyRemoteLaneSpellState(msg.lane, msg.state);
-  break;
-}
-default:
-  break;
-}
-}, [
-      assignToWheelFor,
-      clearAssignFor,
-      isMultiplayer,
-      applyRemoteLaneSpellState,
-      localLegacySide,
-      markAdvanceVote,
-      markRematchVote,
-      markResolveVote,
-      sendIntent,
-      storeReserveReport,
-      setArchetypeReadyAck,
-      setArchetypeReady,
-      setArchetypeSelections,
-      setSpellSyncState,
-      setMana,
-    ]);
-
-  useEffect(() => {
-    handleMPIntentRef.current = handleMPIntent;
-  }, [handleMPIntent]);
-
-  useEffect(() => {
-    if (!roomCode) {
-      try { chanRef.current?.unsubscribe(); } catch {}
-      try { chanRef.current?.detach(); } catch {}
-      chanRef.current = null;
-      if (ablyRef.current) {
-        try { ablyRef.current.close(); } catch {}
-        ablyRef.current = null;
-      }
-      return;
-    }
-
-    const key = import.meta.env.VITE_ABLY_API_KEY;
-    if (!key) return;
-
-    const ably = new Realtime({ key, clientId: localPlayerId });
-    ablyRef.current = ably;
-    const channel = ably.channels.get(`rw:v1:rooms:${roomCode}`);
-    chanRef.current = channel;
-
-    let activeSub = true;
-
-    (async () => {
-      try {
-        await channel.attach();
-        channel.subscribe("intent", (msg) => {
-          if (!activeSub) return;
-          const intent = msg?.data as MPIntent;
-          handleMPIntentRef.current(intent);
-        });
-      } catch {}
-    })();
-
-    return () => {
-      activeSub = false;
-      try { channel.unsubscribe(); } catch {}
-      try { channel.detach(); } catch {}
-      try { ably.close(); } catch {}
-      if (chanRef.current === channel) {
-        chanRef.current = null;
-      }
-      if (ablyRef.current === ably) {
-        ablyRef.current = null;
-      }
-    };
-  }, [roomCode, localPlayerId]);
-
-  const handleRevealClick = useCallback(() => {
-    if (phase !== "choose" || !canReveal) return;
-
-    if (!isMultiplayer) {
-      onReveal();
-      return;
-    }
-
-    if (resolveVotes[localLegacySide]) return;
-
-    markResolveVote(localLegacySide);
-    sendIntent({ type: "reveal", side: localLegacySide });
-  }, [canReveal, isMultiplayer, localLegacySide, markResolveVote, onReveal, phase, resolveVotes, sendIntent]);
-
-  const handleNextClick = useCallback(() => {
-    if (phase !== "roundEnd") return;
-
-    if (!isMultiplayer) {
-      nextRound();
-      return;
-    }
-
-    if (advanceVotes[localLegacySide]) return;
-
-    markAdvanceVote(localLegacySide);
-    sendIntent({ type: "nextRound", side: localLegacySide });
-  }, [advanceVotes, isMultiplayer, localLegacySide, markAdvanceVote, nextRound, phase, sendIntent]);
-
-  useEffect(() => {
-    if (!isMultiplayer) return;
-    if (phase !== "roundEnd") return;
-    if (!advanceVotes.player || !advanceVotes.enemy) return;
-    nextRound();
-  }, [advanceVotes, isMultiplayer, nextRound, phase]);
-
-  const resetMatch = useCallback(() => {
-    clearResolveVotes();
-    clearAdvanceVotes();
-    clearRematchVotes();
-
-    reserveReportsRef.current = { player: null, enemy: null };
-
-    resetRoundTransientState({ includePointerReset: true });
-
-    setFreezeLayout(false);
-    setLockedWheelSize(null);
-
-    setPlayer(() => makeFighter("Wanderer"));
-    setEnemy(() => makeFighter("Shade Bandit"));
-
-    setInitiative(hostId ? hostLegacySide : localLegacySide);
-
-    setWins({ player: 0, enemy: 0 });
-    setManaPools({ player: 0, enemy: 0 });
-    setRound(1);
-    setPhase("choose");
-
-    setArchetypeSelections(
-      isGrimoireMode
-        ? { player: null, enemy: null }
-        : { player: DEFAULT_ARCHETYPE, enemy: DEFAULT_ARCHETYPE }
-    );
-    setArchetypeReady(
-      isGrimoireMode
-        ? { player: false, enemy: false }
-        : { player: true, enemy: true }
-    );
-
-    const emptyAssign: { player: (Card | null)[]; enemy: (Card | null)[] } = {
-      player: [null, null, null],
-      enemy: [null, null, null],
-    };
-    assignRef.current = emptyAssign;
-    setAssign(emptyAssign);
-    resetLaneSpellStates();
-
-    setSelectedCardId(null);
-    setDragCardId(null);
-    dragOverRef.current = null;
-    _setDragOverWheel(null);
-
-    setShowRef(false);
-    setShowGrimoire(false);
-
-    setTokens([0, 0, 0]);
-    setReserveSums(null);
-    setWheelHUD([null, null, null]);
-
-    setLog([START_LOG]);
-
-    wheelRngRef.current = createSeededRng(seed);
-    setWheelSections(generateWheelSet());
-    resetRoundTransientState();
-  }, [
-    clearAdvanceVotes,
-    clearRematchVotes,
-    clearResolveVotes,
-    generateWheelSet,
-    hostId,
-    hostLegacySide,
-    isGrimoireMode,
-    localLegacySide,
-    seed,
-    setArchetypeReady,
-    setArchetypeSelections,
-    setAssign,
-    setDragCardId,
-    setEnemy,
-    setFreezeLayout,
-    setInitiative,
-    setLockedWheelSize,
-    setLog,
-    setPhase,
-    setPlayer,
-    setReserveSums,
-    setRound,
-    setSelectedCardId,
-    setManaPools,
-    setShowGrimoire,
-    setShowRef,
-    setMana,
-    setTokens,
-    setWheelHUD,
-    setWheelSections,
-    setWins,
-    resetRoundTransientState,
-    _setDragOverWheel,
-    resetRoundTransientState,
-    wheelRefs,
-    resetLaneSpellStates
-  ]);
-
-  useEffect(() => {
-    if (!isMultiplayer) return;
-    if (phase !== "ended") return;
-    if (!rematchVotes.player || !rematchVotes.enemy) return;
-    resetMatch();
-  }, [isMultiplayer, phase, rematchVotes, resetMatch]);
-
-  const handleRematchClick = useCallback(() => {
-    if (phase !== "ended") return;
-
-    if (!isMultiplayer) {
-      resetMatch();
-      return;
-    }
-
-    if (rematchVotes[localLegacySide]) return;
-
-    markRematchVote(localLegacySide);
-    sendIntent({ type: "rematch", side: localLegacySide });
-  }, [
-    isMultiplayer,
-    localLegacySide,
-    markRematchVote,
-    phase,
-    rematchVotes,
-    resetMatch,
-    sendIntent
-  ]);
-
-  const handleExitClick = useCallback(() => {
-    onExit?.();
-  }, [onExit]);
-
-
-  const showArchetypeModal = isGrimoireMode && !archetypeGateOpen;
-  const localSelection = archetypeSelections[localLegacySide];
-  const remoteSelection = archetypeSelections[remoteLegacySide];
-  const localReady = archetypeReady[localLegacySide];
-  const remoteReady = archetypeReady[remoteLegacySide];
-
-  const localSpells = archetypeSpellIdsBySide[localLegacySide];
-  const remoteSpells = archetypeSpellIdsBySide[remoteLegacySide];
-
-  const handleLocalArchetypeSelect = useCallback(
-    (id: ArchetypeId) => {
-      let changed = false;
-      setArchetypeSelections((prev) => {
-        if (prev[localLegacySide] === id) return prev;
-        changed = true;
-        return { ...prev, [localLegacySide]: id };
-      });
-      if (changed) {
-        setArchetypeReady((prev) => {
-          if (!prev[localLegacySide]) return prev;
-          return { ...prev, [localLegacySide]: false };
-        });
-        sendIntent({ type: "archetypeSelect", side: localLegacySide, archetype: id });
-      }
-    },
-    [localLegacySide, sendIntent, setArchetypeReady, setArchetypeSelections]
-  );
-
-  const handleLocalArchetypeReady = useCallback(() => {
-    if (!localSelection) return;
-    if (!isMultiplayer) {
-      setArchetypeReady((prev) => {
-        if (prev[localLegacySide]) return prev;
-        return { ...prev, [localLegacySide]: true };
-      });
-      return;
-    }
-
-    let nextReady: boolean | null = null;
-    setArchetypeReady((prev) => {
-      const toggled = !prev[localLegacySide];
-      nextReady = toggled;
-      return { ...prev, [localLegacySide]: toggled };
-    });
-    if (nextReady !== null) {
-      setArchetypeReadyAck((prev) => {
-        if (prev[localLegacySide] === false) return prev;
-        return { ...prev, [localLegacySide]: false };
-      });
-      sendIntent({ type: "archetypeReady", side: localLegacySide, ready: nextReady });
-    }
-  }, [
-    isMultiplayer,
-    localLegacySide,
-    localSelection,
-    sendIntent,
-    setArchetypeReady,
-    setArchetypeReadyAck,
-  ]);
-
-  const readyButtonLabel = isMultiplayer
-    ? localReady
-      ? "Unready"
-      : "Ready"
-    : "Next";
-  const readyButtonDisabled = !localSelection || (!isMultiplayer && localReady);
-
-
-
-  // ---------------- UI ----------------
-// --- Archetype modal (keep this) ---
-const renderArchetypeModal = () => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm px-4 py-6">
-    <div className="w-full max-w-4xl space-y-6 rounded-2xl border border-slate-700 bg-slate-900/95 p-6 shadow-2xl">
-      <div className="space-y-2 text-center">
-        <h2 className="text-2xl font-semibold text-amber-200">Choose Your Archetype</h2>
-        <p className="text-sm text-slate-200/80">
-          Archetypes determine which spells appear in your grimoire. Pick one, then press{" "}
-          {isMultiplayer ? "Ready" : "Next"} to begin.
-        </p>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-3">
-        {ARCHETYPE_IDS.map((id) => {
-          const def = ARCHETYPE_DEFINITIONS[id];
-          const isLocalChoice = localSelection === id;
-          const isRemoteChoice = remoteSelection === id;
-          return (
-            <div
-              key={id}
-              className="relative flex h-full flex-col rounded-xl border border-slate-700/70 bg-slate-800/70 p-4 shadow"
-              style={{
-                borderColor: isLocalChoice
-                  ? HUD_COLORS[localLegacySide]
-                  : isRemoteChoice
-                  ? HUD_COLORS[remoteLegacySide]
-                  : undefined,
-              }}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="text-lg font-semibold text-slate-100">{def.name}</div>
-                  <p className="mt-1 text-xs text-slate-300/80 leading-snug">{def.description}</p>
-                </div>
-                <div className="flex flex-col items-end gap-1 text-[10px] font-semibold uppercase tracking-wide">
-                  {isLocalChoice && (
-                    <span
-                      className="rounded-full px-2 py-0.5"
-                      style={{ background: `${HUD_COLORS[localLegacySide]}22`, color: HUD_COLORS[localLegacySide] }}
-                    >
-                      You
-                    </span>
-                  )}
-                  {isRemoteChoice && (
-                    <span
-                      className="rounded-full px-2 py-0.5"
-                      style={{ background: `${HUD_COLORS[remoteLegacySide]}22`, color: HUD_COLORS[remoteLegacySide] }}
-                    >
-                      {namesByLegacy[remoteLegacySide]}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-3 flex-1 rounded-lg border border-slate-700/70 bg-slate-900/60 p-3">
-                <div className="text-xs font-semibold uppercase text-slate-300/80">Spells</div>
-                <ul className="mt-2 space-y-1 text-xs text-slate-100/90">
-                  {def.spellIds.map((spell) => (
-                    <li key={spell} className="flex items-center gap-2">
-                      <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
-                      <span>{formatSpellId(spell)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <button
-                onClick={() => handleLocalArchetypeSelect(id)}
-                disabled={isLocalChoice}
-                className="mt-4 rounded-lg border border-amber-400/70 px-3 py-1.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/10 disabled:cursor-not-allowed disabled:border-amber-200/40 disabled:text-amber-200/70"
-              >
-                {isLocalChoice ? "Selected" : "Choose"}
-    </button>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Archetype selections summary + ready controls */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        {/* local side panel */}
-        <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-slate-100">
-              {namesByLegacy[localLegacySide]}
-            </div>
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                localReady ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-700/60 text-slate-300"
-              }`}
-            >
-              {localReady ? "Ready" : "Not Ready"}
-            </span>
-          </div>
-          <div className="mt-2 text-xs text-slate-300/90">
-            {localArchetypeDef ? localArchetypeDef.name : "Select an archetype"}
-          </div>
-          <ul className="mt-3 space-y-1 text-xs text-slate-100/90">
-            {localSpells.length === 0 ? (
-              <li className="italic text-slate-400">No spells yet</li>
-            ) : (
-              localSpells.map((spell) => <li key={spell}>{formatSpellId(spell)}</li>)
-            )}
-          </ul>
-        </div>
-
-        {/* remote side panel */}
-        <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-slate-100">
-              {namesByLegacy[remoteLegacySide]}
-            </div>
-            <span
-              className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                remoteReady ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-700/60 text-slate-300"
-              }`}
-            >
-              {remoteReady ? "Ready" : "Waiting"}
-            </span>
-          </div>
-          <div className="mt-2 text-xs text-slate-300/90">
-            {remoteArchetypeDef ? remoteArchetypeDef.name : "Awaiting selection"}
-          </div>
-          <ul className="mt-3 space-y-1 text-xs text-slate-100/90">
-            {remoteSpells.length === 0 ? (
-              <li className="italic text-slate-400">Hidden</li>
-            ) : (
-              remoteSpells.map((spell) => <li key={spell}>{formatSpellId(spell)}</li>)
-            )}
-          </ul>
-        </div>
-      </div>
-
-      {/* footer: status text + Ready/Next button */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm text-slate-300/90">
-          {isMultiplayer
-            ? remoteReady
-              ? `${namesByLegacy[remoteLegacySide]} is ready.`
-              : `Waiting for ${namesByLegacy[remoteLegacySide]}...`
-            : remoteArchetypeDef
-            ? `${namesByLegacy[remoteLegacySide]} is ready.`
-            : `${namesByLegacy[remoteLegacySide]} is choosing an archetype...`}
-        </div>
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={handleLocalArchetypeReady}
-            disabled={readyButtonDisabled}
-            className="rounded-lg bg-amber-400 px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:bg-amber-200/80"
-          >
-            {readyButtonLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-// --- Wheel panel (keep this) ---
-const renderWheelPanel = (i: number) => {
-  const pc = assign.player[i];
-  const ec = assign.enemy[i];
-
-  const damageState = wheelDamage[i];
-  const mirrorState = wheelMirror[i];
-  const lockState = wheelLocks[i];
-  const pointerShift = pointerShifts[i];
-  const playerPenalty = reservePenalties.player;
-  const enemyPenalty = reservePenalties.enemy;
-
-  const leftSlot = { side: "player" as const, card: pc, name: namesByLegacy.player };
-  const rightSlot = { side: "enemy" as const, card: ec, name: namesByLegacy.enemy };
-
-  const ws = Math.round(lockedWheelSize ?? wheelSize);
-
-  const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
-  const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
-
-  const shouldShowLeftCard =
-    !!leftSlot.card && (leftSlot.side === localLegacySide || phase !== "choose");
-  const shouldShowRightCard =
-    !!rightSlot.card && (rightSlot.side === localLegacySide || phase !== "choose");
-
-  // layout numbers
-  const slotW    = 80;
-  const gapX     = 16;
-  const paddingX = 16;
-  const borderX  = 4;
-  const EXTRA_H  = 16;
-
-  const panelW = ws + slotW * 2 + gapX + paddingX + borderX;
-
-  const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
-    if (!slot.card) return null;
-    const card = slot.card;
-    const interactable =
-      slot.side === localLegacySide && phase === "choose" && archetypeGateOpen;
-
-    const handlePick = () => {
-      if (!interactable) return;
-      if (selectedCardId) tapAssignIfSelected();
-      else setSelectedCardId(card.id);
-    };
-
-    const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
-      if (!interactable) return;
-      setSelectedCardId(card.id);
-      setDragCardId(card.id);
-      try { e.dataTransfer.setData("text/plain", card.id); } catch {}
-      e.dataTransfer.effectAllowed = "move";
-    };
-
-    const handleDragEnd = () => {
       setDragCardId(null);
-      setDragOverWheel(null);
+    };
+    const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
+      e.preventDefault();
+      handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
     };
 
-    const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (!interactable) return;
-      e.stopPropagation();
-      startPointerDrag(card, e);
+    const tapAssignIfSelected = () => {
+      if (!selectedCardId) return;
+      const isLocalPlayer = localLegacySide === "player";
+      const card =
+        (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === selectedCardId) ||
+        (isLocalPlayer ? assign.player : assign.enemy).find((c) => c?.id === selectedCardId) ||
+        null;
+      if (card) assignToWheelLocal(i, card as Card);
     };
+
+
+    const panelShadow = "0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)";
 
     return (
-      <StSCard
-        card={card}
-        size="sm"
-        disabled={!interactable}
-        selected={isSlotSelected}
-        onPick={handlePick}
-        draggable={interactable}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onPointerDown={handlePointerDown}
-      />
+      <div
+        className="relative rounded-xl border p-2 shadow flex-none"
+        style={{
+          width: panelW,
+          height: ws + EXTRA_H,
+          background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
+          borderColor: THEME.panelBorder,
+          borderWidth: 2,
+          boxShadow: panelShadow,
+          contain: "paint",
+          backfaceVisibility: "hidden",
+          transform: "translateZ(0)",
+          isolation: "isolate",
+        }}
+      >
+        {(phase === "roundEnd" || phase === "ended") && (
+          <>
+            <span
+              aria-label={`Wheel ${i + 1} player result`}
+              className="absolute top-1 left-1 rounded-full border"
+              style={{
+                width: 10,
+                height: 10,
+                background: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : "transparent",
+                borderColor: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : THEME.panelBorder,
+                boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
+              }}
+            />
+            <span
+              aria-label={`Wheel ${i + 1} enemy result`}
+              className="absolute top-1 right-1 rounded-full border"
+              style={{
+                width: 10,
+                height: 10,
+                background: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : "transparent",
+                borderColor: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : THEME.panelBorder,
+                boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
+              }}
+            />
+          </>
+        )}
+
+        <div className="flex items-center justify-center gap-2" style={{ height: ws + EXTRA_H }}>
+          <div
+            data-drop="slot"
+            data-idx={i}
+            onDragOver={onZoneDragOver}
+            onDragEnter={onZoneDragOver}
+            onDragLeave={onZoneLeave}
+            onDrop={(e) => onZoneDrop(e, "player")}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (leftSlot.side !== localLegacySide) return;
+              if (selectedCardId) {
+                tapAssignIfSelected();
+              } else if (leftSlot.card) {
+                setSelectedCardId(leftSlot.card.id);
+              }
+            }}
+            className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+            style={{
+              backgroundColor:
+                dragOverWheel === i || isLeftSelected ? "rgba(182,138,78,.12)" : THEME.slotBg,
+              borderColor: dragOverWheel === i || isLeftSelected ? THEME.brass : THEME.slotBorder,
+              boxShadow: isLeftSelected ? "0 0 0 1px rgba(251,191,36,0.7)" : "none",
+            }}
+            aria-label={`Wheel ${i + 1} left slot`}
+          >
+            {shouldShowLeftCard ? (
+              renderSlotCard(leftSlot, isLeftSelected)
+            ) : (
+              <div className="text-[11px] opacity-80 text-center">
+
+                {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
+              </div>
+            )}
+          </div>
+
+          <div
+            data-drop="wheel"
+            data-idx={i}
+            className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
+            style={{ width: ws, height: ws }}
+            onDragOver={onZoneDragOver}
+            onDragEnter={onZoneDragOver}
+            onDragLeave={onZoneLeave}
+            onDrop={onZoneDrop}
+            onClick={(e) => {
+              e.stopPropagation();
+              tapAssignIfSelected();
+            }}
+            aria-label={`Wheel ${i + 1}`}
+          >
+            <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 rounded-full"
+              style={{
+                boxShadow:
+                  dragOverWheel === i ? "0 0 0 2px rgba(251,191,36,0.7) inset" : "none",
+              }}
+            />
+          </div>
+
+          <div
+            className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+            style={{
+              backgroundColor:
+                dragOverWheel === i || isRightSelected ? "rgba(182,138,78,.12)" : THEME.slotBg,
+              borderColor: dragOverWheel === i || isRightSelected ? THEME.brass : THEME.slotBorder,
+              boxShadow: isRightSelected ? "0 0 0 1px rgba(251,191,36,0.7)" : "none",
+            }}
+            aria-label={`Wheel ${i + 1} right slot`}
+            data-drop="slot"
+            data-idx={i}
+            onDragOver={onZoneDragOver}
+            onDragEnter={onZoneDragOver}
+            onDragLeave={onZoneLeave}
+            onDrop={(e) => onZoneDrop(e, "enemy")}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (rightSlot.side !== localLegacySide) return;
+              if (selectedCardId) {
+                tapAssignIfSelected();
+              } else if (rightSlot.card) {
+                setSelectedCardId(rightSlot.card.id);
+              }
+            }}
+          >
+            {shouldShowRightCard ? (
+              renderSlotCard(rightSlot, isRightSelected)
+            ) : (
+              <div className="text-[11px] opacity-60 text-center">
+
+                {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     );
   };
+  const HandDock = ({ onMeasure }: { onMeasure?: (px: number) => void }) => {
+    const dockRef = useRef<HTMLDivElement | null>(null);
+    const [liftPx, setLiftPx] = useState<number>(18);
+    useEffect(() => {
+      const compute = () => {
+        const root = dockRef.current; if (!root) return;
+        const sample = root.querySelector('[data-hand-card]') as HTMLElement | null; if (!sample) return;
+        const h = sample.getBoundingClientRect().height || 96;
+        const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
+        setLiftPx(nextLift);
+        const clearance = Math.round(h + nextLift + 12);
+        onMeasure?.(clearance);
+      };
+      compute(); window.addEventListener('resize', compute); window.addEventListener('orientationchange', compute);
+      return () => { window.removeEventListener('resize', compute); window.removeEventListener('orientationchange', compute); };
+    }, [onMeasure]);
 
-  const onZoneDragOver = (e: React.DragEvent) => { e.preventDefault(); if (dragCardId && active[i]) setDragOverWheel(i); };
-  const onZoneLeave = () => { if (dragCardId) setDragOverWheel(null); };
-  const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
-    if (!id || !active[i]) return;
-    const intendedSide = targetSide ?? localLegacySide;
-    if (intendedSide !== localLegacySide) {
-      setDragOverWheel(null);
-      setDragCardId(null);
+    const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
+
+    return (
+      <div ref={dockRef} className="fixed left-0 right-0 bottom-0 z-50 pointer-events-none select-none" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + -30px)' }}>
+        <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
+          {localFighter.hand.map((card, idx) => {
+            const isSelected = selectedCardId === card.id;
+            return (
+              <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
+                <motion.div data-hand-card initial={false} animate={{ y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx, opacity: 1, scale: isSelected ? 1.06 : 1 }} whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }} transition={{ type: 'spring', stiffness: 320, damping: 22 }} className={`drop-shadow-xl ${isSelected ? 'ring-2 ring-amber-300' : ''}`}>
+                  <button
+  data-hand-card
+  className="pointer-events-auto"
+  onClick={(e) => {
+    e.stopPropagation();
+    if (!selectedCardId) {
+      setSelectedCardId(card.id);
       return;
     }
 
-    const isLocalPlayer = localLegacySide === "player";
-    const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
-    const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as Card | undefined;
-    const card = fromHand || fromSlots || null;
-    if (card) assignToWheelLocal(i, card as Card);
-    setDragOverWheel(null);
-    setDragCardId(null);
-  };
-  const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
-    e.preventDefault();
-    handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
-  };
+    if (selectedCardId === card.id) {
+      setSelectedCardId(null);
+      return;
+    }
 
-  const tapAssignIfSelected = () => {
-    if (!selectedCardId) return;
-    const isLocalPlayer = localLegacySide === "player";
-    const card =
-      (isLocalPlayer ? player.hand : enemy.hand).find(c => c.id === selectedCardId) ||
-      (isLocalPlayer ? assign.player : assign.enemy).find(c => c?.id === selectedCardId) ||
-      null;
-    if (card) assignToWheelLocal(i, card as Card);
-  };
+    const lane = localLegacySide === "player" ? assign.player : assign.enemy;
+    const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
+    if (slotIdx !== -1) {
+      assignToWheelLocal(slotIdx, card);
+      return;
+    }
 
-  const panelShadow = '0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)';
+    setSelectedCardId(card.id);
+  }}
+  draggable
+  onDragStart={(e) => {
+    // Desktop HTML5 drag
+    setDragCardId(card.id);
+    try { e.dataTransfer.setData("text/plain", card.id); } catch {}
+    e.dataTransfer.effectAllowed = "move";
+  }}
+  onDragEnd={() => setDragCardId(null)}
+  onPointerDown={(e) => startPointerDrag(card, e)}   // ← NEW: touch/pen drag
+  aria-pressed={isSelected}
+  aria-label={`Select ${card.name}`}
+>
+  <StSCard card={card} />
+</button>
 
-  return (
-    <div
-      className="relative rounded-xl border p-2 shadow flex-none"
-      style={{
-        width: panelW,
-        height: ws + EXTRA_H,
-        background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
-        borderColor: THEME.panelBorder,
-        borderWidth: 2,
-        boxShadow: panelShadow,
-        contain: 'paint',
-        backfaceVisibility: 'hidden',
-        transform: 'translateZ(0)',
-        isolation: 'isolate'
-      }}
-      data-wheel-locked={lockState ? "true" : "false"}
-      data-pointer-shift={pointerShift}
-      data-player-damage={damageState.player}
-      data-enemy-damage={damageState.enemy}
-      data-player-mirror={mirrorState.player ? "true" : "false"}
-      data-enemy-mirror={mirrorState.enemy ? "true" : "false"}
-      data-player-reserve-penalty={playerPenalty}
-      data-enemy-reserve-penalty={enemyPenalty}
-      data-initiative-override={initiativeOverride ?? ""}
-    >
-      {(phase === "roundEnd" || phase === "ended") && (
-        <>
-          <span
-            aria-label={`Wheel ${i+1} player result`}
-            className="absolute top-1 left-1 rounded-full border"
-            style={{
-              width: 10,
-              height: 10,
-              background: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : 'transparent',
-              borderColor: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : THEME.panelBorder,
-              boxShadow: '0 0 0 1px rgba(0,0,0,0.4)'
-            }}
-          />
-          <span
-            aria-label={`Wheel ${i+1} enemy result`}
-            className="absolute top-1 right-1 rounded-full border"
-            style={{
-              width: 10,
-              height: 10,
-              background: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : 'transparent',
-              borderColor: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : THEME.panelBorder,
-              boxShadow: '0 0 0 1px rgba(0,0,0,0.4)'
-            }}
-          />
-        </>
-      )}
-
-      <div
-        className="flex items-center justify-center gap-2"
-        style={{ height: ws + EXTRA_H }}
-      >
-        {/* Player slot */}
-        <div
-          data-drop="slot"
-          data-idx={i}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, "player")}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (leftSlot.side !== localLegacySide) return;
-            if (selectedCardId) tapAssignIfSelected();
-            else if (leftSlot.card) setSelectedCardId(leftSlot.card.id);
-          }}
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{
-            backgroundColor: dragOverWheel === i || isLeftSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-            borderColor:     dragOverWheel === i || isLeftSelected ? THEME.brass          : THEME.slotBorder,
-            boxShadow: isLeftSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
-          }}
-          aria-label={`Wheel ${i+1} left slot`}
-        >
-          {shouldShowLeftCard
-            ? renderSlotCard(leftSlot, isLeftSelected)
-            : <div className="text-[11px] opacity-80 text-center">
-                {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
-              </div>}
-        </div>
-
-        {/* Wheel face */}
-        <div
-          data-drop="wheel"
-          data-idx={i}
-          className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
-          style={{ width: ws, height: ws }}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={onZoneDrop}
-          onClick={(e) => { e.stopPropagation(); tapAssignIfSelected(); }}
-          aria-label={`Wheel ${i+1}`}
-        >
-          <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 rounded-full"
-            style={{ boxShadow: dragOverWheel === i ? '0 0 0 2px rgba(251,191,36,0.7) inset' : 'none' }}
-          />
-        </div>
-
-        {/* Enemy slot */}
-        <div
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{
-            backgroundColor: dragOverWheel === i || isRightSelected ? 'rgba(182,138,78,.12)' : THEME.slotBg,
-            borderColor:     dragOverWheel === i || isRightSelected ? THEME.brass          : THEME.slotBorder,
-            boxShadow: isRightSelected ? '0 0 0 1px rgba(251,191,36,0.7)' : 'none',
-          }}
-          aria-label={`Wheel ${i+1} right slot`}
-          data-drop="slot"
-          data-idx={i}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, "enemy")}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (rightSlot.side !== localLegacySide) return;
-            if (selectedCardId) tapAssignIfSelected();
-            else if (rightSlot.card) setSelectedCardId(rightSlot.card.id);
-          }}
-        >
-          {shouldShowRightCard
-            ? renderSlotCard(rightSlot, isRightSelected)
-            : <div className="text-[11px] opacity-60 text-center">
-                {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
-              </div>}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-  const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
 return (
   <div
