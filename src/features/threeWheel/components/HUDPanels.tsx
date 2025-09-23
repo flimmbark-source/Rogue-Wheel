@@ -187,57 +187,6 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
               >
                 Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
               </div>
-              {isGrimoireMode ? (
-                isPlayer && onPlayerManaToggle ? (
-                  <button
-                    type="button"
-                    onClick={onPlayerManaToggle}
-                    className={`w-full rounded-full border px-3 py-1 text-[11px] text-center transition-opacity hover:bg-[#2b1d10ee] focus:outline-none focus:ring-2 focus:ring-sky-500/70 focus:ring-offset-2 focus:ring-offset-slate-900 ${
-                      isGrimoireOpen ? "ring-2 ring-sky-400/70" : ""
-                    }`}
-                    style={{
-                      background: "#1b1209ee",
-                      borderColor: theme.slotBorder,
-                      color: theme.textWarm,
-                    }}
-                    title={`Mana: ${manaCount}`}
-                    aria-pressed={isGrimoireOpen}
-                    aria-label={`Mana: ${manaCount}. ${isGrimoireOpen ? "Hide" : "Show"} grimoire.`}
-                  >
-                    <span className="font-semibold">Mana:</span>{" "}
-                    <span className="font-bold tabular-nums">{manaCount}</span>
-                  </button>
-                ) : (
-                  <div
-                    className={`w-full rounded-full border px-3 py-1 text-[11px] text-center transition-opacity ${
-                      isGrimoireMode ? "opacity-100 visible" : "opacity-0 invisible"
-                    }`}
-                    style={{
-                      background: "#1b1209ee",
-                      borderColor: theme.slotBorder,
-                      color: theme.textWarm,
-                    }}
-                    aria-hidden={!isGrimoireMode}
-                    title={`Mana: ${manaCount}`}
-                  >
-                    <span className="font-semibold">Mana:</span>{" "}
-                    <span className="font-bold tabular-nums">{manaCount}</span>
-                  </div>
-                )
-              ) : (
-                <div
-                  className="w-full rounded-full border px-3 py-1 text-[11px] text-center transition-opacity opacity-0 invisible"
-                  style={{
-                    background: "#1b1209ee",
-                    borderColor: theme.slotBorder,
-                    color: theme.textWarm,
-                  }}
-                  aria-hidden
-                >
-                  <span className="font-semibold">Mana:</span>{" "}
-                  <span className="font-bold tabular-nums">{manaCount}</span>
-                </div>
-              )}
             </div>
           </div>
         )}
