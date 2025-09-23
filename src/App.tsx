@@ -302,10 +302,8 @@ export default function ThreeWheel_WinsOnly({
 
   const casterFighter = localLegacySide === "player" ? player : enemy;
   const opponentFighter = localLegacySide === "player" ? enemy : player;
-
   const readyButtonLabel = isMultiplayer ? "Ready" : "Next";
   const readyButtonDisabled = localReady;
-
   const handleLocalArchetypeSelect = useCallback((id: ArchetypeId) => {
     setLocalSelection(id);
     setLocalReady(false);
