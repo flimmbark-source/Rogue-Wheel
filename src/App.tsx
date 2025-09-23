@@ -280,6 +280,8 @@ export default function ThreeWheel_WinsOnly({
   const [manaPools, setManaPools] = useState<SideState<number>>({ player: 0, enemy: 0 });
   const localMana = manaPools[localLegacySide];
 
+  const [showGrimoire, setShowGrimoire] = useState(false);
+
   const [localSelection, setLocalSelection] = useState<ArchetypeId>(() => DEFAULT_ARCHETYPE);
   const remoteSelection: ArchetypeId = DEFAULT_ARCHETYPE;
   const [localReady, setLocalReady] = useState(() => !isGrimoireMode);
@@ -370,6 +372,11 @@ export default function ThreeWheel_WinsOnly({
 
       if (!didSpend) return;
 
+      const requiresManualTarget = spell.target.type === "card" && spell.target.automatic !== true;
+      if (requiresManualTarget) {
+        setShowGrimoire(false);
+      }
+
       setPendingSpell({ side: localLegacySide, spell });
     },
     [
@@ -378,12 +385,11 @@ export default function ThreeWheel_WinsOnly({
       localMana,
       pendingSpell,
       phase,
+      setShowGrimoire,
       setManaPools,
       setPendingSpell,
     ]
   );
-
-  const [showGrimoire, setShowGrimoire] = useState(false);
 
   useEffect(() => {
     if (!pendingSpell) return;
