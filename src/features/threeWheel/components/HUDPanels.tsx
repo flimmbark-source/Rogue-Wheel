@@ -22,6 +22,8 @@ interface HUDPanelsProps {
   localLegacySide: LegacySide;
   phase: Phase;
   theme: Theme;
+  onPlayerManaToggle?: () => void;
+  isGrimoireOpen?: boolean;
 }
 
 const HUDPanels: React.FC<HUDPanelsProps> = ({
@@ -35,6 +37,8 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
   localLegacySide,
   phase,
   theme,
+  onPlayerManaToggle,
+  isGrimoireOpen,
 }) => {
   const rsP = reserveSums ? reserveSums.player : null;
   const rsE = reserveSums ? reserveSums.enemy : null;
@@ -44,11 +48,76 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
     const color = isPlayer ? players.left.color ?? hudColors.player : players.right.color ?? hudColors.enemy;
     const name = isPlayer ? players.left.name : players.right.name;
     const win = isPlayer ? wins.player : wins.enemy;
-    const manaCount = isPlayer ? manaPools.player : manaPools.enemy;
     const rs = isPlayer ? rsP : rsE;
     const hasInit = initiative === side;
     const isReserveVisible =
       (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") && rs !== null;
+
+    const manaCount = isPlayer ? manaPools.player : manaPools.enemy;
+
+    const manaPillBaseClassName = `flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-opacity ${
+      isGrimoireMode ? "opacity-100 visible" : "opacity-0 invisible"
+    }`;
+
+    const manaPillStyle: React.CSSProperties = {
+      background: "#1b1209ee",
+      borderColor: theme.slotBorder,
+      color: theme.textWarm,
+      minWidth: "62px",
+      justifyContent: "center",
+    };
+
+    const manaPillContent = (
+      <>
+        <span role="img" aria-label="Mana" className="text-sm leading-none">
+          🔮
+        </span>
+        <span className="tabular-nums text-sm leading-none">{manaCount}</span>
+      </>
+    );
+
+    const renderManaPill = () => {
+      if (!isGrimoireMode) {
+        return (
+          <div
+            className={`${manaPillBaseClassName} pointer-events-none`}
+            style={manaPillStyle}
+            aria-hidden
+          >
+            {manaPillContent}
+          </div>
+        );
+      }
+
+      if (isPlayer && onPlayerManaToggle) {
+        return (
+          <button
+            type="button"
+            onClick={onPlayerManaToggle}
+            className={`${manaPillBaseClassName} cursor-pointer hover:bg-[#2b1d10ee] focus:outline-none focus:ring-2 focus:ring-sky-500/70 focus:ring-offset-2 focus:ring-offset-slate-900 ${
+              isGrimoireOpen ? "ring-2 ring-sky-400/70" : ""
+            }`}
+            style={manaPillStyle}
+            title={`Mana: ${manaCount}`}
+            aria-pressed={isGrimoireOpen}
+            aria-label={`Mana: ${manaCount}. ${isGrimoireOpen ? "Hide" : "Show"} grimoire.`}
+          >
+            {manaPillContent}
+          </button>
+        );
+      }
+
+      return (
+        <div
+          className={manaPillBaseClassName}
+          style={manaPillStyle}
+          aria-hidden={!isGrimoireMode}
+          title={`Mana: ${manaCount}`}
+        >
+          {manaPillContent}
+        </div>
+      );
+    };
 
     return (
       <div className="flex h-full flex-col items-center w-full">
@@ -73,25 +142,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
               <span className="opacity-80">Wins</span>
               <span className="text-base font-extrabold tabular-nums">{win}</span>
             </div>
-            <div
-              className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-opacity ${
-                isGrimoireMode ? "opacity-100 visible" : "opacity-0 invisible"
-              }`}
-              style={{
-                background: "#1b1209ee",
-                borderColor: theme.slotBorder,
-                color: theme.textWarm,
-                minWidth: "62px",
-                justifyContent: "center",
-              }}
-              aria-hidden={!isGrimoireMode}
-              title={isGrimoireMode ? `Mana: ${manaCount}` : undefined}
-            >
-              <span role="img" aria-label="Mana" className="text-sm leading-none">
-                🔮
-              </span>
-              <span className="tabular-nums text-sm leading-none">{manaCount}</span>
-            </div>
+            {renderManaPill()}
           </div>
           <div
             className={`ml-2 hidden sm:flex rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap transition-opacity ${
@@ -135,21 +186,6 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
                 title={rs !== null ? `Reserve: ${rs}` : undefined}
               >
                 Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
-              </div>
-              <div
-                className={`w-full rounded-full border px-3 py-1 text-[11px] text-center transition-opacity ${
-                  isGrimoireMode ? "opacity-100 visible" : "opacity-0 invisible"
-                }`}
-                style={{
-                  background: "#1b1209ee",
-                  borderColor: theme.slotBorder,
-                  color: theme.textWarm,
-                }}
-                aria-hidden={!isGrimoireMode}
-                title={isGrimoireMode ? `Mana: ${manaCount}` : undefined}
-              >
-                <span className="font-semibold">Mana:</span>{" "}
-                <span className="font-bold tabular-nums">{manaCount}</span>
               </div>
             </div>
           </div>

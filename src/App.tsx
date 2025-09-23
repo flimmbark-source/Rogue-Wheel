@@ -340,6 +340,17 @@ export default function ThreeWheel_WinsOnly({
   const [showRef, setShowRef] = useState(false);
   const [showGrimoire, setShowGrimoire] = useState(false);
 
+  const handlePlayerManaToggle = useCallback(() => {
+    if (!isGrimoireMode) return;
+    setShowGrimoire((prev) => {
+      const next = !prev;
+      if (next) {
+        setShowRef(false);
+      }
+      return next;
+    });
+  }, [isGrimoireMode]);
+
   // grant mana on wins (client-side only demo)
   const prevWinsRef = useRef(wins);
   useEffect(() => {
@@ -705,19 +716,6 @@ const renderWheelPanel = (i: number) => {
           {/* Grimoire button + popover/modal */}
           {gameMode === "grimoire" && (
             <div className="relative">
-              <button
-                onClick={() =>
-                  setShowGrimoire((prev) => {
-                    const next = !prev;
-                    if (next) setShowRef(false);
-                    return next;
-                  })
-                }
-                className="px-2.5 py-0.5 rounded bg-slate-700 text-white border border-slate-600 hover:bg-slate-600"
-              >
-                Grimoire
-              </button>
-
               {showGrimoire && (
                 <>
                   {/* Backdrop for mobile-only modal */}
@@ -964,6 +962,8 @@ const renderWheelPanel = (i: number) => {
           localLegacySide={localLegacySide}
           phase={phase}
           theme={THEME}
+          onPlayerManaToggle={handlePlayerManaToggle}
+          isGrimoireOpen={showGrimoire}
         />
       </div>
 
