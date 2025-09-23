@@ -68,7 +68,11 @@ import WheelPanel from "./features/threeWheel/components/WheelPanel";
 import HandDock from "./features/threeWheel/components/HandDock";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
-import { getSpellDefinitions, type SpellDefinition } from "./game/spells";
+import {
+  getSpellDefinitions,
+  type SpellDefinition,
+  type SpellRuntimeState,
+} from "./game/spells";
 import ArchetypeModal from "./features/threeWheel/components/ArchetypeModal";
 import StSCard from "./components/StSCard";
 
@@ -270,7 +274,8 @@ export default function ThreeWheel_WinsOnly({
   // --- local UI/Grimoire state (from Spells branch) ---
   const isGrimoireMode = gameMode === "grimoire";
   const effectiveGameMode = gameMode as GameMode;
-  const pendingSpell: PendingSpellDescriptor | null = null;
+  const [pendingSpell, setPendingSpell] = useState<PendingSpellDescriptor | null>(null);
+  const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
 
   const [manaPools, setManaPools] = useState<SideState<number>>({ player: 0, enemy: 0 });
   const localMana = manaPools[localLegacySide];
@@ -325,9 +330,79 @@ export default function ThreeWheel_WinsOnly({
     setArchetypeGateOpen(true);
   }, []);
 
-  const handleSpellActivate = useCallback((spell: SpellDefinition) => {
-    console.warn("Spell activation is not yet implemented.", spell);
-  }, []);
+  const computeSpellCost = useCallback(
+    (spell: SpellDefinition): number => {
+      const computedCostRaw = spell.variableCost
+        ? spell.variableCost({
+            caster: casterFighter,
+            opponent: opponentFighter,
+            phase,
+            state: spellRuntimeStateRef.current,
+          })
+        : spell.cost;
+      return Number.isFinite(computedCostRaw)
+        ? Math.max(0, Math.round(computedCostRaw as number))
+        : spell.cost;
+    },
+    [casterFighter, opponentFighter, phase]
+  );
+
+  const handleSpellActivate = useCallback(
+    (spell: SpellDefinition) => {
+      if (pendingSpell) return;
+
+      const allowedPhases = spell.allowedPhases ?? ["choose"];
+      if (!allowedPhases.includes(phase)) return;
+
+      const effectiveCost = computeSpellCost(spell);
+      if (localMana < effectiveCost) return;
+
+      let didSpend = false;
+      setManaPools((current) => {
+        const currentMana = current[localLegacySide];
+        if (currentMana < effectiveCost) return current;
+
+        didSpend = true;
+        const next: SideState<number> = { ...current };
+        next[localLegacySide] = currentMana - effectiveCost;
+        return next;
+      });
+
+      if (!didSpend) return;
+
+      setPendingSpell({ side: localLegacySide, spell });
+    },
+    [
+      computeSpellCost,
+      localLegacySide,
+      localMana,
+      pendingSpell,
+      phase,
+      setManaPools,
+      setPendingSpell,
+    ]
+  );
+
+  useEffect(() => {
+    if (!pendingSpell) return;
+
+    const { spell } = pendingSpell;
+    const context = {
+      caster: casterFighter,
+      opponent: opponentFighter,
+      phase,
+      state: spellRuntimeStateRef.current,
+    } as const;
+
+    try {
+      spell.resolver(context);
+    } catch (error) {
+      console.error("Spell resolution failed", error);
+    } finally {
+      setPendingSpell(null);
+      setShowGrimoire(false);
+    }
+  }, [casterFighter, opponentFighter, pendingSpell, phase, setPendingSpell, setShowGrimoire]);
 
   const wheelDamage = useMemo(() => createWheelSideState(0), []);
   const wheelMirror = useMemo(() => createWheelSideState(false), []);
@@ -757,19 +832,9 @@ const renderWheelPanel = (i: number) => {
                               {localSpellDefinitions.map((spell) => {
                                 const allowedPhases = spell.allowedPhases ?? ["choose"];
                                 const phaseAllowed = allowedPhases.includes(phase);
-                                const computedCostRaw = spell.variableCost
-                                  ? spell.variableCost({
-                                      caster: casterFighter,
-                                      opponent: opponentFighter,
-                                      phase,
-                                      state: {},
-                                    })
-                                  : spell.cost;
-                                const effectiveCost = Number.isFinite(computedCostRaw)
-                                  ? Math.max(0, Math.round(computedCostRaw as number))
-                                  : spell.cost;
+                                const effectiveCost = computeSpellCost(spell);
                                 const canAfford = localMana >= effectiveCost;
-                                const disabled = !phaseAllowed || !canAfford;
+                                const disabled = !phaseAllowed || !canAfford || !!pendingSpell;
 
                                 return (
                                   <li key={spell.id}>
@@ -849,19 +914,9 @@ const renderWheelPanel = (i: number) => {
                               {localSpellDefinitions.map((spell) => {
                                 const allowedPhases = spell.allowedPhases ?? ["choose"];
                                 const phaseAllowed = allowedPhases.includes(phase);
-                                const computedCostRaw = spell.variableCost
-                                  ? spell.variableCost({
-                                      caster: casterFighter,
-                                      opponent: opponentFighter,
-                                      phase,
-                                      state: {},
-                                    })
-                                  : spell.cost;
-                                const effectiveCost = Number.isFinite(computedCostRaw)
-                                  ? Math.max(0, Math.round(computedCostRaw as number))
-                                  : spell.cost;
+                                const effectiveCost = computeSpellCost(spell);
                                 const canAfford = localMana >= effectiveCost;
-                                const disabled = !phaseAllowed || !canAfford;
+                                const disabled = !phaseAllowed || !canAfford || !!pendingSpell;
 
                                 return (
                                   <li key={spell.id}>
