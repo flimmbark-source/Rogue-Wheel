@@ -166,20 +166,27 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
 
   const isPhaseChooseLike = isChooseLikePhase(phase);
 
-  const shouldShowLeftCard = shouldShowSlotCard({
-    hasCard: !!leftSlot.card,
-    slotSide: leftSlot.side,
-    localLegacySide,
-    isPhaseChooseLike,
-    slotTargetable: leftSlotTargetable,
-  });
-  const shouldShowRightCard = shouldShowSlotCard({
-    hasCard: !!rightSlot.card,
-    slotSide: rightSlot.side,
-    localLegacySide,
-    isPhaseChooseLike,
-    slotTargetable: rightSlotTargetable,
-  });
+  const revealOpposingCardDuringMirror =
+    awaitingCardTarget &&
+    pendingSpell?.spell.id === "mirrorImage" &&
+    pendingSpell.side === localLegacySide;
+
+  const shouldShowLeftCard =
+    shouldShowSlotCard({
+      hasCard: !!leftSlot.card,
+      slotSide: leftSlot.side,
+      localLegacySide,
+      isPhaseChooseLike,
+      slotTargetable: leftSlotTargetable,
+    }) || (revealOpposingCardDuringMirror && leftSlot.side !== localLegacySide);
+  const shouldShowRightCard =
+    shouldShowSlotCard({
+      hasCard: !!rightSlot.card,
+      slotSide: rightSlot.side,
+      localLegacySide,
+      isPhaseChooseLike,
+      slotTargetable: rightSlotTargetable,
+    }) || (revealOpposingCardDuringMirror && rightSlot.side !== localLegacySide);
 
   const wheelScope = pendingSpell?.spell.target.type === "wheel" ? pendingSpell.spell.target.scope : null;
   const wheelTargetable =
