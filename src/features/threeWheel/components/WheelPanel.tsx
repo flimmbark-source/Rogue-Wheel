@@ -8,8 +8,11 @@ import {
   type SpellTargetInstance,
   type SpellTargetOwnership,
 } from "../../../game/spells";
-
-export type LegacySide = "player" | "enemy";
+import {
+  isChooseLikePhase,
+  shouldShowSlotCard,
+  type LegacySide,
+} from "../utils/slotVisibility";
 
 type SideState<T> = Record<LegacySide, T>;
 
@@ -140,13 +143,6 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
   const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
 
-  const isPhaseChooseLike = phase === "choose" || phase === "spellTargeting";
-
-  const shouldShowLeftCard =
-    !!leftSlot.card && (leftSlot.side === localLegacySide || !isPhaseChooseLike);
-  const shouldShowRightCard =
-    !!rightSlot.card && (rightSlot.side === localLegacySide || !isPhaseChooseLike);
-
   const leftSlotOwnership: SpellTargetOwnership | null = pendingSpell
     ? leftSlot.side === pendingSpell.side
       ? "ally"
@@ -167,6 +163,23 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     awaitingCardTarget &&
     !!rightSlot.card &&
     (pendingOwnership === "any" || pendingOwnership === rightSlotOwnership);
+
+  const isPhaseChooseLike = isChooseLikePhase(phase);
+
+  const shouldShowLeftCard = shouldShowSlotCard({
+    hasCard: !!leftSlot.card,
+    slotSide: leftSlot.side,
+    localLegacySide,
+    isPhaseChooseLike,
+    slotTargetable: leftSlotTargetable,
+  });
+  const shouldShowRightCard = shouldShowSlotCard({
+    hasCard: !!rightSlot.card,
+    slotSide: rightSlot.side,
+    localLegacySide,
+    isPhaseChooseLike,
+    slotTargetable: rightSlotTargetable,
+  });
 
   const wheelScope = pendingSpell?.spell.target.type === "wheel" ? pendingSpell.spell.target.scope : null;
   const wheelTargetable =
