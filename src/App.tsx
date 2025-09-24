@@ -196,7 +196,7 @@ export default function ThreeWheel_WinsOnly({
   targetWins?: number;
   onExit?: () => void;
 }) {
-
+  
   const { state, derived, refs, actions } = useThreeWheelGame({
     localSide,
     localPlayerId,
@@ -675,6 +675,15 @@ const renderWheelPanel = (i: number) => {
       })()
     : "";
 
+  useEffect(() => {
+  if (isAwaitingSpellTarget) {
+    setShowGrimoire(false);
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }
+}, [isAwaitingSpellTarget]);
+
   return (
     <div
       className={`h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2 ${rootModeClassName}`}
@@ -845,47 +854,46 @@ const renderWheelPanel = (i: number) => {
 
                                 return (
                                   <li key={spell.id}>
-                                    <button
-  type="button"
-  onClick={() => {
-    handleSpellActivate(spell);
-    // Immediately close any popover/modal so it can’t eat clicks
-    setShowGrimoire(false);         // uses your local state
-    // Also drop focus so focus/hover logic can’t reopen anything
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-  }}
-  disabled={disabled}
-  className="w-full rounded-xl border ...">
-  ...
-</button>
+  <button
+    type="button"
+    onClick={() => {
+      handleSpellActivate(spell);
+      setShowGrimoire(false);
+      const el = document.activeElement as HTMLElement | null;
+      if (el) el.blur();
+    }}
+    disabled={disabled}
+    className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-left transition
+               hover:bg-slate-800/90 disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
+        {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
+        <span>{spell.name}</span>
+      </div>
+      <div className="flex items-center gap-1 text-[11px] text-sky-200">
+        <span aria-hidden className="text-[14px] leading-none">🔹</span>
+        <span>{effectiveCost}</span>
+      </div>
+    </div>
 
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
-                                          {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
-                                          <span>{spell.name}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1 text-[11px] text-sky-200">
-                                          <span aria-hidden className="text-[14px] leading-none">🔹</span>
-                                          <span>{effectiveCost}</span>
-                                        </div>
-                                      </div>
-                                      <div className="mt-1 text-[11px] leading-snug text-slate-300">
-                                        {spell.description}
-                                      </div>
-                                      {!phaseAllowed && (
-                                        <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
-                                          Unavailable this phase
-                                        </div>
-                                      )}
-                                      {!canAfford && (
-                                        <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
-                                          Not enough mana
-                                        </div>
-                                      )}
-                                    </button>
-                                  </li>
+    <div className="mt-1 text-[11px] leading-snug text-slate-300">
+      {spell.description}
+    </div>
+
+    {!phaseAllowed && (
+      <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
+        Unavailable this phase
+      </div>
+    )}
+    {!canAfford && (
+      <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
+        Not enough mana
+      </div>
+    )}
+  </button>
+</li>
+
                                 );
                               })}
                             </ul>
@@ -933,47 +941,46 @@ const renderWheelPanel = (i: number) => {
 
                                 return (
                                   <li key={spell.id}>
-                                    <button
-  type="button"
-  onClick={() => {
-    handleSpellActivate(spell);
-    // Immediately close any popover/modal so it can’t eat clicks
-    setShowGrimoire(false);         // uses your local state
-    // Also drop focus so focus/hover logic can’t reopen anything
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-  }}
-  disabled={disabled}
-  className="w-full rounded-xl border ...">
-  ...
-</button>
+  <button
+    type="button"
+    onClick={() => {
+      handleSpellActivate(spell);
+      setShowGrimoire(false);
+      const el = document.activeElement as HTMLElement | null;
+      if (el) el.blur();
+    }}
+    disabled={disabled}
+    className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-left transition
+               hover:bg-slate-800/90 disabled:opacity-50 disabled:cursor-not-allowed"
+  >
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
+        {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
+        <span>{spell.name}</span>
+      </div>
+      <div className="flex items-center gap-1 text-[11px] text-sky-200">
+        <span aria-hidden className="text-[14px] leading-none">🔹</span>
+        <span>{effectiveCost}</span>
+      </div>
+    </div>
 
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
-                                          {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
-                                          <span>{spell.name}</span>
-                                        </div>
-                                        <div className="flex items-center gap-1 text-[11px] text-sky-200">
-                                          <span aria-hidden className="text-[14px] leading-none">🔹</span>
-                                          <span>{effectiveCost}</span>
-                                        </div>
-                                      </div>
-                                      <div className="mt-1 text-[11px] leading-snug text-slate-300">
-                                        {spell.description}
-                                      </div>
-                                      {!phaseAllowed && (
-                                        <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
-                                          Unavailable this phase
-                                        </div>
-                                      )}
-                                      {!canAfford && (
-                                        <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
-                                          Not enough mana
-                                        </div>
-                                      )}
-                                    </button>
-                                  </li>
+    <div className="mt-1 text-[11px] leading-snug text-slate-300">
+      {spell.description}
+    </div>
+
+    {!phaseAllowed && (
+      <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
+        Unavailable this phase
+      </div>
+    )}
+    {!canAfford && (
+      <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
+        Not enough mana
+      </div>
+    )}
+  </button>
+</li>
+
                                 );
                               })}
                             </ul>
