@@ -25,6 +25,7 @@ const KEY = "rw:single:state";
 const VERSION = 2;
 const MAX_DECK_SIZE = 10;
 const MAX_COPIES_PER_DECK = 2;
+const MAX_PROFILE_NAME_LENGTH = 24;
 
 type SafeStorage = Pick<Storage, "getItem" | "setItem"> | null;
 
@@ -75,6 +76,13 @@ function seed(): LocalState {
     inventory: SEED_INVENTORY,
     decks: [SEED_DECK],
   };
+}
+
+function normalizeDisplayName(name: string): string {
+  if (typeof name !== "string") return "Local Player";
+  const collapsed = name.replace(/\s+/g, " ").trim();
+  const trimmed = collapsed.slice(0, MAX_PROFILE_NAME_LENGTH);
+  return trimmed.length > 0 ? trimmed : "Local Player";
 }
 
 // ===== Load/save =====
@@ -238,6 +246,19 @@ export type ProfileBundle = { profile: Profile; inventory: InventoryItem[]; deck
 export function getProfileBundle(): ProfileBundle {
   const s = loadStateRaw();
   return { profile: s.profile, inventory: s.inventory, decks: s.decks, active: findActive(s) };
+}
+
+export function updateProfileDisplayName(name: string): Profile {
+  const s = loadStateRaw();
+  const nextName = normalizeDisplayName(name);
+  if (s.profile.displayName !== nextName) {
+    s.profile.displayName = nextName;
+    saveState(s);
+  } else {
+    // still persist to ensure normalization for blank entries
+    if (name !== nextName) saveState(s);
+  }
+  return s.profile;
 }
 export function createDeck(name = "New Deck") {
   const s = loadStateRaw();

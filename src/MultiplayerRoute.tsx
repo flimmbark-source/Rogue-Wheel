@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Realtime } from "ably";
 import type { PresenceMessage } from "ably";
 import { TARGET_WINS, type Players, type Side } from "./game/types";
+import { DEFAULT_GAME_MODE, type GameMode } from "./gameModes";
 
 // ----- Start payload now includes targetWins (wins goal) -----
 type StartMessagePayload = {
@@ -11,6 +12,7 @@ type StartMessagePayload = {
   players: Players;          // { left: {id,name,color}, right: {…} }
   playersArr?: { clientId: string; name: string }[]; // optional: raw list for debugging
   targetWins: number;        // 👈 merged feature: game wins goal
+  gameMode: GameMode;        // 👈 lobby-selected game mode
 };
 
 type StartPayload = StartMessagePayload & {
@@ -23,6 +25,12 @@ type StartPayload = StartMessagePayload & {
 
 type ConnectOptions = {
   requireExistingMembers?: boolean;
+};
+
+const LOBBY_MODE_OPTIONS: GameMode[] = ["classic", "grimoire"];
+const MODE_LABELS: Record<GameMode, string> = {
+  classic: "Classic",
+  grimoire: "Grimoire",
 };
 
 export default function MultiplayerRoute({
@@ -43,13 +51,16 @@ export default function MultiplayerRoute({
   const [targetWins, setTargetWins] = useState<number>(TARGET_WINS);
   const [targetWinsInput, setTargetWinsInput] = useState<string>(String(TARGET_WINS));
 
+  // Game mode (host controls)
+  const [gameMode, setGameMode] = useState<GameMode>(DEFAULT_GAME_MODE);
+
   // ---- Ably core refs ----
   const ablyRef = useRef<Realtime | null>(null);
   const channelRef = useRef<ReturnType<Realtime["channels"]["get"]> | null>(null);
 
   // members list (UI) and authoritative presence map
   const [members, setMembers] = useState<
-    { clientId: string; name: string; targetWins?: number }[]
+    { clientId: string; name: string; targetWins?: number; gameMode?: GameMode }[]
   >([]);
   const clientId = useMemo(() => uid4(), []);
 
@@ -58,6 +69,7 @@ export default function MultiplayerRoute({
     name: string;
     ts: number;
     targetWins?: number;
+    gameMode?: GameMode;
   };
   const memberMapRef = useRef<Map<string, MemberEntry>>(new Map());
 
@@ -69,7 +81,12 @@ export default function MultiplayerRoute({
     });
 
     setMembers(
-      ordered.map(({ clientId, name, targetWins }) => ({ clientId, name, targetWins }))
+      ordered.map(({ clientId, name, targetWins, gameMode }) => ({
+        clientId,
+        name,
+        targetWins,
+        gameMode,
+      }))
     );
 
     // host is first; mirror host's wins goal locally
@@ -77,6 +94,10 @@ export default function MultiplayerRoute({
     const hostTargetWins = host?.targetWins;
     if (typeof hostTargetWins === "number" && Number.isFinite(hostTargetWins)) {
       setTargetWins(clampTargetWins(hostTargetWins));
+    }
+
+    if (host?.gameMode && isGameMode(host.gameMode)) {
+      setGameMode(host.gameMode);
     }
   }, []);
 
@@ -90,6 +111,7 @@ export default function MultiplayerRoute({
         if (!msg?.clientId) continue;
         const data = (msg.data ?? {}) as any;
         const rawTargetWins = data?.targetWins;
+        const rawGameMode = data?.gameMode;
         const prev = prevMap.get(msg.clientId);
         const serverTs = typeof msg.timestamp === "number" ? msg.timestamp : undefined;
         const ts =
@@ -107,6 +129,7 @@ export default function MultiplayerRoute({
             typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
               ? clampTargetWins(rawTargetWins)
               : prev?.targetWins,
+          gameMode: isGameMode(rawGameMode) ? rawGameMode : prev?.gameMode,
         });
       }
     }
@@ -149,15 +172,23 @@ export default function MultiplayerRoute({
 
       const name = data?.name ?? existing?.name ?? "Player";
       const rawTargetWins = data?.targetWins;
+      const rawGameMode = data?.gameMode;
       const memberTargetWins =
         typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
           ? clampTargetWins(rawTargetWins)
           : existing?.targetWins;
+      const memberGameMode = isGameMode(rawGameMode) ? rawGameMode : existing?.gameMode;
 
       if (action === "leave" || action === "absent") {
         map.delete(msg.clientId);
       } else if (action === "enter" || action === "present" || action === "update") {
-        map.set(msg.clientId, { clientId: msg.clientId, name, ts, targetWins: memberTargetWins });
+        map.set(msg.clientId, {
+          clientId: msg.clientId,
+          name,
+          ts,
+          targetWins: memberTargetWins,
+          gameMode: memberGameMode,
+        });
       }
 
       memberMapRef.current = map;
@@ -265,24 +296,25 @@ export default function MultiplayerRoute({
       presenceListenerRef.current = onPresence;
       chan.presence.subscribe(onPresence);
 
-// 3) Enter presence with the current name and targetWins
-await chan.presence.enter({ name, targetWins });
+      // 3) Enter presence with the current name, targetWins, and gameMode
+      await chan.presence.enter({ name, targetWins, gameMode });
 
-// Seed self immediately so the UI shows the host right away
-{
-  const self: MemberEntry = {
-    clientId,
-    name,
-    ts: Date.now(),
-    targetWins,
-  };
-  const map = new Map<string, MemberEntry>([[clientId, self]]);
-  memberMapRef.current = map;
-  commitMembers(map); // <- updates the UI list
-}
+      // Seed self immediately so the UI shows the host right away
+      {
+        const self: MemberEntry = {
+          clientId,
+          name,
+          ts: Date.now(),
+          targetWins,
+          gameMode,
+        };
+        const map = new Map<string, MemberEntry>([[clientId, self]]);
+        memberMapRef.current = map;
+        commitMembers(map); // <- updates the UI list
+      }
 
-// 4) Seed initial list from the server (will merge/backfill others)
-await refreshMembers(chan);
+      // 4) Seed initial list from the server (will merge/backfill others)
+      await refreshMembers(chan);
 
 
       // 5) Refresh when connection state changes (covers reconnects)
@@ -374,12 +406,12 @@ await refreshMembers(chan);
     setTargetWinsInput(targetWins.toString());
   }, [targetWins]);
 
-  // If name/targetWins change while in-room, update presence & local cache
+  // If name/targetWins/gameMode change while in-room, update presence & local cache
   useEffect(() => {
     (async () => {
       if (mode === "in-room" && channelRef.current) {
         try {
-          await channelRef.current.presence.update({ name, targetWins });
+          await channelRef.current.presence.update({ name, targetWins, gameMode });
 
           const current = memberMapRef.current.get(clientId);
           const map = new Map(memberMapRef.current);
@@ -388,13 +420,14 @@ await refreshMembers(chan);
             name,
             targetWins,
             ts: current?.ts ?? Date.now(),
+            gameMode,
           });
           memberMapRef.current = map;
           commitMembers(map);
         } catch { /* no-op */ }
       }
     })();
-  }, [clientId, commitMembers, mode, name, targetWins]);
+  }, [clientId, commitMembers, mode, name, targetWins, gameMode]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -475,6 +508,7 @@ await refreshMembers(chan);
     setJoinCode("");
     setTargetWins(TARGET_WINS);
     setTargetWinsInput(TARGET_WINS.toString());
+    setGameMode(DEFAULT_GAME_MODE);
   }
 
   async function onStartGame() {
@@ -496,6 +530,7 @@ await refreshMembers(chan);
       hostId: members[0].clientId, // first in presence is host
       playersArr: members,         // optional, for debugging/analytics
       targetWins: winsGoal,        // 👈 pass wins goal into the game
+      gameMode,                    // 👈 pass lobby-selected mode
     };
 
     await channelRef.current?.publish("start", payload);
@@ -528,6 +563,14 @@ await refreshMembers(chan);
       setTargetWinsInput(clamped.toString());
     }
   }, [targetWinsInput]);
+
+  const handleGameModeSelect = useCallback(
+    (nextMode: GameMode) => {
+      if (!isHost) return;
+      setGameMode(nextMode);
+    },
+    [isHost]
+  );
 
   return (
     <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-100 p-4">
@@ -596,27 +639,57 @@ await refreshMembers(chan);
             </div>
 
             <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-white/10">
-              <div className="text-sm opacity-80 mb-1">Rounds to win</div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  min={1}
-                  max={25}
-                  disabled={!isHost}
-                  className="w-24 rounded-lg bg-black/40 px-3 py-2 text-center ring-1 ring-white/10 disabled:opacity-60"
-                  value={targetWinsInput}
-                  onChange={(e) => handleTargetWinsChange(e.target.value)}
-                  onBlur={handleTargetWinsBlur}
-                />
-                {!isHost && (
-                  <span className="rounded bg-white/10 px-2 py-0.5 text-xs">Host controls this</span>
-                )}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="flex-1">
+                  <div className="text-sm opacity-80 mb-1">Rounds to win</div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      min={1}
+                      max={25}
+                      disabled={!isHost}
+                      className="w-24 rounded-lg bg-black/40 px-3 py-2 text-center ring-1 ring-white/10 disabled:opacity-60"
+                      value={targetWinsInput}
+                      onChange={(e) => handleTargetWinsChange(e.target.value)}
+                      onBlur={handleTargetWinsBlur}
+                    />
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm opacity-80 mb-1">Mode</div>
+                  <div className="inline-flex rounded-lg bg-black/40 p-0.5 ring-1 ring-white/10">
+                    {LOBBY_MODE_OPTIONS.map((option) => {
+                      const selected = gameMode === option;
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => handleGameModeSelect(option)}
+                          aria-pressed={selected}
+                          aria-disabled={!isHost}
+                          className={[
+                            "rounded-md px-3 py-1.5 text-sm font-semibold transition",
+                            selected
+                              ? "bg-emerald-400 text-slate-900 shadow"
+                              : "text-white/80 hover:bg-white/10",
+                            !isHost ? "cursor-not-allowed" : "",
+                          ].join(" ")}
+                        >
+                          {MODE_LABELS[option]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <div className="mt-1 text-xs opacity-70">
+              <div className="mt-2 text-xs opacity-70">
                 First player to reach {targetWins} round wins takes the match.
               </div>
+              {!isHost && (
+                <div className="mt-1 text-xs opacity-60">Host controls these settings.</div>
+              )}
             </div>
 
             <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-white/10">
@@ -693,6 +766,10 @@ function clampTargetWins(value: number) {
   const rounded = Math.round(value);
   const clamped = Math.max(1, Math.min(25, rounded));
   return clamped;
+}
+
+function isGameMode(value: unknown): value is GameMode {
+  return value === "classic" || value === "grimoire";
 }
 
 // Assign sides from presence order (host=left, first joiner=right)

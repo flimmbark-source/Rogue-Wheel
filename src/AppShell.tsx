@@ -44,6 +44,7 @@ export default function AppShell() {
       <MultiplayerRoute
         onBack={() => setView({ key: "hub" })}
         onStart={(payload) => {
+          setGameMode(payload.gameMode);
           setMpPayload(payload);
           setView({
             key: "modeSelect",
@@ -96,7 +97,7 @@ export default function AppShell() {
               setView({ key: "mp" });
               return;
             }
-            const nextPayload = { ...payload, targetWins: winsGoal };
+            const nextPayload = { ...payload, targetWins: winsGoal, gameMode: mode };
             setMpPayload(nextPayload);
             setView({ key: "game", mode: "mp", mpPayload: nextPayload });
             return;
