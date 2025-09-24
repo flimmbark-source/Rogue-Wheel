@@ -547,9 +547,12 @@ export default function ThreeWheel_WinsOnly({
       const requiresManualTarget = spellTargetRequiresManualSelection(
         spell.target
       );
-      if (requiresManualTarget) {
-        setShowGrimoire(false);
-      }
+
+      // Always close the grimoire once we've successfully started a spell cast so
+      // the targeting overlay can take focus. Previously we only hid it for
+      // manual-target spells, which meant the popover stayed open if manual
+      // detection ever failed and the player never saw the targeting state.
+      setShowGrimoire(false);
 
       const initialTarget: SpellTargetInstance | null = (() => {
         switch (spell.target.type) {
