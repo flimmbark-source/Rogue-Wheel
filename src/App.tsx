@@ -764,7 +764,7 @@ const renderWheelPanel = (i: number) => {
           </div>
         </div>
 
-        <div ref={infoPopoverRootRef} className="flex items-center gap-2 relative">
+        <div ref={infoPopoverRootRef} className="flex items-center gap-2">
           {/* Reference button + popover */}
           <div className="relative">
             <button
@@ -818,6 +818,39 @@ const renderWheelPanel = (i: number) => {
               </div>
             )}
           </div>
+
+          {phase === "choose" && (
+            <div className="flex flex-col items-end gap-1">
+              <button
+                disabled={resolveButtonDisabled}
+                onClick={handleRevealClick}
+                className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold disabled:opacity-50"
+              >
+                {resolveButtonLabel}
+              </button>
+              {isMultiplayer && resolveStatusText && (
+                <span className="text-[11px] italic text-amber-200 text-right leading-tight">
+                  {resolveStatusText}
+                </span>
+              )}
+            </div>
+          )}
+          {phase === "roundEnd" && (
+            <div className="flex flex-col items-end gap-1">
+              <button
+                disabled={advanceButtonDisabled}
+                onClick={handleNextClick}
+                className="px-2.5 py-0.5 rounded bg-emerald-500 text-slate-900 font-semibold disabled:opacity-50"
+              >
+                {advanceButtonLabel}
+              </button>
+              {isMultiplayer && advanceStatusText && (
+                <span className="text-[11px] italic text-emerald-200 text-right leading-tight">
+                  {advanceStatusText}
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Grimoire button + popover/modal */}
           {gameMode === "grimoire" && (
@@ -1010,39 +1043,6 @@ const renderWheelPanel = (i: number) => {
           )}
         </div>
 
-        {/* Resolve/Next controls (right side) */}
-        {phase === "choose" && (
-          <div className="flex flex-col items-end gap-1">
-            <button
-              disabled={resolveButtonDisabled}
-              onClick={handleRevealClick}
-              className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold disabled:opacity-50"
-            >
-              {resolveButtonLabel}
-            </button>
-            {isMultiplayer && resolveStatusText && (
-              <span className="text-[11px] italic text-amber-200 text-right leading-tight">
-                {resolveStatusText}
-              </span>
-            )}
-          </div>
-        )}
-        {phase === "roundEnd" && (
-          <div className="flex flex-col items-end gap-1">
-            <button
-              disabled={advanceButtonDisabled}
-              onClick={handleNextClick}
-              className="px-2.5 py-0.5 rounded bg-emerald-500 text-slate-900 font-semibold disabled:opacity-50"
-            >
-              {advanceButtonLabel}
-            </button>
-            {isMultiplayer && advanceStatusText && (
-              <span className="text-[11px] italic text-emerald-200 text-right leading-tight">
-                {advanceStatusText}
-              </span>
-            )}
-          </div>
-        )}
       </div>
 
       {/* HUD */}
