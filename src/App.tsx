@@ -196,6 +196,14 @@ export default function ThreeWheel_WinsOnly({
   targetWins?: number;
   onExit?: () => void;
 }) {
+useEffect(() => {
+  if (isAwaitingSpellTarget) {
+    setShowGrimoire(false);
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }
+}, [isAwaitingSpellTarget]);
 
   const { state, derived, refs, actions } = useThreeWheelGame({
     localSide,
@@ -846,15 +854,21 @@ const renderWheelPanel = (i: number) => {
                                 return (
                                   <li key={spell.id}>
                                     <button
-                                      type="button"
-                                      onClick={() => handleSpellActivate(spell)}
-                                      disabled={disabled}
-                                      className={`w-full rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-left transition ${
-                                        disabled
-                                          ? "cursor-not-allowed opacity-50"
-                                          : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
-                                      }`}
-                                    >
+  type="button"
+  onClick={() => {
+    handleSpellActivate(spell);
+    // Immediately close any popover/modal so it can’t eat clicks
+    setShowGrimoire(false);         // uses your local state
+    // Also drop focus so focus/hover logic can’t reopen anything
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }}
+  disabled={disabled}
+  className="w-full rounded-xl border ...">
+  ...
+</button>
+
                                       <div className="flex items-center justify-between gap-3">
                                         <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
                                           {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
@@ -928,15 +942,21 @@ const renderWheelPanel = (i: number) => {
                                 return (
                                   <li key={spell.id}>
                                     <button
-                                      type="button"
-                                      onClick={() => handleSpellActivate(spell)}
-                                      disabled={disabled}
-                                      className={`w-full rounded-xl border border-slate-700/70 bg-slate-900/60 px-3 py-2 text-left transition ${
-                                        disabled
-                                          ? "cursor-not-allowed opacity-50"
-                                          : "hover:bg-slate-800/80 focus:outline-none focus:ring-2 focus:ring-slate-500/50"
-                                      }`}
-                                    >
+  type="button"
+  onClick={() => {
+    handleSpellActivate(spell);
+    // Immediately close any popover/modal so it can’t eat clicks
+    setShowGrimoire(false);         // uses your local state
+    // Also drop focus so focus/hover logic can’t reopen anything
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }}
+  disabled={disabled}
+  className="w-full rounded-xl border ...">
+  ...
+</button>
+
                                       <div className="flex items-center justify-between gap-3">
                                         <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
                                           {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
