@@ -78,9 +78,6 @@ export default function ModeSelect({
 
         <div className="mt-6 flex flex-col gap-3 text-left">
           <h1 className="text-3xl font-bold sm:text-4xl">Choose a Mode</h1>
-          <p className="max-w-2xl text-sm text-slate-300 sm:text-base">
-            Classic keeps today&apos;s streamlined experience. Grimoire layers in experimental systems for seasoned players.
-          </p>
         </div>
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
