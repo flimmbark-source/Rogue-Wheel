@@ -194,18 +194,14 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
         handlePendingSpellCancel(true);
       }
 
-      let didSpend = false;
       setManaPools((current) => {
         const currentMana = current[localSide];
         if (currentMana < effectiveCost) return current;
 
-        didSpend = true;
         const next: SideState<number> = { ...current };
         next[localSide] = currentMana - effectiveCost;
         return next;
       });
-
-      if (!didSpend) return;
 
       setPhaseBeforeSpell((current) => current ?? phaseForLogic);
 
