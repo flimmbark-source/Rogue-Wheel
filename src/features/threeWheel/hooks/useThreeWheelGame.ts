@@ -32,17 +32,17 @@ import {
 } from "../../../player/profileStore";
 import { isNormal } from "../../../game/values";
 import type { WheelHandle } from "../../../components/CanvasWheel";
+import {
+  applyCardStatAdjustments,
+  applyChilledCardUpdates,
+  type CardStatAdjustment,
+  type ChilledCardUpdate,
+  type LaneChillStacks,
+  type LegacySide,
+  type SpellEffectPayload,
+} from "../utils/spellEffectTransforms";
 
-export type LegacySide = "player" | "enemy";
-
-export type SpellEffectPayload = {
-  caster: LegacySide;
-  mirrorCopyEffects?: Array<{ targetCardId: string; mode?: string }>;
-  wheelTokenAdjustments?: Array<{ wheelIndex: number; amount: number }>;
-  reserveDrains?: Array<{ side: LegacySide; amount: number }>;
-  initiative?: LegacySide | null;
-  logMessages?: string[];
-};
+export type { LegacySide, SpellEffectPayload } from "../utils/spellEffectTransforms";
 
 export type MPIntent =
   | { type: "assign"; lane: number; side: LegacySide; card: Card }
@@ -86,6 +86,7 @@ export type ThreeWheelGameState = {
   active: [boolean, boolean, boolean];
   wheelHUD: [string | null, string | null, string | null];
   assign: { player: (Card | null)[]; enemy: (Card | null)[] };
+  laneChillStacks: LaneChillStacks;
   dragCardId: string | null;
   dragOverWheel: number | null;
   selectedCardId: string | null;
@@ -432,10 +433,18 @@ export function useThreeWheelGame({
     player: [null, null, null],
     enemy: [null, null, null],
   });
+  const [laneChillStacks, setLaneChillStacks] = useState<LaneChillStacks>({
+    player: [0, 0, 0],
+    enemy: [0, 0, 0],
+  });
+  const laneChillRef = useRef(laneChillStacks);
   const assignRef = useRef(assign);
   useEffect(() => {
     assignRef.current = assign;
   }, [assign]);
+  useEffect(() => {
+    laneChillRef.current = laneChillStacks;
+  }, [laneChillStacks]);
 
   const reserveReportsRef = useRef<
     Record<LegacySide, { reserve: number; round: number } | null>
@@ -507,6 +516,17 @@ export function useThreeWheelGame({
       const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
       const prevAtLane = lane[laneIndex];
       const fromIdx = lane.findIndex((c) => c?.id === card.id);
+      const chillStacks = side === "player" ? laneChillRef.current.player : laneChillRef.current.enemy;
+
+      if (chillStacks[laneIndex] > 0 && prevAtLane && prevAtLane.id !== card.id) {
+        return false;
+      }
+      if (fromIdx !== -1 && chillStacks[fromIdx] > 0 && fromIdx !== laneIndex) {
+        return false;
+      }
+      if (chillStacks[laneIndex] > 0 && !prevAtLane) {
+        return false;
+      }
 
       if (prevAtLane && prevAtLane.id === card.id && fromIdx === laneIndex) {
         if (side === localLegacySide) {
@@ -522,7 +542,11 @@ export function useThreeWheelGame({
           const laneArr = isPlayer ? prev.player : prev.enemy;
           const nextLane = [...laneArr];
           const existingIdx = nextLane.findIndex((c) => c?.id === card.id);
-          if (existingIdx !== -1) nextLane[existingIdx] = null;
+          if (existingIdx !== -1) {
+            const stacks = chillStacks[existingIdx] ?? 0;
+            if (stacks > 0) return prev;
+            nextLane[existingIdx] = null;
+          }
           nextLane[laneIndex] = card;
           return isPlayer ? { ...prev, player: nextLane } : { ...prev, enemy: nextLane };
         });
@@ -550,7 +574,7 @@ export function useThreeWheelGame({
 
       return true;
     },
-    [active, clearResolveVotes, localLegacySide]
+    [active, clearResolveVotes, laneChillRef, localLegacySide]
   );
 
   const clearAssignFor = useCallback(
@@ -558,6 +582,10 @@ export function useThreeWheelGame({
       const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
       const prev = lane[laneIndex];
       if (!prev) return false;
+      const chillStacks = side === "player" ? laneChillRef.current.player : laneChillRef.current.enemy;
+      if (chillStacks[laneIndex] > 0) {
+        return false;
+      }
 
       startTransition(() => {
         setAssign((prevAssign) => {
@@ -588,7 +616,7 @@ export function useThreeWheelGame({
 
       return true;
     },
-    [clearResolveVotes, localLegacySide]
+    [clearResolveVotes, laneChillRef, localLegacySide]
   );
 
   const assignToWheelLocal = useCallback(
@@ -646,6 +674,9 @@ export function useThreeWheelGame({
         mirrorCopyEffects,
         wheelTokenAdjustments,
         reserveDrains,
+        cardAdjustments,
+        chilledCards,
+        delayedEffects,
         initiative: initiativeTarget,
         logMessages,
       } = payload;
@@ -758,12 +789,34 @@ export function useThreeWheelGame({
         });
       }
 
+      if (cardAdjustments?.length) {
+        setAssign((prev) => {
+          const updated = applyCardStatAdjustments(prev, cardAdjustments);
+          return updated ?? prev;
+        });
+      }
+
+      if (chilledCards?.length) {
+        setLaneChillStacks((prev) => {
+          const updated = applyChilledCardUpdates(prev, assignRef.current, chilledCards);
+          return updated ?? prev;
+        });
+      }
+
       if (initiativeTarget && initiativeTarget !== initiative) {
         setInitiative(initiativeTarget);
       }
 
       if (Array.isArray(logMessages)) {
         logMessages.forEach((entry) => {
+          if (typeof entry === "string" && entry.trim().length > 0) {
+            appendLog(entry);
+          }
+        });
+      }
+
+      if (Array.isArray(delayedEffects)) {
+        delayedEffects.forEach((entry) => {
           if (typeof entry === "string" && entry.trim().length > 0) {
             appendLog(entry);
           }
@@ -783,6 +836,7 @@ export function useThreeWheelGame({
       setAssign,
       setReserveSums,
       setTokens,
+      setLaneChillStacks,
       setInitiative,
       wheelRefs,
     ]
@@ -1078,6 +1132,7 @@ export function useThreeWheelGame({
 
       setWheelSections(generateWheelSet());
       setAssign({ player: [null, null, null], enemy: [null, null, null] });
+      setLaneChillStacks({ player: [0, 0, 0], enemy: [0, 0, 0] });
 
       setSelectedCardId(null);
       setDragCardId(null);
@@ -1282,6 +1337,7 @@ export function useThreeWheelGame({
     };
     assignRef.current = emptyAssign;
     setAssign(emptyAssign);
+    setLaneChillStacks({ player: [0, 0, 0], enemy: [0, 0, 0] });
 
     setSelectedCardId(null);
     setDragCardId(null);
@@ -1418,6 +1474,7 @@ export function useThreeWheelGame({
     active,
     wheelHUD,
     assign,
+    laneChillStacks,
     dragCardId,
     dragOverWheel,
     selectedCardId,
