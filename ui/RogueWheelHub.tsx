@@ -266,87 +266,92 @@ function Overlay({ title, onClose, children }: { title: string; onClose: () => v
 
 function HowToContent() {
   return (
-    <div className="space-y-4">
-      <p><b>Goal:</b> Win rounds by earning victories on the three wheels.</p>
-      <ol className="list-decimal pl-5 space-y-2">
-        <li><b>Draft:</b> Each round everyone draws <b>5 cards</b>.</li>
-        <li><b>Commit:</b> Place <b>3</b> cards — <b>1</b> beside each wheel. The remaining <b>2</b> go to your <b>Reserve</b>.</li>
-        <li><b>Spin:</b> Each wheel’s token moves equal to the <b>sum of the two cards beside it</b> (you + enemy).</li>
-        <li><b>Resolve:</b> The landing section decides the winner:
-          <ul className="mt-1 list-disc pl-5">
-            <li><b>Largest Number</b> — higher committed number wins.</li>
-            <li><b>Biggest Reserve</b> — higher total of reserve cards wins.</li>
-            <li><b>Smallest Card</b> — lower committed number wins.</li>
-            <li><b>Initiative</b> — initiative holder wins ties here.</li>
-          </ul>
-        </li>
-        <li><b>Advance:</b> Winners are counted; start a new round.</li>
-      </ol>
+    <>
+      <div className="space-y-4 mb-8">
+        <h2 className="text-xl font-bold border-b border-white/10 pb-2">How to Play</h2>
+        <p><b>Goal:</b> Win rounds by earning victories on the three wheels.</p>
+        <ol className="list-decimal pl-5 space-y-2">
+          <li><b>Draft:</b> Each round everyone draws <b>5 cards</b>.</li>
+          <li><b>Commit:</b> Place <b>3</b> cards — <b>1</b> beside each wheel. The remaining <b>2</b> go to your <b>Reserve</b>.</li>
+          <li><b>Spin:</b> Each wheel’s token moves equal to the <b>sum of the two cards beside it</b> (you + enemy).</li>
+          <li><b>Resolve:</b> The landing section decides the winner:
+            <ul className="mt-1 list-disc pl-5">
+              <li><b>Largest Number</b> — higher committed number wins.</li>
+              <li><b>Biggest Reserve</b> — higher total of reserve cards wins.</li>
+              <li><b>Smallest Card</b> — lower committed number wins.</li>
+              <li><b>Initiative</b> — initiative holder wins ties here.</li>
+            </ul>
+          </li>
+          <li><b>Advance:</b> Winners are counted; start a new round.</li>
+        </ol>
 
-      <div className="grid gap-3 rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
-        <div className="font-semibold">Tips</div>
-        <ul className="list-disc pl-5 space-y-1">
-          <li>Spread your strength — playing your highest cards isn’t always best.</li>
-          <li>Use your Reserve to build an advantage for <i>Biggest Reserve</i>.</li>
-          <li>Track <b>initiative</b>; it can flip outcomes on tie-heavy sections.</li>
-        </ul>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
-          <div className="font-semibold">Controls</div>
-          <ul className="mt-1 list-disc pl-5">
-            <li>Menu: ↑/↓ to select, Enter to confirm, Esc to close panels</li>
-            <li>Mouse/touch: Tap a card, then tap a wheel slot to place it.</li>
+        <div className="grid gap-3 rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+          <div className="font-semibold">Tips</div>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>Spread your strength — playing your highest cards isn’t always best.</li>
+            <li>Use your Reserve to build an advantage for <i>Biggest Reserve</i>.</li>
+            <li>Track <b>initiative</b>; it can flip outcomes on tie-heavy sections.</li>
           </ul>
         </div>
-        <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
-          <div className="font-semibold">Win Target</div>
-          <p>First to win the majority of rounds.</p>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+            <div className="font-semibold">Controls</div>
+            <ul className="mt-1 list-disc pl-5">
+              <li>Menu: ↑/↓ to select, Enter to confirm, Esc to close panels</li>
+              <li>Mouse/touch: Tap a card, then tap a wheel slot to place it.</li>
+            </ul>
+          </div>
+          <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+            <div className="font-semibold">Win Target</div>
+            <p>First to win the majority of rounds.</p>
+          </div>
         </div>
       </div>
-    </div>
-     <div className="space-y-4">
-      <p><b>Grimoire Mode:</b> Use spells to bend a round in your favor by spending <b>Mana</b> and applying targeted effects.</p>
 
-      <ol className="list-decimal pl-5 space-y-2">
-        <li><b>Open:</b> Tap <b>Grimoire</b> to view known spells and your current 🔹 <b>Mana</b>.</li>
-        <li>
-          <b>Cast:</b> Choose a spell that’s <b>available this phase</b> and that you can <b>afford</b>.
-          If it needs a target, you’ll see <i>Select a target…</i>.
-        </li>
-        <li>
-          <b>Target:</b> Click a valid <b>card</b> or <b>wheel</b> (some spells specify <i>Ally</i>, <i>Enemy</i>, or <i>Any</i>).
-          Use <b>Cancel</b> to back out if needed.
-        </li>
-        <li><b>Resolve:</b> The effect applies immediately and shows icons/tags on the affected slot or wheel.</li>
-      </ol>
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold border-b border-white/10 pb-2">Grimoire Mode</h2>
+        <p><b>Grimoire Mode:</b> Use spells to bend a round in your favor by spending <b>Mana</b> and applying targeted effects.</p>
 
-      <div className="grid gap-3 rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
-        <div className="font-semibold">Tips</div>
-        <ul className="list-disc pl-5 space-y-1">
-          <li>Win a wheel to gain <b>+1 Mana</b>; save for key moments or chain multiple small spells.</li>
-          <li>Check spell <b>phase</b>—most work in <i>Choose</i>, some only after Resolve.</li>
-          <li>If a spell is disabled, you’re either short on Mana or it’s the wrong phase.</li>
-        </ul>
-      </div>
+        <ol className="list-decimal pl-5 space-y-2">
+          <li><b>Open:</b> Tap <b>Grimoire</b> to view known spells and your current 🔹 <b>Mana</b>.</li>
+          <li>
+            <b>Cast:</b> Choose a spell that’s <b>available this phase</b> and that you can <b>afford</b>.
+            If it needs a target, you’ll see <i>Select a target…</i>.
+          </li>
+          <li>
+            <b>Target:</b> Click a valid <b>card</b> or <b>wheel</b> (some spells specify <i>Ally</i>, <i>Enemy</i>, or <i>Any</i>).
+            Use <b>Cancel</b> to back out if needed.
+          </li>
+          <li><b>Resolve:</b> The effect applies immediately and shows icons/tags on the affected slot or wheel.</li>
+        </ol>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
-          <div className="font-semibold">Controls</div>
-          <ul className="mt-1 list-disc pl-5">
-            <li>Open/close Grimoire from the HUD (Esc also closes).</li>
-            <li>Click a spell to cast; then click its target if prompted.</li>
+        <div className="grid gap-3 rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+          <div className="font-semibold">Tips</div>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>Win a wheel to gain <b>+1 Mana</b>; save for key moments or chain multiple small spells.</li>
+            <li>Check spell <b>phase</b>, most work in <i>Choose</i>, some only after Resolve.</li>
+            <li>If a spell is disabled, you’re either short on Mana or it’s the wrong phase.</li>
           </ul>
         </div>
-        <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
-          <div className="font-semibold">Mana & Availability</div>
-          <p>
-            🔹 Mana increases by winning wheels. Spells show cost and whether they’re usable <i>now</i>.
-          </p>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+            <div className="font-semibold">Controls</div>
+            <ul className="mt-1 list-disc pl-5">
+              <li>Open/close Grimoire from the HUD (Esc also closes).</li>
+              <li>Click a spell to cast; then click its target if prompted.</li>
+            </ul>
+          </div>
+          <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+            <div className="font-semibold">Mana & Availability</div>
+            <p>
+              🔹 Mana increases by winning wheels. Spells show cost and whether they’re usable <i>now</i>.
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
