@@ -61,7 +61,7 @@ export interface WheelPanelProps {
     spell: SpellDefinition;
     target: SpellTargetInstance | null;
   } | null;
-  onSpellTargetSelect?: (cardId: string, ownerSide: LegacySide, cardName: string) => void;
+  onSpellTargetSelect?: (selection: { side: LegacySide; lane: number | null; cardId: string }) => void;
   onWheelTargetSelect?: (wheelIndex: number) => void;
   isAwaitingSpellTarget: boolean;
 }
@@ -214,7 +214,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
 
     const handlePick = () => {
       if (isSlotTargetable && slot.card) {
-        onSpellTargetSelect?.(slot.card.id, slot.side, slot.card.name);
+        onSpellTargetSelect?.({ side: slot.side, lane: index, cardId: slot.card.id });
         return;
       }
       if (!canInteractNormally) return;
@@ -372,6 +372,23 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           onDrop={(e) => onZoneDrop(e, "player")}
           onClick={(e) => {
             e.stopPropagation();
+            const card = leftSlot.card;
+            if (
+              isAwaitingSpellTarget &&
+              pendingSpell?.spell.target.type === "card" &&
+              card
+            ) {
+              const ownership = pendingSpell.spell.target.ownership;
+              const isAlly = leftSlot.side === localLegacySide;
+              if (
+                ownership === "any" ||
+                (ownership === "ally" && isAlly) ||
+                (ownership === "enemy" && !isAlly)
+              ) {
+                onSpellTargetSelect?.({ side: leftSlot.side, lane: index, cardId: card.id });
+                return;
+              }
+            }
             if (awaitingSpellTarget) return;
             if (leftSlot.side !== localLegacySide) return;
             if (selectedCardId) {
@@ -416,7 +433,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           onDrop={onZoneDrop}
           onClick={(e) => {
             e.stopPropagation();
-            if (awaitingWheelTarget) {
+            if (isAwaitingSpellTarget && pendingSpell?.spell.target.type === "wheel") {
               if (wheelTargetable) {
                 onWheelTargetSelect?.(index);
               }
@@ -466,6 +483,23 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           onDrop={(e) => onZoneDrop(e, "enemy")}
           onClick={(e) => {
             e.stopPropagation();
+            const card = rightSlot.card;
+            if (
+              isAwaitingSpellTarget &&
+              pendingSpell?.spell.target.type === "card" &&
+              card
+            ) {
+              const ownership = pendingSpell.spell.target.ownership;
+              const isAlly = rightSlot.side === localLegacySide;
+              if (
+                ownership === "any" ||
+                (ownership === "ally" && isAlly) ||
+                (ownership === "enemy" && !isAlly)
+              ) {
+                onSpellTargetSelect?.({ side: rightSlot.side, lane: index, cardId: card.id });
+                return;
+              }
+            }
             if (awaitingSpellTarget) return;
             if (rightSlot.side !== localLegacySide) return;
             if (selectedCardId) {
