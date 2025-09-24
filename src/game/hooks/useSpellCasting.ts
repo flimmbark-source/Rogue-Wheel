@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { CorePhase, Fighter, Phase } from "../types";
 import {
@@ -38,6 +38,14 @@ export type UseSpellCastingResult = {
   handleWheelTargetSelect: (wheelIndex: number) => void;
 };
 
+const enqueueMicrotask = (task: () => void) => {
+  if (typeof queueMicrotask === "function") {
+    queueMicrotask(task);
+  } else {
+    Promise.resolve().then(task);
+  }
+};
+
 export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastingResult {
   const {
     caster,
@@ -53,6 +61,23 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
   } = options;
 
   const [pendingSpell, setPendingSpell] = useState<PendingSpellDescriptor | null>(null);
+  const pendingSpellScheduleIdRef = useRef(0);
+
+  const beginPendingSpell = useCallback(
+    (descriptor: PendingSpellDescriptor) => {
+      const scheduleId = ++pendingSpellScheduleIdRef.current;
+      enqueueMicrotask(() => {
+        if (pendingSpellScheduleIdRef.current !== scheduleId) return;
+        setPendingSpell(descriptor);
+      });
+    },
+    [],
+  );
+
+  const clearPendingSpell = useCallback(() => {
+    pendingSpellScheduleIdRef.current++;
+    setPendingSpell(null);
+  }, []);
   const [phaseBeforeSpell, setPhaseBeforeSpell] = useState<CorePhase | null>(null);
 
   const phaseForLogic = phaseBeforeSpell ?? phase;
@@ -80,7 +105,7 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
       });
 
       if (result.outcome === "requiresTarget") {
-        setPendingSpell(result.pendingSpell);
+        beginPendingSpell(result.pendingSpell);
         closeGrimoire();
         return;
       }
@@ -94,7 +119,7 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
             return next;
           });
         }
-        setPendingSpell(null);
+        clearPendingSpell();
         closeGrimoire();
         setPhaseBeforeSpell(null);
         return;
@@ -112,13 +137,15 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
         applySpellEffects(result.payload);
       }
 
-      setPendingSpell(null);
+      clearPendingSpell();
       closeGrimoire();
       setPhaseBeforeSpell(null);
     },
     [
       applySpellEffects,
+      beginPendingSpell,
       caster,
+      clearPendingSpell,
       closeGrimoire,
       opponent,
       phaseForLogic,
@@ -129,6 +156,7 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
 
   const handlePendingSpellCancel = useCallback(
     (refundMana: boolean) => {
+      pendingSpellScheduleIdRef.current++;
       setPendingSpell((current) => {
         if (!current) return current;
 
@@ -204,13 +232,14 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
       };
 
       if (requiresManualTarget) {
-        setPendingSpell({ ...descriptor, target: null });
+        beginPendingSpell({ ...descriptor, target: null });
         return;
       }
 
       handleResolvePendingSpell(descriptor, initialTarget);
     },
     [
+      beginPendingSpell,
       closeGrimoire,
       getSpellCost,
       handleResolvePendingSpell,
