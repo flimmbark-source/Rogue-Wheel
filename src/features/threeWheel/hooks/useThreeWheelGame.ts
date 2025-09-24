@@ -35,13 +35,23 @@ import type { WheelHandle } from "../../../components/CanvasWheel";
 
 export type LegacySide = "player" | "enemy";
 
+export type SpellEffectPayload = {
+  caster: LegacySide;
+  mirrorCopyEffects?: Array<{ targetCardId: string; mode?: string }>;
+  wheelTokenAdjustments?: Array<{ wheelIndex: number; amount: number }>;
+  reserveDrains?: Array<{ side: LegacySide; amount: number }>;
+  initiative?: LegacySide | null;
+  logMessages?: string[];
+};
+
 export type MPIntent =
   | { type: "assign"; lane: number; side: LegacySide; card: Card }
   | { type: "clear"; lane: number; side: LegacySide }
   | { type: "reveal"; side: LegacySide }
   | { type: "nextRound"; side: LegacySide }
   | { type: "rematch"; side: LegacySide }
-  | { type: "reserve"; side: LegacySide; reserve: number; round: number };
+  | { type: "reserve"; side: LegacySide; reserve: number; round: number }
+  | { type: "spellEffects"; payload: SpellEffectPayload };
 
 export type ThreeWheelGameProps = {
   localSide: TwoSide;
@@ -119,6 +129,7 @@ export type ThreeWheelGameActions = {
   handleNextClick: () => void;
   handleRematchClick: () => void;
   handleExitClick: () => void;
+  applySpellEffects: (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => void;
 };
 
 export type ThreeWheelGameReturn = {
@@ -629,6 +640,154 @@ export function useThreeWheelGame({
     broadcastLocalReserve();
   }, [broadcastLocalReserve, assign, player, enemy, localLegacySide, round, isMultiplayer]);
 
+  const applySpellEffects = useCallback(
+    (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => {
+      const {
+        mirrorCopyEffects,
+        wheelTokenAdjustments,
+        reserveDrains,
+        initiative: initiativeTarget,
+        logMessages,
+      } = payload;
+
+      if (mirrorCopyEffects?.length) {
+        setAssign((prev) => {
+          let nextPlayer = prev.player;
+          let nextEnemy = prev.enemy;
+          let changed = false;
+
+          mirrorCopyEffects.forEach((effect) => {
+            if (!effect || typeof effect.targetCardId !== "string") return;
+
+            let side: LegacySide | null = null;
+            let laneIndex = prev.player.findIndex((card) => card?.id === effect.targetCardId);
+            if (laneIndex !== -1) {
+              side = "player";
+            } else {
+              laneIndex = prev.enemy.findIndex((card) => card?.id === effect.targetCardId);
+              if (laneIndex !== -1) {
+                side = "enemy";
+              }
+            }
+
+            if (side === null || laneIndex < 0) return;
+
+            const targetLane = side === "player" ? prev.player : prev.enemy;
+            const targetCard = targetLane[laneIndex];
+            if (!targetCard) return;
+
+            const opponentSide: LegacySide =
+              effect.mode === "opponent" ? (side === "player" ? "enemy" : "player") : side;
+            const sourceLane = opponentSide === "player" ? prev.player : prev.enemy;
+            const sourceCard = sourceLane[laneIndex];
+            if (!sourceCard) return;
+
+            const copied: Card = {
+              ...targetCard,
+              name: sourceCard.name,
+              type: sourceCard.type,
+              number: sourceCard.number,
+              leftValue: sourceCard.leftValue,
+              rightValue: sourceCard.rightValue,
+              tags: [...sourceCard.tags],
+            };
+
+            if (side === "player") {
+              if (nextPlayer === prev.player) nextPlayer = [...prev.player];
+              nextPlayer[laneIndex] = copied;
+            } else {
+              if (nextEnemy === prev.enemy) nextEnemy = [...prev.enemy];
+              nextEnemy[laneIndex] = copied;
+            }
+            changed = true;
+          });
+
+          if (!changed) return prev;
+          return { player: nextPlayer, enemy: nextEnemy };
+        });
+      }
+
+      if (wheelTokenAdjustments?.length) {
+        const tokenUpdates = new Map<number, number>();
+        setTokens((prev) => {
+          let next = prev;
+          let changed = false;
+
+          wheelTokenAdjustments.forEach((adjustment) => {
+            if (!adjustment) return;
+            const idx = adjustment.wheelIndex;
+            if (!Number.isInteger(idx) || idx < 0 || idx >= prev.length) return;
+            const current = next === prev ? prev[idx] : next[idx];
+            const raw = current + adjustment.amount;
+            const updated = ((raw % SLICES) + SLICES) % SLICES;
+            if (updated === current) return;
+            if (!changed) next = [...prev] as [number, number, number];
+            next[idx] = updated;
+            changed = true;
+            tokenUpdates.set(idx, updated);
+          });
+
+          return changed ? next : prev;
+        });
+
+        tokenUpdates.forEach((value, index) => {
+          wheelRefs[index]?.current?.setVisualToken?.(value);
+        });
+      }
+
+      if (reserveDrains?.length) {
+        setReserveSums((prev) => {
+          if (!prev) return prev;
+          let next = prev;
+          let changed = false;
+
+          reserveDrains.forEach((drain) => {
+            if (!drain) return;
+            const side = drain.side;
+            const amount = drain.amount;
+            if (typeof amount !== "number" || !Number.isFinite(amount)) return;
+            const current = next === prev ? prev[side] ?? 0 : next[side] ?? 0;
+            const updated = Math.max(0, current - amount);
+            if (updated === current) return;
+            if (!changed) next = { ...prev };
+            next[side] = updated;
+            changed = true;
+          });
+
+          return changed ? next : prev;
+        });
+      }
+
+      if (initiativeTarget && initiativeTarget !== initiative) {
+        setInitiative(initiativeTarget);
+      }
+
+      if (Array.isArray(logMessages)) {
+        logMessages.forEach((entry) => {
+          if (typeof entry === "string" && entry.trim().length > 0) {
+            appendLog(entry);
+          }
+        });
+      }
+
+      const shouldBroadcast = options?.broadcast ?? true;
+      if (shouldBroadcast && isMultiplayer) {
+        sendIntent({ type: "spellEffects", payload });
+      }
+    },
+    [
+      appendLog,
+      initiative,
+      isMultiplayer,
+      sendIntent,
+      setAssign,
+      setReserveSums,
+      setTokens,
+      setInitiative,
+      wheelRefs,
+    ]
+  );
+
   function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
     const playedIds = new Set(played.map((c) => c.id));
     const next: Fighter = {
@@ -978,6 +1137,10 @@ export function useThreeWheelGame({
           }
           break;
         }
+        case "spellEffects": {
+          applySpellEffects(msg.payload, { broadcast: false });
+          break;
+        }
         default:
           break;
       }
@@ -989,6 +1152,7 @@ export function useThreeWheelGame({
       markAdvanceVote,
       markRematchVote,
       markResolveVote,
+      applySpellEffects,
       storeReserveReport,
     ]
   );
@@ -1297,6 +1461,7 @@ export function useThreeWheelGame({
     handleNextClick,
     handleRematchClick,
     handleExitClick,
+    applySpellEffects,
   };
 
   return { state, derived, refs, actions };

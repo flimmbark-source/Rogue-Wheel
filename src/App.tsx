@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useThreeWheelGame } from "./features/threeWheel/hooks/useThreeWheelGame"
+import { useThreeWheelGame, type SpellEffectPayload } from "./features/threeWheel/hooks/useThreeWheelGame";
 import React, {
   useMemo,
   useRef,
@@ -172,7 +172,8 @@ type MPIntent =
       manaAfter: number;
       payload?: SpellResolutionIntentPayload | null;
     }
-  | { type: "spellState"; side: LegacySide; lane: number; state: LaneSpellState };
+  | { type: "spellState"; side: LegacySide; lane: number; state: LaneSpellState }
+  | { type: "spellEffects"; payload: SpellEffectPayload };
 
 // ---------------- Constants ----------------
 const MAX_WHEEL = 200;
@@ -278,6 +279,7 @@ export default function ThreeWheel_WinsOnly({
     handleNextClick,
     handleRematchClick,
     handleExitClick,
+    applySpellEffects,
   } = actions;
 
   // --- local UI/Grimoire state (from Spells branch) ---
@@ -392,6 +394,112 @@ export default function ThreeWheel_WinsOnly({
 
       try {
         descriptor.spell.resolver(context);
+
+        const runtimeState = spellRuntimeStateRef.current;
+
+        const mirrorCopyEffects = Array.isArray(runtimeState.mirrorCopyEffects)
+          ? (runtimeState.mirrorCopyEffects
+              .map((effect) => {
+                if (effect && typeof effect.targetCardId === "string") {
+                  return {
+                    targetCardId: effect.targetCardId,
+                    mode: typeof effect.mode === "string" ? effect.mode : undefined,
+                  };
+                }
+                return null;
+              })
+              .filter((effect): effect is { targetCardId: string; mode?: string } => effect !== null) as Array<{
+                targetCardId: string;
+                mode?: string;
+              }>)
+          : undefined;
+
+        const wheelTokenAdjustments = Array.isArray(runtimeState.wheelTokenAdjustments)
+          ? (runtimeState.wheelTokenAdjustments
+              .map((entry) => {
+                if (
+                  entry &&
+                  typeof entry.amount === "number" &&
+                  entry.target &&
+                  entry.target.type === "wheel" &&
+                  typeof entry.target.wheelId === "string"
+                ) {
+                  const idx = Number.parseInt(entry.target.wheelId, 10);
+                  if (Number.isInteger(idx)) {
+                    return { wheelIndex: idx, amount: entry.amount };
+                  }
+                }
+                return null;
+              })
+              .filter(
+                (entry): entry is { wheelIndex: number; amount: number } => entry !== null
+              ) as Array<{ wheelIndex: number; amount: number }>)
+          : undefined;
+
+        const reserveDrains = Array.isArray(runtimeState.reserveDrains)
+          ? (runtimeState.reserveDrains
+              .map((entry) => {
+                if (!entry || typeof entry.amount !== "number") return null;
+
+                let targetSide: LegacySide | null = null;
+                if (entry.target && entry.target.type === "card") {
+                  if (entry.target.owner === "ally") targetSide = descriptor.side;
+                  else if (entry.target.owner === "enemy")
+                    targetSide = descriptor.side === "player" ? "enemy" : "player";
+                }
+
+                if (!targetSide) {
+                  targetSide = descriptor.side === "player" ? "enemy" : "player";
+                }
+
+                return { side: targetSide, amount: entry.amount };
+              })
+              .filter(
+                (entry): entry is { side: LegacySide; amount: number } => entry !== null
+              ) as Array<{ side: LegacySide; amount: number }>)
+          : undefined;
+
+        const logMessages = Array.isArray(runtimeState.log)
+          ? runtimeState.log.filter((entry): entry is string => typeof entry === "string")
+          : undefined;
+
+        const momentum = runtimeState.timeMomentum;
+        const initiativeTarget =
+          typeof momentum === "number" && momentum > 0 ? descriptor.side : undefined;
+
+        const effectPayload: SpellEffectPayload = { caster: descriptor.side };
+        if (mirrorCopyEffects && mirrorCopyEffects.length > 0) {
+          effectPayload.mirrorCopyEffects = mirrorCopyEffects;
+        }
+        if (wheelTokenAdjustments && wheelTokenAdjustments.length > 0) {
+          effectPayload.wheelTokenAdjustments = wheelTokenAdjustments;
+        }
+        if (reserveDrains && reserveDrains.length > 0) {
+          effectPayload.reserveDrains = reserveDrains;
+        }
+        if (initiativeTarget) {
+          effectPayload.initiative = initiativeTarget;
+        }
+        if (logMessages && logMessages.length > 0) {
+          effectPayload.logMessages = logMessages;
+        }
+
+        const shouldApply =
+          (effectPayload.mirrorCopyEffects?.length ?? 0) > 0 ||
+          (effectPayload.wheelTokenAdjustments?.length ?? 0) > 0 ||
+          (effectPayload.reserveDrains?.length ?? 0) > 0 ||
+          Boolean(effectPayload.initiative) ||
+          (effectPayload.logMessages?.length ?? 0) > 0;
+
+        if (shouldApply) {
+          applySpellEffects(effectPayload);
+        }
+
+        delete runtimeState.mirrorCopyEffects;
+        delete runtimeState.wheelTokenAdjustments;
+        delete runtimeState.reserveDrains;
+        delete runtimeState.timeMomentum;
+        delete runtimeState.log;
       } catch (error) {
         console.error("Spell resolution failed", error);
       } finally {
@@ -404,6 +512,7 @@ export default function ThreeWheel_WinsOnly({
       casterFighter,
       opponentFighter,
       phaseForLogic,
+      applySpellEffects,
       setPendingSpell,
       setPhaseBeforeSpell,
       setShowGrimoire,
