@@ -808,11 +808,12 @@ const renderWheelPanel = (i: number) => {
                     <li><span className="font-semibold">0 Start</span> — no one wins</li>
                   </ul>
                   <div><span className="font-semibold">Grimoire - Casting Spells</span></div>
-                    <div> Spells cost <span className="font-semibold">Mana</span> to cast.
-                      You gain <span className="font-semibold">+1 Mana</span> for each wheel you win.
-                      Some spells require you to select a valid target,
-                      <span className="font-semibold"> either a card or a wheel,</span> before
-                      they resolve. Most spells are available after the Resolve phase, but some can be cast at any time.
+                    <div> Spells cost <span className="font-semibold">Mana</span> to cast. 
+                      Your <span className="font-semibold">Grimoire</span> can be acceessed by pressing on your <span className="font-semibold">Mana.</span> 
+                      You gain <span className="font-semibold">+1 Mana</span> for each wheel you win. 
+                      Some spells require you to select a valid target, 
+                      <span className="font-semibold">either a card or a wheel,</span> before they resolve. 
+                      Most spells are available after the Resolve phase, but some can be cast at any time.
                   </div>
                 </div>
               </div>
