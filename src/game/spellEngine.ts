@@ -259,6 +259,36 @@ export type SpellEffectApplicationContext<CardT> = {
   updateTokenVisual?: (wheelIndex: number, value: number) => void;
 };
 
+type CardLikeWithValues = { number?: number | null; leftValue?: number | null; rightValue?: number | null };
+
+function getCardValue(card: CardLikeWithValues | null | undefined): number {
+  if (!card) return 0;
+  if (typeof card.number === "number" && Number.isFinite(card.number)) {
+    return card.number;
+  }
+  if (typeof card.leftValue === "number" && Number.isFinite(card.leftValue)) {
+    return card.leftValue;
+  }
+  if (typeof card.rightValue === "number" && Number.isFinite(card.rightValue)) {
+    return card.rightValue;
+  }
+  return 0;
+}
+
+function computeWheelTokenTargets<CardT extends { id: string }>(
+  assignState: AssignmentState<CardT>,
+): [number, number, number] {
+  const next: [number, number, number] = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    const playerValue = getCardValue(assignState.player[i] as CardLikeWithValues | null);
+    const enemyValue = getCardValue(assignState.enemy[i] as CardLikeWithValues | null);
+    const total = playerValue + enemyValue;
+    const normalized = ((total % SLICES) + SLICES) % SLICES;
+    next[i] = normalized;
+  }
+  return next;
+}
+
 export function applySpellEffects<CardT extends { id: string }>(
   payload: SpellEffectPayload,
   context: SpellEffectApplicationContext<CardT>,
@@ -400,10 +430,35 @@ export function applySpellEffects<CardT extends { id: string }>(
   }
 
   if (cardAdjustments?.length) {
+    let updatedAssignments: AssignmentState<CardT> | null = null;
     updateAssignments((prev) => {
       const updated = applyCardStatAdjustments(prev, cardAdjustments as CardStatAdjustment[]);
-      return updated ?? prev;
+      if (updated) {
+        updatedAssignments = updated;
+        return updated;
+      }
+      return prev;
     });
+
+    if (updatedAssignments) {
+      const nextTokens = computeWheelTokenTargets(updatedAssignments);
+      const changedIndices: number[] = [];
+      updateTokens((prev) => {
+        let next = prev;
+        for (let i = 0; i < nextTokens.length; i++) {
+          if (nextTokens[i] !== prev[i]) {
+            if (next === prev) next = [...prev] as [number, number, number];
+            next[i] = nextTokens[i];
+            changedIndices.push(i);
+          }
+        }
+        return next === prev ? prev : next;
+      });
+
+      changedIndices.forEach((index) => {
+        updateTokenVisual?.(index, nextTokens[index]);
+      });
+    }
   }
 
   if (chilledCards?.length) {
