@@ -62,6 +62,7 @@ import {
   computeReserveSum,
   settleFighterAfterRound,
 } from "./features/threeWheel/utils/combat";
+import { collectRuntimeSpellEffects } from "./features/threeWheel/utils/spellEffectTransforms";
 
 // components
 import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
@@ -463,9 +464,7 @@ export default function ThreeWheel_WinsOnly({
           ? runtimeState.log.filter((entry): entry is string => typeof entry === "string")
           : undefined;
 
-        const momentum = runtimeState.timeMomentum;
-        const initiativeTarget =
-          typeof momentum === "number" && momentum > 0 ? descriptor.side : undefined;
+        const runtimeSummary = collectRuntimeSpellEffects(runtimeState, descriptor.side);
 
         const effectPayload: SpellEffectPayload = { caster: descriptor.side };
         if (mirrorCopyEffects && mirrorCopyEffects.length > 0) {
@@ -477,8 +476,17 @@ export default function ThreeWheel_WinsOnly({
         if (reserveDrains && reserveDrains.length > 0) {
           effectPayload.reserveDrains = reserveDrains;
         }
-        if (initiativeTarget) {
-          effectPayload.initiative = initiativeTarget;
+        if (runtimeSummary.cardAdjustments && runtimeSummary.cardAdjustments.length > 0) {
+          effectPayload.cardAdjustments = runtimeSummary.cardAdjustments;
+        }
+        if (runtimeSummary.chilledCards && runtimeSummary.chilledCards.length > 0) {
+          effectPayload.chilledCards = runtimeSummary.chilledCards;
+        }
+        if (runtimeSummary.delayedEffects && runtimeSummary.delayedEffects.length > 0) {
+          effectPayload.delayedEffects = runtimeSummary.delayedEffects;
+        }
+        if (runtimeSummary.initiative) {
+          effectPayload.initiative = runtimeSummary.initiative;
         }
         if (logMessages && logMessages.length > 0) {
           effectPayload.logMessages = logMessages;
@@ -488,6 +496,9 @@ export default function ThreeWheel_WinsOnly({
           (effectPayload.mirrorCopyEffects?.length ?? 0) > 0 ||
           (effectPayload.wheelTokenAdjustments?.length ?? 0) > 0 ||
           (effectPayload.reserveDrains?.length ?? 0) > 0 ||
+          (effectPayload.cardAdjustments?.length ?? 0) > 0 ||
+          (effectPayload.chilledCards?.length ?? 0) > 0 ||
+          (effectPayload.delayedEffects?.length ?? 0) > 0 ||
           Boolean(effectPayload.initiative) ||
           (effectPayload.logMessages?.length ?? 0) > 0;
 
@@ -498,6 +509,9 @@ export default function ThreeWheel_WinsOnly({
         delete runtimeState.mirrorCopyEffects;
         delete runtimeState.wheelTokenAdjustments;
         delete runtimeState.reserveDrains;
+        delete runtimeState.lastFireballTarget;
+        delete runtimeState.chilledCards;
+        delete runtimeState.delayedEffects;
         delete runtimeState.timeMomentum;
         delete runtimeState.log;
       } catch (error) {
