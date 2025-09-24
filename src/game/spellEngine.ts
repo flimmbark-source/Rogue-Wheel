@@ -321,10 +321,16 @@ export function applySpellEffects<CardT extends { id: string }>(
         const sourceCard = sourceLane[laneIndex];
         if (!sourceCard) return;
 
+        const { id: _sourceId, ...sourceCardRest } = sourceCard as CardT & {
+          id: string;
+          [key: string]: unknown;
+        };
+
         const copied: CardT = {
           ...(targetCard as CardT),
-          ...(sourceCard as Partial<CardT>),
+          ...(sourceCardRest as Partial<CardT>),
         };
+        copied.id = (targetCard as CardT).id;
         if (Array.isArray((sourceCard as Record<string, unknown>).tags)) {
           (copied as Record<string, unknown>).tags = [
             ...((sourceCard as Record<string, unknown>).tags as unknown[]),
