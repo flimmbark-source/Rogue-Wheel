@@ -117,7 +117,6 @@ export default function ModeSelect({
         </div>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="text-xs text-slate-400 sm:text-sm">You can swap modes later from the main menu.</div>
           {showTargetWinsInput && (
             <div className="flex flex-col gap-1 text-left sm:flex-row sm:items-center sm:gap-3">
               <label className="text-xs font-medium text-slate-300 sm:text-sm" htmlFor="target-wins-input">
