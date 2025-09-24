@@ -92,7 +92,8 @@ export default function ProfilePage() {
     );
   }
 
-  const { profile, inventory, decks, active } = bundle;
+  const { profile } = bundle;
+  //inventory, decks, active
 
   const expToNext = expRequiredForLevel(profile.level);
   const expPercent = expToNext > 0 ? Math.min(1, profile.exp / expToNext) : 0;
