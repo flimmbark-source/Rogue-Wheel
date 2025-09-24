@@ -342,8 +342,18 @@ export default function ThreeWheel_WinsOnly({
     isWheelActive,
   });
 
+  const [spellTargetingSide, setSpellTargetingSide] = useState<LegacySide | null>(null);
+
+  useEffect(() => {
+    if (awaitingSpellTarget && pendingSpell) {
+      setSpellTargetingSide(pendingSpell.side);
+    } else if (!awaitingSpellTarget) {
+      setSpellTargetingSide(null);
+    }
+  }, [awaitingSpellTarget, pendingSpell]);
+
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
-  const phase: Phase = phaseBeforeSpell ? "spellTargeting" : basePhase;
+  const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
 
   const handleLocalArchetypeSelect = useCallback((id: ArchetypeId) => {
     setLocalSelection(id);
@@ -1111,6 +1121,7 @@ const renderWheelPanel = (i: number) => {
         onMeasure={setHandClearance}
         pendingSpell={pendingSpell}
         isAwaitingSpellTarget={isAwaitingSpellTarget}
+        onSpellTargetSelect={handleSpellTargetSelect}
       />
 
       {/* Ended overlay (banner + modal) */}
