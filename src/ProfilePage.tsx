@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getProfileBundle,
   expRequiredForLevel,
   type ProfileBundle,
+  updateProfileDisplayName,
 } from "./player/profileStore";
 
 export default function ProfilePage() {
@@ -10,6 +11,11 @@ export default function ProfilePage() {
   const [bundle, setBundle] = useState<ProfileBundle | null>(() => {
     try { return getProfileBundle(); } catch { return null; }
   });
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState<string>(() =>
+    bundle?.profile.displayName ?? "Local Player"
+  );
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   // Refresh once on mount (covers first-run seed or any changes)
   useEffect(() => {
@@ -20,6 +26,40 @@ export default function ProfilePage() {
       console.error("getProfileBundle failed:", e);
     }
   }, []);
+
+  useEffect(() => {
+    setNameInput(bundle?.profile.displayName ?? "Local Player");
+  }, [bundle?.profile.displayName]);
+
+  useEffect(() => {
+    if (isEditingName) {
+      const id = requestAnimationFrame(() => {
+        nameInputRef.current?.focus();
+        nameInputRef.current?.select();
+      });
+      return () => cancelAnimationFrame(id);
+    }
+  }, [isEditingName]);
+
+  const commitNameChange = useCallback(() => {
+    const raw = nameInput;
+    try {
+      const updatedProfile = updateProfileDisplayName(raw);
+      if (updatedProfile) {
+        const refreshed = getProfileBundle();
+        setBundle(refreshed);
+        setNameInput(refreshed.profile.displayName);
+      }
+    } catch (error) {
+      console.error("updateProfileDisplayName failed:", error);
+    }
+    setIsEditingName(false);
+  }, [nameInput]);
+
+  const cancelNameEdit = useCallback(() => {
+    setNameInput(bundle?.profile.displayName ?? "Local Player");
+    setIsEditingName(false);
+  }, [bundle?.profile.displayName]);
 
   if (!bundle) {
     return (
@@ -43,9 +83,38 @@ export default function ProfilePage() {
   return (
     <div className="p-4">
       <section className="rounded-xl p-3 border border-white/20 bg-black/25 max-w-2xl mx-auto">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h2 className="text-xl font-semibold">Profile</h2>
-          <div className="text-sm opacity-80">{profile?.displayName ?? "Local Player"}</div>
+          <div className="text-right">
+            {isEditingName ? (
+              <input
+                ref={nameInputRef}
+                value={nameInput}
+                onChange={(event) => setNameInput(event.target.value)}
+                onBlur={commitNameChange}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    commitNameChange();
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    cancelNameEdit();
+                  }
+                }}
+                maxLength={24}
+                className="w-40 rounded border border-emerald-400 bg-slate-900/60 px-2 py-1 text-sm text-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsEditingName(true)}
+                className="w-full min-w-[9rem] rounded border border-transparent px-3 py-1 text-sm text-emerald-200 transition hover:border-emerald-300 hover:text-emerald-100 focus:border-emerald-300 focus:outline-none"
+              >
+                <div className="truncate font-semibold">{profile?.displayName ?? "Local Player"}</div>
+                <div className="text-xs font-normal text-emerald-200/70">Tap to edit</div>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-3 rounded-lg bg-white/5 p-3 ring-1 ring-white/10">
