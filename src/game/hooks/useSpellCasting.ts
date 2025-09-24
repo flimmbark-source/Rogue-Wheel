@@ -34,7 +34,7 @@ export type UseSpellCastingResult = {
   awaitingSpellTarget: boolean;
   handleSpellActivate: (spell: SpellDefinition) => void;
   handlePendingSpellCancel: (refundMana: boolean) => void;
-  handleSpellTargetSelect: (cardId: string, ownerSide: LegacySide, cardName: string) => void;
+  handleSpellTargetSelect: (selection: { side: LegacySide; lane: number | null; cardId: string }) => void;
   handleWheelTargetSelect: (wheelIndex: number) => void;
 };
 
@@ -253,7 +253,7 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
   );
 
   const handleSpellTargetSelect = useCallback(
-    (cardId: string, ownerSide: LegacySide, cardName: string) => {
+    (selection: { side: LegacySide; lane: number | null; cardId: string }) => {
       if (!pendingSpell) return;
 
       if (pendingSpell.side !== localSide) {
@@ -265,7 +265,7 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
         return;
       }
 
-      const candidateOwnership = ownerSide === pendingSpell.side ? "ally" : "enemy";
+      const candidateOwnership = selection.side === pendingSpell.side ? "ally" : "enemy";
 
       const allowedOwnership = definition.ownership;
       const isAllowed = allowedOwnership === "any" || allowedOwnership === candidateOwnership;
@@ -273,16 +273,26 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
         return;
       }
 
+      const sourceFighter = selection.side === localSide ? caster : opponent;
+      const cardName = (() => {
+        const pools = [sourceFighter.hand, sourceFighter.deck, sourceFighter.discard];
+        for (const pool of pools) {
+          const match = pool.find((card) => card.id === selection.cardId);
+          if (match) return match.name;
+        }
+        return undefined;
+      })();
+
       const nextTarget: SpellTargetInstance = {
         type: "card",
-        cardId,
+        cardId: selection.cardId,
         owner: candidateOwnership,
         cardName,
       };
 
       handleResolvePendingSpell(pendingSpell, nextTarget);
     },
-    [handleResolvePendingSpell, localSide, pendingSpell],
+    [caster, handleResolvePendingSpell, localSide, opponent, pendingSpell],
   );
 
   const handleWheelTargetSelect = useCallback(

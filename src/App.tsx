@@ -1111,6 +1111,7 @@ const renderWheelPanel = (i: number) => {
         onMeasure={setHandClearance}
         pendingSpell={pendingSpell}
         isAwaitingSpellTarget={isAwaitingSpellTarget}
+        onSpellTargetSelect={handleSpellTargetSelect}
       />
 
       {/* Ended overlay (banner + modal) */}

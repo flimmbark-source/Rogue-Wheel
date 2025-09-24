@@ -29,6 +29,7 @@ interface HandDockProps {
     target: SpellTargetInstance | null;
   } | null;
   isAwaitingSpellTarget: boolean;
+  onSpellTargetSelect?: (selection: { side: LegacySide; lane: number | null; cardId: string }) => void;
 }
 
 const HandDock: React.FC<HandDockProps> = ({
@@ -47,6 +48,7 @@ const HandDock: React.FC<HandDockProps> = ({
   onMeasure,
   pendingSpell,
   isAwaitingSpellTarget,
+  onSpellTargetSelect,
 }) => {
   const dockRef = useRef<HTMLDivElement | null>(null);
   const [liftPx, setLiftPx] = useState<number>(18);
@@ -76,18 +78,21 @@ const HandDock: React.FC<HandDockProps> = ({
 
   const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
-  const awaitingTarget =
+  const awaitingManualTarget =
     isAwaitingSpellTarget &&
     pendingSpell &&
-    pendingSpell.spell.target.type === "card" &&
-    spellTargetRequiresManualSelection(pendingSpell.spell.target);
+    spellTargetRequiresManualSelection(pendingSpell.spell.target) &&
+    !pendingSpell.target;
+
+  const awaitingCardTarget =
+    awaitingManualTarget && pendingSpell?.spell.target.type === "card";
 
   return (
     <div
       ref={dockRef}
       className="fixed left-0 right-0 bottom-0 z-40 pointer-events-none select-none"
       style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + -30px)" }}
-      data-awaiting-spell-target={awaitingTarget ? "true" : "false"}
+      data-awaiting-spell-target={awaitingCardTarget ? "true" : "false"}
     >
       <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
         {localFighter.hand.map((card, idx) => {
@@ -109,10 +114,15 @@ const HandDock: React.FC<HandDockProps> = ({
                 <button
                   data-hand-card
                   className="pointer-events-auto"
-                  disabled={awaitingTarget}
+                  disabled={awaitingManualTarget && !awaitingCardTarget}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (awaitingTarget) return;
+                    if (awaitingCardTarget && pendingSpell?.spell.target.type === "card") {
+                      const side = localLegacySide;
+                      onSpellTargetSelect?.({ side, lane: null, cardId: card.id });
+                      return;
+                    }
+                    if (awaitingManualTarget) return;
                     if (!selectedCardId) {
                       setSelectedCardId(card.id);
                       return;
@@ -132,9 +142,9 @@ const HandDock: React.FC<HandDockProps> = ({
 
                     setSelectedCardId(card.id);
                   }}
-                  draggable={!awaitingTarget}
+                  draggable={!awaitingManualTarget}
                   onDragStart={(e) => {
-                    if (awaitingTarget) return;
+                    if (awaitingManualTarget) return;
                     setDragCardId(card.id);
                     try {
                       e.dataTransfer.setData("text/plain", card.id);
@@ -143,7 +153,7 @@ const HandDock: React.FC<HandDockProps> = ({
                   }}
                   onDragEnd={() => setDragCardId(null)}
                   onPointerDown={(e) => {
-                    if (awaitingTarget) return;
+                    if (awaitingManualTarget) return;
                     startPointerDrag(card, e);
                   }}
                   aria-pressed={isSelected}
