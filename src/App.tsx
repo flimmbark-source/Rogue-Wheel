@@ -196,14 +196,6 @@ export default function ThreeWheel_WinsOnly({
   targetWins?: number;
   onExit?: () => void;
 }) {
-useEffect(() => {
-  if (isAwaitingSpellTarget) {
-    setShowGrimoire(false);
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-  }
-}, [isAwaitingSpellTarget]);
 
   const { state, derived, refs, actions } = useThreeWheelGame({
     localSide,
