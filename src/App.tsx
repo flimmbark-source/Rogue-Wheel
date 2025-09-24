@@ -708,21 +708,21 @@ const renderWheelPanel = (i: number) => {
     >
       {isAwaitingSpellTarget && pendingSpell ? (
         <div className="pointer-events-none fixed inset-x-0 top-20 z-[90] flex justify-center px-3">
-          <div className="pointer-events-auto max-w-md w-full rounded-xl border border-sky-500/60 bg-slate-900/95 px-4 py-3 shadow-2xl">
-            <div className="text-sm font-semibold text-slate-100">
-              Select a target for {pendingSpell.spell.name}
-            </div>
-            <div className="mt-1 text-[12px] text-slate-300">
-              {targetingPrompt}
-            </div>
-            <div className="mt-3 flex justify-end">
+          <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-sky-500/60 bg-slate-900/95 px-3 py-2 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[13px] font-semibold text-slate-100">
+                Select a target for {pendingSpell.spell.name}
+              </div>
               <button
                 type="button"
                 onClick={() => handlePendingSpellCancel(true)}
-                className="rounded border border-slate-600 px-3 py-1 text-[12px] text-slate-200 transition hover:border-slate-400 hover:text-white"
+                className="rounded border border-slate-600 px-2.5 py-1 text-[11px] text-slate-200 transition hover:border-slate-400 hover:text-white"
               >
                 Cancel spell
               </button>
+            </div>
+            <div className="mt-2 text-[11px] leading-snug text-slate-300">
+              {targetingPrompt}
             </div>
           </div>
         </div>
