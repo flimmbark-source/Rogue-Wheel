@@ -15,7 +15,6 @@ export const GAME_MODE_DETAILS: Record<
     subtitle: "Pure spins and tactical cardplay.",
     highlights: [
       "Original ruleset with straightforward drafting",
-      "No mana, spells, or archetype management",
       "Great for quick matches and onboarding",
     ],
   },
@@ -23,8 +22,7 @@ export const GAME_MODE_DETAILS: Record<
     title: "Grimoire",
     subtitle: "Experimental systems and power-ups.",
     highlights: [
-      "Adds mana economy and spellcasting windows",
-      "Wheel archetypes and progression modifiers",
+      "Adds spells, which can alter match outcomes",
       "Best for advanced players seeking depth",
     ],
   },
