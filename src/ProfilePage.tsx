@@ -92,7 +92,7 @@ export default function ProfilePage() {
     );
   }
 
-  const { profile } = bundle;
+  const { profile, active } = bundle;
   //inventory, decks, active
 
   const expToNext = expRequiredForLevel(profile.level);
