@@ -2,10 +2,11 @@ import React from "react";
 import CanvasWheel, { WheelHandle } from "../../../components/CanvasWheel";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter, Phase, Section } from "../../../game/types";
-import type {
-  SpellDefinition,
-  SpellTargetInstance,
-  SpellTargetOwnership,
+import {
+  spellTargetRequiresManualSelection,
+  type SpellDefinition,
+  type SpellTargetInstance,
+  type SpellTargetOwnership,
 } from "../../../game/spells";
 
 export type LegacySide = "player" | "enemy";
@@ -113,20 +114,19 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const playerPenalty = reservePenalties.player;
   const enemyPenalty = reservePenalties.enemy;
 
-  const awaitingCardTarget =
+  const awaitingManualTarget =
     isAwaitingSpellTarget &&
     pendingSpell &&
-    pendingSpell.spell.target.type === "card" &&
-    pendingSpell.spell.target.automatic !== true &&
+    spellTargetRequiresManualSelection(pendingSpell.spell.target) &&
     !pendingSpell.target;
+
+  const awaitingCardTarget =
+    awaitingManualTarget && pendingSpell?.spell.target.type === "card";
 
   const awaitingWheelTarget =
-    isAwaitingSpellTarget &&
-    pendingSpell &&
-    pendingSpell.spell.target.type === "wheel" &&
-    !pendingSpell.target;
+    awaitingManualTarget && pendingSpell?.spell.target.type === "wheel";
 
-  const awaitingSpellTarget = awaitingCardTarget || awaitingWheelTarget;
+  const awaitingSpellTarget = awaitingManualTarget;
 
   const pendingOwnership: SpellTargetOwnership | null = awaitingCardTarget
     ? pendingSpell!.spell.target.ownership

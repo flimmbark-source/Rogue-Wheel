@@ -71,6 +71,7 @@ import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
 import {
   getSpellDefinitions,
+  spellTargetRequiresManualSelection,
   type SpellDefinition,
   type SpellRuntimeState,
   type SpellTargetInstance,
@@ -366,10 +367,9 @@ export default function ThreeWheel_WinsOnly({
       descriptor: PendingSpellDescriptor,
       targetOverride?: SpellTargetInstance | null
     ) => {
-      const manualTargetRequired =
-        (descriptor.spell.target.type === "card" &&
-          descriptor.spell.target.automatic !== true) ||
-        descriptor.spell.target.type === "wheel";
+      const manualTargetRequired = spellTargetRequiresManualSelection(
+        descriptor.spell.target
+      );
 
       const finalTarget =
         targetOverride !== undefined
@@ -378,6 +378,7 @@ export default function ThreeWheel_WinsOnly({
 
       if (manualTargetRequired && !finalTarget) {
         setPendingSpell({ ...descriptor, target: null });
+        setShowGrimoire(false);
         return;
       }
 
@@ -434,9 +435,9 @@ export default function ThreeWheel_WinsOnly({
 
       setPhaseBeforeSpell((current) => current ?? phaseForLogic);
 
-      const requiresManualTarget =
-        (spell.target.type === "card" && spell.target.automatic !== true) ||
-        spell.target.type === "wheel";
+      const requiresManualTarget = spellTargetRequiresManualSelection(
+        spell.target
+      );
       if (requiresManualTarget) {
         setShowGrimoire(false);
       }
@@ -561,9 +562,7 @@ export default function ThreeWheel_WinsOnly({
 
   const awaitingSpellTarget =
     pendingSpell &&
-    ((pendingSpell.spell.target.type === "card" &&
-      pendingSpell.spell.target.automatic !== true) ||
-      pendingSpell.spell.target.type === "wheel") &&
+    spellTargetRequiresManualSelection(pendingSpell.spell.target) &&
     !pendingSpell.target;
 
   useEffect(() => {

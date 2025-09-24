@@ -15,6 +15,19 @@ export type SpellTargetDefinition =
   | { type: "card"; ownership: SpellTargetOwnership; automatic?: boolean }
   | { type: "wheel"; scope: "current" | "any" };
 
+export const spellTargetRequiresManualSelection = (
+  target: SpellTargetDefinition
+): boolean => {
+  switch (target.type) {
+    case "card":
+      return target.automatic !== true;
+    case "wheel":
+      return true;
+    default:
+      return false;
+  }
+};
+
 export function getSpellDefinitions(ids: SpellId[]): SpellDefinition[] {
   return ids
     .map((id) => getSpellById(id))
