@@ -127,15 +127,44 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
     ],
   );
 
+  const handlePendingSpellCancel = useCallback(
+    (refundMana: boolean) => {
+      setPendingSpell((current) => {
+        if (!current) return current;
+
+        if (refundMana && current.spentMana > 0) {
+          setManaPools((mana) => {
+            const next: SideState<number> = { ...mana };
+            next[current.side] = mana[current.side] + current.spentMana;
+            return next;
+          });
+        }
+
+        return null;
+      });
+      closeGrimoire();
+      setPhaseBeforeSpell(null);
+    },
+    [closeGrimoire, setManaPools],
+  );
+
   const handleSpellActivate = useCallback(
     (spell: SpellDefinition) => {
-      if (pendingSpell) return;
+      if (pendingSpell && pendingSpell.side !== localSide) return;
+
+      const refundablePending =
+        pendingSpell && pendingSpell.side === localSide ? pendingSpell : null;
 
       const allowedPhases = spell.allowedPhases ?? ["choose"];
       if (!allowedPhases.includes(phaseForLogic)) return;
 
       const effectiveCost = getSpellCost(spell);
-      if (localMana < effectiveCost) return;
+      const availableMana = refundablePending ? localMana + refundablePending.spentMana : localMana;
+      if (availableMana < effectiveCost) return;
+
+      if (refundablePending) {
+        handlePendingSpellCancel(true);
+      }
 
       let didSpend = false;
       setManaPools((current) => {
@@ -185,33 +214,13 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
       closeGrimoire,
       getSpellCost,
       handleResolvePendingSpell,
+      handlePendingSpellCancel,
       localMana,
       localSide,
       pendingSpell,
       phaseForLogic,
       setManaPools,
     ],
-  );
-
-  const handlePendingSpellCancel = useCallback(
-    (refundMana: boolean) => {
-      setPendingSpell((current) => {
-        if (!current) return current;
-
-        if (refundMana && current.spentMana > 0) {
-          setManaPools((mana) => {
-            const next: SideState<number> = { ...mana };
-            next[current.side] = mana[current.side] + current.spentMana;
-            return next;
-          });
-        }
-
-        return null;
-      });
-      closeGrimoire();
-      setPhaseBeforeSpell(null);
-    },
-    [closeGrimoire, setManaPools],
   );
 
   const handleSpellTargetSelect = useCallback(
