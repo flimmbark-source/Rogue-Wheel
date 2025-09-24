@@ -311,7 +311,7 @@ function HowToContent() {
 
       <div className="space-y-4">
         <h2 className="text-xl font-bold border-b border-white/10 pb-2">Grimoire Mode</h2>
-        <p><b>Grimoire Mode:</b> Use spells to bend a round in your favor by spending <b>Mana</b> and applying targeted effects.</p>
+        <p>Use spells to bend a round in your favor by spending <b>Mana</b> and applying targeted effects.</p>
 
         <ol className="list-decimal pl-5 space-y-2">
           <li><b>Open:</b> Tap <b>Grimoire</b> to view known spells and your current 🔹 <b>Mana</b>.</li>
