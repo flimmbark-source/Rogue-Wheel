@@ -58,6 +58,7 @@ export interface WheelPanelProps {
     target: SpellTargetInstance | null;
   } | null;
   onSpellTargetSelect?: (cardId: string, ownerSide: LegacySide, cardName: string) => void;
+  onWheelTargetSelect?: (wheelIndex: number) => void;
   isAwaitingSpellTarget: boolean;
 }
 
@@ -100,6 +101,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   wheelHudColor,
   pendingSpell,
   onSpellTargetSelect,
+  onWheelTargetSelect,
   isAwaitingSpellTarget,
 }) => {
   const playerCard = assign.player[index];
@@ -111,14 +113,22 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const playerPenalty = reservePenalties.player;
   const enemyPenalty = reservePenalties.enemy;
 
-  const awaitingSpellTarget =
+  const awaitingCardTarget =
     isAwaitingSpellTarget &&
     pendingSpell &&
     pendingSpell.spell.target.type === "card" &&
     pendingSpell.spell.target.automatic !== true &&
     !pendingSpell.target;
 
-  const pendingOwnership: SpellTargetOwnership | null = awaitingSpellTarget
+  const awaitingWheelTarget =
+    isAwaitingSpellTarget &&
+    pendingSpell &&
+    pendingSpell.spell.target.type === "wheel" &&
+    !pendingSpell.target;
+
+  const awaitingSpellTarget = awaitingCardTarget || awaitingWheelTarget;
+
+  const pendingOwnership: SpellTargetOwnership | null = awaitingCardTarget
     ? pendingSpell!.spell.target.ownership
     : null;
 
@@ -149,14 +159,20 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     : null;
 
   const leftSlotTargetable =
-    awaitingSpellTarget &&
+    awaitingCardTarget &&
     !!leftSlot.card &&
     (pendingOwnership === "any" || pendingOwnership === leftSlotOwnership);
 
   const rightSlotTargetable =
-    awaitingSpellTarget &&
+    awaitingCardTarget &&
     !!rightSlot.card &&
     (pendingOwnership === "any" || pendingOwnership === rightSlotOwnership);
+
+  const wheelScope = pendingSpell?.spell.target.type === "wheel" ? pendingSpell.spell.target.scope : null;
+  const wheelTargetable =
+    awaitingWheelTarget &&
+    pendingSpell?.side === localLegacySide &&
+    (wheelScope === "any" || (wheelScope === "current" && isWheelActive));
 
   const panelWidth = ws + slotWidthPx * 2 + gapXPx + paddingXPx + borderXPx;
 
@@ -380,13 +396,19 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           data-drop="wheel"
           data-idx={index}
           className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
-          style={{ width: ws, height: ws }}
+          style={{ width: ws, height: ws, cursor: wheelTargetable ? "pointer" : undefined }}
           onDragOver={onZoneDragOver}
           onDragEnter={onZoneDragOver}
           onDragLeave={onZoneLeave}
           onDrop={onZoneDrop}
           onClick={(e) => {
             e.stopPropagation();
+            if (awaitingWheelTarget) {
+              if (wheelTargetable) {
+                onWheelTargetSelect?.(index);
+              }
+              return;
+            }
             if (awaitingSpellTarget) return;
             tapAssignIfSelected();
           }}
@@ -398,7 +420,11 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
             className="pointer-events-none absolute inset-0 rounded-full"
             style={{
               boxShadow:
-                dragOverWheel === index ? "0 0 0 2px rgba(251,191,36,0.7) inset" : "none",
+                dragOverWheel === index
+                  ? "0 0 0 2px rgba(251,191,36,0.7) inset"
+                  : wheelTargetable
+                  ? "0 0 0 2px rgba(56,189,248,0.55) inset"
+                  : "none",
             }}
           />
         </div>

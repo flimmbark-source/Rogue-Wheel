@@ -367,8 +367,9 @@ export default function ThreeWheel_WinsOnly({
       targetOverride?: SpellTargetInstance | null
     ) => {
       const manualTargetRequired =
-        descriptor.spell.target.type === "card" &&
-        descriptor.spell.target.automatic !== true;
+        (descriptor.spell.target.type === "card" &&
+          descriptor.spell.target.automatic !== true) ||
+        descriptor.spell.target.type === "wheel";
 
       const finalTarget =
         targetOverride !== undefined
@@ -433,7 +434,9 @@ export default function ThreeWheel_WinsOnly({
 
       setPhaseBeforeSpell((current) => current ?? phaseForLogic);
 
-      const requiresManualTarget = spell.target.type === "card" && spell.target.automatic !== true;
+      const requiresManualTarget =
+        (spell.target.type === "card" && spell.target.automatic !== true) ||
+        spell.target.type === "wheel";
       if (requiresManualTarget) {
         setShowGrimoire(false);
       }
@@ -533,10 +536,34 @@ export default function ThreeWheel_WinsOnly({
     [localLegacySide, pendingSpell, resolvePendingSpell]
   );
 
+  const handleWheelTargetSelect = useCallback(
+    (wheelIndex: number) => {
+      if (!pendingSpell) return;
+      if (pendingSpell.side !== localLegacySide) return;
+
+      const definition = pendingSpell.spell.target;
+      if (definition.type !== "wheel") return;
+
+      if (definition.scope === "current" && !active[wheelIndex]) {
+        return;
+      }
+
+      const wheelTarget: SpellTargetInstance = {
+        type: "wheel",
+        wheelId: String(wheelIndex),
+        label: `Wheel ${wheelIndex + 1}`,
+      };
+
+      resolvePendingSpell(pendingSpell, wheelTarget);
+    },
+    [active, localLegacySide, pendingSpell, resolvePendingSpell]
+  );
+
   const awaitingSpellTarget =
     pendingSpell &&
-    pendingSpell.spell.target.type === "card" &&
-    pendingSpell.spell.target.automatic !== true &&
+    ((pendingSpell.spell.target.type === "card" &&
+      pendingSpell.spell.target.automatic !== true) ||
+      pendingSpell.spell.target.type === "wheel") &&
     !pendingSpell.target;
 
   useEffect(() => {
@@ -833,6 +860,24 @@ const renderWheelPanel = (i: number) => {
   const rootModeClassName = isGrimoireMode ? "grimoire-mode" : "classic-mode";
   const grimoireAttrValue = isGrimoireMode ? "true" : "false";
   const isAwaitingSpellTarget = Boolean(awaitingSpellTarget);
+  const targetingPrompt = pendingSpell
+    ? (() => {
+        const target = pendingSpell.spell.target;
+        if (target.type === "wheel") {
+          return "Tap a wheel to continue.";
+        }
+        if (target.type === "card") {
+          if (target.ownership === "ally") {
+            return "Tap one of your cards to continue.";
+          }
+          if (target.ownership === "enemy") {
+            return "Tap an enemy card to continue.";
+          }
+          return "Tap a card that matches the spell's requirement to continue.";
+        }
+        return "Tap a valid target to continue.";
+      })()
+    : "";
 
   return (
     <div
@@ -853,7 +898,7 @@ const renderWheelPanel = (i: number) => {
               Select a target for {pendingSpell.spell.name}
             </div>
             <div className="mt-1 text-[12px] text-slate-300">
-              Tap a card that matches the spell's requirement to continue.
+              {targetingPrompt}
             </div>
             <div className="mt-3 flex justify-end">
               <button
@@ -1226,6 +1271,7 @@ const renderWheelPanel = (i: number) => {
                 wheelHudColor={wheelHUD[i]}
                 pendingSpell={pendingSpell}
                 onSpellTargetSelect={handleSpellTargetSelect}
+                onWheelTargetSelect={handleWheelTargetSelect}
                 isAwaitingSpellTarget={isAwaitingSpellTarget}
               />
             </div>
