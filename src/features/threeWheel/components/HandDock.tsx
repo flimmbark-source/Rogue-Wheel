@@ -3,7 +3,11 @@ import { motion } from "framer-motion";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter } from "../../../game/types";
 import type { LegacySide } from "./WheelPanel";
-import type { SpellDefinition, SpellTargetInstance } from "../../../game/spells";
+import {
+  spellTargetRequiresManualSelection,
+  type SpellDefinition,
+  type SpellTargetInstance,
+} from "../../../game/spells";
 
 interface HandDockProps {
   localLegacySide: LegacySide;
@@ -76,7 +80,7 @@ const HandDock: React.FC<HandDockProps> = ({
     isAwaitingSpellTarget &&
     pendingSpell &&
     pendingSpell.spell.target.type === "card" &&
-    pendingSpell.spell.target.automatic !== true;
+    spellTargetRequiresManualSelection(pendingSpell.spell.target);
 
   return (
     <div
