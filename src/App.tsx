@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { useThreeWheelGame, type SpellEffectPayload } from "./features/threeWheel/hooks/useThreeWheelGame";
+import { useThreeWheelGame } from "./features/threeWheel/hooks/useThreeWheelGame";
 import React, {
   useMemo,
   useRef,
@@ -62,7 +62,13 @@ import {
   computeReserveSum,
   settleFighterAfterRound,
 } from "./features/threeWheel/utils/combat";
-import { collectRuntimeSpellEffects } from "./features/threeWheel/utils/spellEffectTransforms";
+import {
+  computeSpellCost,
+  resolvePendingSpell,
+  spellTargetRequiresManualSelection,
+  type PendingSpellDescriptor,
+  type SpellEffectPayload,
+} from "./game/spellEngine";
 
 // components
 import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
@@ -72,7 +78,6 @@ import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
 import {
   getSpellDefinitions,
-  spellTargetRequiresManualSelection,
   type SpellDefinition,
   type SpellRuntimeState,
   type SpellTargetInstance,
@@ -108,14 +113,6 @@ function createPointerShiftState(): [number, number, number] {
 function createReservePenaltyState(): SideState<number> {
   return { player: 0, enemy: 0 };
 }
-
-// Spells-related state/types
-type PendingSpellDescriptor = {
-  side: LegacySide;
-  spell: SpellDefinition;
-  target: SpellTargetInstance | null;
-  spentMana: number;
-};
 
 type LaneSpellState = {
   locked: boolean;
@@ -348,185 +345,74 @@ export default function ThreeWheel_WinsOnly({
     setArchetypeGateOpen(true);
   }, []);
 
-  const computeSpellCost = useCallback(
-    (spell: SpellDefinition): number => {
-      const computedCostRaw = spell.variableCost
-        ? spell.variableCost({
-            caster: casterFighter,
-            opponent: opponentFighter,
-            phase: phaseForLogic,
-            state: spellRuntimeStateRef.current,
-          })
-        : spell.cost;
-      return Number.isFinite(computedCostRaw)
-        ? Math.max(0, Math.round(computedCostRaw as number))
-        : spell.cost;
-    },
+  const getSpellCost = useCallback(
+    (spell: SpellDefinition): number =>
+      computeSpellCost(spell, {
+        caster: casterFighter,
+        opponent: opponentFighter,
+        phase: phaseForLogic,
+        runtimeState: spellRuntimeStateRef.current,
+      }),
     [casterFighter, opponentFighter, phaseForLogic]
   );
 
-  const resolvePendingSpell = useCallback(
+  const handleResolvePendingSpell = useCallback(
     (
       descriptor: PendingSpellDescriptor,
       targetOverride?: SpellTargetInstance | null
     ) => {
-      const manualTargetRequired = spellTargetRequiresManualSelection(
-        descriptor.spell.target
-      );
+      const result = resolvePendingSpell({
+        descriptor,
+        targetOverride,
+        caster: casterFighter,
+        opponent: opponentFighter,
+        phase: phaseForLogic,
+        runtimeState: spellRuntimeStateRef.current,
+      });
 
-      const finalTarget =
-        targetOverride !== undefined
-          ? targetOverride
-          : descriptor.target ?? null;
-
-      if (manualTargetRequired && !finalTarget) {
-        setPendingSpell({ ...descriptor, target: null });
+      if (result.outcome === "requiresTarget") {
+        setPendingSpell(result.pendingSpell);
         setShowGrimoire(false);
         return;
       }
 
-      const context = {
-        caster: casterFighter,
-        opponent: opponentFighter,
-        phase: phaseForLogic,
-        target: finalTarget ?? undefined,
-        state: spellRuntimeStateRef.current,
-      } as const;
-
-      try {
-        descriptor.spell.resolver(context);
-
-        const runtimeState = spellRuntimeStateRef.current;
-
-        const mirrorCopyEffects = Array.isArray(runtimeState.mirrorCopyEffects)
-          ? (runtimeState.mirrorCopyEffects
-              .map((effect) => {
-                if (effect && typeof effect.targetCardId === "string") {
-                  return {
-                    targetCardId: effect.targetCardId,
-                    mode: typeof effect.mode === "string" ? effect.mode : undefined,
-                  };
-                }
-                return null;
-              })
-              .filter((effect): effect is { targetCardId: string; mode?: string } => effect !== null) as Array<{
-                targetCardId: string;
-                mode?: string;
-              }>)
-          : undefined;
-
-        const wheelTokenAdjustments = Array.isArray(runtimeState.wheelTokenAdjustments)
-          ? (runtimeState.wheelTokenAdjustments
-              .map((entry) => {
-                if (
-                  entry &&
-                  typeof entry.amount === "number" &&
-                  entry.target &&
-                  entry.target.type === "wheel" &&
-                  typeof entry.target.wheelId === "string"
-                ) {
-                  const idx = Number.parseInt(entry.target.wheelId, 10);
-                  if (Number.isInteger(idx)) {
-                    return { wheelIndex: idx, amount: entry.amount };
-                  }
-                }
-                return null;
-              })
-              .filter(
-                (entry): entry is { wheelIndex: number; amount: number } => entry !== null
-              ) as Array<{ wheelIndex: number; amount: number }>)
-          : undefined;
-
-        const reserveDrains = Array.isArray(runtimeState.reserveDrains)
-          ? (runtimeState.reserveDrains
-              .map((entry) => {
-                if (!entry || typeof entry.amount !== "number") return null;
-
-                let targetSide: LegacySide | null = null;
-                if (entry.target && entry.target.type === "card") {
-                  if (entry.target.owner === "ally") targetSide = descriptor.side;
-                  else if (entry.target.owner === "enemy")
-                    targetSide = descriptor.side === "player" ? "enemy" : "player";
-                }
-
-                if (!targetSide) {
-                  targetSide = descriptor.side === "player" ? "enemy" : "player";
-                }
-
-                return { side: targetSide, amount: entry.amount };
-              })
-              .filter(
-                (entry): entry is { side: LegacySide; amount: number } => entry !== null
-              ) as Array<{ side: LegacySide; amount: number }>)
-          : undefined;
-
-        const logMessages = Array.isArray(runtimeState.log)
-          ? runtimeState.log.filter((entry): entry is string => typeof entry === "string")
-          : undefined;
-
-        const runtimeSummary = collectRuntimeSpellEffects(runtimeState, descriptor.side);
-
-        const effectPayload: SpellEffectPayload = { caster: descriptor.side };
-        if (mirrorCopyEffects && mirrorCopyEffects.length > 0) {
-          effectPayload.mirrorCopyEffects = mirrorCopyEffects;
+      if (result.outcome === "error") {
+        console.error("Spell resolution failed", result.error);
+        if (result.manaRefund && result.manaRefund > 0) {
+          setManaPools((mana) => {
+            const next: SideState<number> = { ...mana };
+            next[descriptor.side] = mana[descriptor.side] + result.manaRefund!;
+            return next;
+          });
         }
-        if (wheelTokenAdjustments && wheelTokenAdjustments.length > 0) {
-          effectPayload.wheelTokenAdjustments = wheelTokenAdjustments;
-        }
-        if (reserveDrains && reserveDrains.length > 0) {
-          effectPayload.reserveDrains = reserveDrains;
-        }
-        if (runtimeSummary.cardAdjustments && runtimeSummary.cardAdjustments.length > 0) {
-          effectPayload.cardAdjustments = runtimeSummary.cardAdjustments;
-        }
-        if (runtimeSummary.chilledCards && runtimeSummary.chilledCards.length > 0) {
-          effectPayload.chilledCards = runtimeSummary.chilledCards;
-        }
-        if (runtimeSummary.delayedEffects && runtimeSummary.delayedEffects.length > 0) {
-          effectPayload.delayedEffects = runtimeSummary.delayedEffects;
-        }
-        if (runtimeSummary.initiative) {
-          effectPayload.initiative = runtimeSummary.initiative;
-        }
-        if (logMessages && logMessages.length > 0) {
-          effectPayload.logMessages = logMessages;
-        }
-
-        const shouldApply =
-          (effectPayload.mirrorCopyEffects?.length ?? 0) > 0 ||
-          (effectPayload.wheelTokenAdjustments?.length ?? 0) > 0 ||
-          (effectPayload.reserveDrains?.length ?? 0) > 0 ||
-          (effectPayload.cardAdjustments?.length ?? 0) > 0 ||
-          (effectPayload.chilledCards?.length ?? 0) > 0 ||
-          (effectPayload.delayedEffects?.length ?? 0) > 0 ||
-          Boolean(effectPayload.initiative) ||
-          (effectPayload.logMessages?.length ?? 0) > 0;
-
-        if (shouldApply) {
-          applySpellEffects(effectPayload);
-        }
-
-        delete runtimeState.mirrorCopyEffects;
-        delete runtimeState.wheelTokenAdjustments;
-        delete runtimeState.reserveDrains;
-        delete runtimeState.lastFireballTarget;
-        delete runtimeState.chilledCards;
-        delete runtimeState.delayedEffects;
-        delete runtimeState.timeMomentum;
-        delete runtimeState.log;
-      } catch (error) {
-        console.error("Spell resolution failed", error);
-      } finally {
         setPendingSpell(null);
         setShowGrimoire(false);
         setPhaseBeforeSpell(null);
+        return;
       }
+
+      if (result.manaRefund && result.manaRefund > 0) {
+        setManaPools((mana) => {
+          const next: SideState<number> = { ...mana };
+          next[descriptor.side] = mana[descriptor.side] + result.manaRefund!;
+          return next;
+        });
+      }
+
+      if (result.payload) {
+        applySpellEffects(result.payload);
+      }
+
+      setPendingSpell(null);
+      setShowGrimoire(false);
+      setPhaseBeforeSpell(null);
     },
     [
+      applySpellEffects,
       casterFighter,
       opponentFighter,
       phaseForLogic,
-      applySpellEffects,
+      setManaPools,
       setPendingSpell,
       setPhaseBeforeSpell,
       setShowGrimoire,
@@ -540,7 +426,7 @@ export default function ThreeWheel_WinsOnly({
       const allowedPhases = spell.allowedPhases ?? ["choose"];
       if (!allowedPhases.includes(phaseForLogic)) return;
 
-      const effectiveCost = computeSpellCost(spell);
+      const effectiveCost = getSpellCost(spell);
       if (localMana < effectiveCost) return;
 
       let didSpend = false;
@@ -591,15 +477,15 @@ export default function ThreeWheel_WinsOnly({
         return;
       }
 
-      resolvePendingSpell(descriptor, initialTarget);
+      handleResolvePendingSpell(descriptor, initialTarget);
     },
     [
-      computeSpellCost,
+      getSpellCost,
       localLegacySide,
       localMana,
       pendingSpell,
       phaseForLogic,
-      resolvePendingSpell,
+      handleResolvePendingSpell,
       setPhaseBeforeSpell,
       setShowGrimoire,
       setManaPools,
@@ -658,9 +544,9 @@ export default function ThreeWheel_WinsOnly({
         cardName,
       };
 
-      resolvePendingSpell(pendingSpell, nextTarget);
+      handleResolvePendingSpell(pendingSpell, nextTarget);
     },
-    [localLegacySide, pendingSpell, resolvePendingSpell]
+    [localLegacySide, pendingSpell, handleResolvePendingSpell]
   );
 
   const handleWheelTargetSelect = useCallback(
@@ -681,9 +567,9 @@ export default function ThreeWheel_WinsOnly({
         label: `Wheel ${wheelIndex + 1}`,
       };
 
-      resolvePendingSpell(pendingSpell, wheelTarget);
+      handleResolvePendingSpell(pendingSpell, wheelTarget);
     },
-    [active, localLegacySide, pendingSpell, resolvePendingSpell]
+    [active, localLegacySide, pendingSpell, handleResolvePendingSpell]
   );
 
   const awaitingSpellTarget =
@@ -1168,7 +1054,7 @@ const renderWheelPanel = (i: number) => {
                               {localSpellDefinitions.map((spell) => {
                                 const allowedPhases = spell.allowedPhases ?? ["choose"];
                                 const phaseAllowed = allowedPhases.includes(phase);
-                                const effectiveCost = computeSpellCost(spell);
+                                const effectiveCost = getSpellCost(spell);
                                 const canAfford = localMana >= effectiveCost;
                                 const disabled = !phaseAllowed || !canAfford || !!pendingSpell;
 
@@ -1250,7 +1136,7 @@ const renderWheelPanel = (i: number) => {
                               {localSpellDefinitions.map((spell) => {
                                 const allowedPhases = spell.allowedPhases ?? ["choose"];
                                 const phaseAllowed = allowedPhases.includes(phase);
-                                const effectiveCost = computeSpellCost(spell);
+                                const effectiveCost = getSpellCost(spell);
                                 const canAfford = localMana >= effectiveCost;
                                 const disabled = !phaseAllowed || !canAfford || !!pendingSpell;
 

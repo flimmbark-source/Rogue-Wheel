@@ -7,7 +7,7 @@ import {
   spellTargetRequiresManualSelection,
   type SpellDefinition,
   type SpellTargetInstance,
-} from "../../../game/spells";
+} from "../../../game/spellEngine";
 
 interface HandDockProps {
   localLegacySide: LegacySide;

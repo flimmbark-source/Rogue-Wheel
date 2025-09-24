@@ -7,7 +7,7 @@ import {
   type SpellDefinition,
   type SpellTargetInstance,
   type SpellTargetOwnership,
-} from "../../../game/spells";
+} from "../../../game/spellEngine";
 import {
   isChooseLikePhase,
   shouldShowSlotCard,
