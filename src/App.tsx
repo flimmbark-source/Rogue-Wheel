@@ -62,13 +62,8 @@ import {
   computeReserveSum,
   settleFighterAfterRound,
 } from "./features/threeWheel/utils/combat";
-import {
-  computeSpellCost,
-  resolvePendingSpell,
-  spellTargetRequiresManualSelection,
-  type PendingSpellDescriptor,
-  type SpellEffectPayload,
-} from "./game/spellEngine";
+import { computeSpellCost, type SpellEffectPayload } from "./game/spellEngine";
+import { useSpellCasting } from "./game/hooks/useSpellCasting";
 
 // components
 import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
@@ -76,13 +71,7 @@ import WheelPanel from "./features/threeWheel/components/WheelPanel";
 import HandDock from "./features/threeWheel/components/HandDock";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
-import {
-  getSpellDefinitions,
-  type SpellDefinition,
-  type SpellRuntimeState,
-  type SpellTargetInstance,
-  type SpellTargetOwnership,
-} from "./game/spells";
+import { getSpellDefinitions, type SpellDefinition, type SpellRuntimeState } from "./game/spells";
 import ArchetypeModal from "./features/threeWheel/components/ArchetypeModal";
 import StSCard from "./components/StSCard";
 
@@ -283,13 +272,13 @@ export default function ThreeWheel_WinsOnly({
   // --- local UI/Grimoire state (from Spells branch) ---
   const isGrimoireMode = gameMode === "grimoire";
   const effectiveGameMode = gameMode as GameMode;
-  const [pendingSpell, setPendingSpell] = useState<PendingSpellDescriptor | null>(null);
   const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
 
   const [manaPools, setManaPools] = useState<SideState<number>>({ player: 0, enemy: 0 });
   const localMana = manaPools[localLegacySide];
 
   const [showGrimoire, setShowGrimoire] = useState(false);
+  const closeGrimoire = useCallback(() => setShowGrimoire(false), [setShowGrimoire]);
 
   const [localSelection, setLocalSelection] = useState<ArchetypeId>(() => DEFAULT_ARCHETYPE);
   const remoteSelection: ArchetypeId = DEFAULT_ARCHETYPE;
@@ -330,7 +319,29 @@ export default function ThreeWheel_WinsOnly({
   const opponentFighter = localLegacySide === "player" ? enemy : player;
   const readyButtonDisabled = localReady;
 
-  const [phaseBeforeSpell, setPhaseBeforeSpell] = useState<CorePhase | null>(null);
+  const isWheelActive = useCallback((wheelIndex: number) => Boolean(active[wheelIndex]), [active]);
+
+  const {
+    pendingSpell,
+    phaseBeforeSpell,
+    awaitingSpellTarget,
+    handleSpellActivate,
+    handlePendingSpellCancel,
+    handleSpellTargetSelect,
+    handleWheelTargetSelect,
+  } = useSpellCasting({
+    caster: casterFighter,
+    opponent: opponentFighter,
+    phase: basePhase,
+    localSide: localLegacySide,
+    localMana,
+    applySpellEffects,
+    setManaPools,
+    runtimeStateRef: spellRuntimeStateRef,
+    closeGrimoire,
+    isWheelActive,
+  });
+
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
   const phase: Phase = phaseBeforeSpell ? "spellTargeting" : basePhase;
 
@@ -356,232 +367,6 @@ export default function ThreeWheel_WinsOnly({
     [casterFighter, opponentFighter, phaseForLogic]
   );
 
-  const handleResolvePendingSpell = useCallback(
-    (
-      descriptor: PendingSpellDescriptor,
-      targetOverride?: SpellTargetInstance | null
-    ) => {
-      const result = resolvePendingSpell({
-        descriptor,
-        targetOverride,
-        caster: casterFighter,
-        opponent: opponentFighter,
-        phase: phaseForLogic,
-        runtimeState: spellRuntimeStateRef.current,
-      });
-
-      if (result.outcome === "requiresTarget") {
-        setPendingSpell(result.pendingSpell);
-        setShowGrimoire(false);
-        return;
-      }
-
-      if (result.outcome === "error") {
-        console.error("Spell resolution failed", result.error);
-        if (result.manaRefund && result.manaRefund > 0) {
-          setManaPools((mana) => {
-            const next: SideState<number> = { ...mana };
-            next[descriptor.side] = mana[descriptor.side] + result.manaRefund!;
-            return next;
-          });
-        }
-        setPendingSpell(null);
-        setShowGrimoire(false);
-        setPhaseBeforeSpell(null);
-        return;
-      }
-
-      if (result.manaRefund && result.manaRefund > 0) {
-        setManaPools((mana) => {
-          const next: SideState<number> = { ...mana };
-          next[descriptor.side] = mana[descriptor.side] + result.manaRefund!;
-          return next;
-        });
-      }
-
-      if (result.payload) {
-        applySpellEffects(result.payload);
-      }
-
-      setPendingSpell(null);
-      setShowGrimoire(false);
-      setPhaseBeforeSpell(null);
-    },
-    [
-      applySpellEffects,
-      casterFighter,
-      opponentFighter,
-      phaseForLogic,
-      setManaPools,
-      setPendingSpell,
-      setPhaseBeforeSpell,
-      setShowGrimoire,
-    ]
-  );
-
-  const handleSpellActivate = useCallback(
-    (spell: SpellDefinition) => {
-      if (pendingSpell) return;
-
-      const allowedPhases = spell.allowedPhases ?? ["choose"];
-      if (!allowedPhases.includes(phaseForLogic)) return;
-
-      const effectiveCost = getSpellCost(spell);
-      if (localMana < effectiveCost) return;
-
-      let didSpend = false;
-      setManaPools((current) => {
-        const currentMana = current[localLegacySide];
-        if (currentMana < effectiveCost) return current;
-
-        didSpend = true;
-        const next: SideState<number> = { ...current };
-        next[localLegacySide] = currentMana - effectiveCost;
-        return next;
-      });
-
-      if (!didSpend) return;
-
-      setPhaseBeforeSpell((current) => current ?? phaseForLogic);
-
-      const requiresManualTarget = spellTargetRequiresManualSelection(
-        spell.target
-      );
-
-      // Always close the grimoire once we've successfully started a spell cast so
-      // the targeting overlay can take focus. Previously we only hid it for
-      // manual-target spells, which meant the popover stayed open if manual
-      // detection ever failed and the player never saw the targeting state.
-      setShowGrimoire(false);
-
-      const initialTarget: SpellTargetInstance | null = (() => {
-        switch (spell.target.type) {
-          case "self":
-            return { type: "self" };
-          case "none":
-            return { type: "none" };
-          default:
-            return requiresManualTarget ? null : null;
-        }
-      })();
-
-      const descriptor: PendingSpellDescriptor = {
-        side: localLegacySide,
-        spell,
-        target: initialTarget,
-        spentMana: effectiveCost,
-      };
-
-      if (requiresManualTarget) {
-        setPendingSpell({ ...descriptor, target: null });
-        return;
-      }
-
-      handleResolvePendingSpell(descriptor, initialTarget);
-    },
-    [
-      getSpellCost,
-      localLegacySide,
-      localMana,
-      pendingSpell,
-      phaseForLogic,
-      handleResolvePendingSpell,
-      setPhaseBeforeSpell,
-      setShowGrimoire,
-      setManaPools,
-      setPendingSpell,
-    ]
-  );
-
-  const handlePendingSpellCancel = useCallback(
-    (refundMana: boolean) => {
-      setPendingSpell((current) => {
-        if (!current) return current;
-
-        if (refundMana && current.spentMana > 0) {
-          setManaPools((mana) => {
-            const next: SideState<number> = { ...mana };
-            next[current.side] = mana[current.side] + current.spentMana;
-            return next;
-          });
-        }
-
-        return null;
-      });
-      setShowGrimoire(false);
-      setPhaseBeforeSpell(null);
-    },
-    [setManaPools, setPendingSpell, setPhaseBeforeSpell, setShowGrimoire]
-  );
-
-  const handleSpellTargetSelect = useCallback(
-    (cardId: string, ownerSide: LegacySide, cardName: string) => {
-      if (!pendingSpell) return;
-
-      if (pendingSpell.side !== localLegacySide) {
-        return;
-      }
-
-      const definition = pendingSpell.spell.target;
-      if (definition.type !== "card" || definition.automatic === true) {
-        return;
-      }
-
-      const candidateOwnership: SpellTargetOwnership =
-        ownerSide === pendingSpell.side ? "ally" : "enemy";
-
-      const allowedOwnership = definition.ownership;
-      const isAllowed =
-        allowedOwnership === "any" || allowedOwnership === candidateOwnership;
-      if (!isAllowed) {
-        return;
-      }
-
-      const nextTarget: SpellTargetInstance = {
-        type: "card",
-        cardId,
-        owner: candidateOwnership,
-        cardName,
-      };
-
-      handleResolvePendingSpell(pendingSpell, nextTarget);
-    },
-    [localLegacySide, pendingSpell, handleResolvePendingSpell]
-  );
-
-  const handleWheelTargetSelect = useCallback(
-    (wheelIndex: number) => {
-      if (!pendingSpell) return;
-      if (pendingSpell.side !== localLegacySide) return;
-
-      const definition = pendingSpell.spell.target;
-      if (definition.type !== "wheel") return;
-
-      if (definition.scope === "current" && !active[wheelIndex]) {
-        return;
-      }
-
-      const wheelTarget: SpellTargetInstance = {
-        type: "wheel",
-        wheelId: String(wheelIndex),
-        label: `Wheel ${wheelIndex + 1}`,
-      };
-
-      handleResolvePendingSpell(pendingSpell, wheelTarget);
-    },
-    [active, localLegacySide, pendingSpell, handleResolvePendingSpell]
-  );
-
-  const awaitingSpellTarget =
-    pendingSpell &&
-    spellTargetRequiresManualSelection(pendingSpell.spell.target) &&
-    !pendingSpell.target;
-
-  useEffect(() => {
-    if (!pendingSpell) {
-      setPhaseBeforeSpell((current) => (current !== null ? null : current));
-    }
-  }, [pendingSpell]);
 
   const wheelDamage = useMemo(() => createWheelSideState(0), []);
   const wheelMirror = useMemo(() => createWheelSideState(false), []);
