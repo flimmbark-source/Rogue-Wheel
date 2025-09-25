@@ -396,7 +396,8 @@ export default function ThreeWheel_WinsOnly({
   const wheelPanelContainerStyle = useMemo(
     () => ({
       width: wheelPanelLayout.panelWidth,
-      background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
+      margin: "0 auto",
+      background: "transparent",
       borderColor: THEME.panelBorder,
       borderWidth: 2,
       boxShadow: wheelPanelShadow,
