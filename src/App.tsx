@@ -1148,6 +1148,7 @@ const renderWheelPanel = (i: number) => {
         localLegacySide={localLegacySide}
         player={player}
         enemy={enemy}
+        wheelPanelWidth={wheelPanelLayout.panelWidth}
         selectedCardId={selectedCardId}
         setSelectedCardId={setSelectedCardId}
         assign={assign}
