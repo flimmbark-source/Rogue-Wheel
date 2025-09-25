@@ -880,7 +880,7 @@ const renderWheelPanel = (i: number) => {
 
             {showRef && (
               <div
-                className="absolute top-[110%] left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-xs sm:right-0 sm:left-auto sm:translate-x-0 sm:w-80 sm:max-w-none rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50"
+                className="absolute top-[110%] right-0 w-72 max-w-[calc(100vw-2rem)] sm:w-80 rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50"
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className="font-semibold">Reference</div>
