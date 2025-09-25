@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter } from "../../../game/types";
@@ -13,6 +13,8 @@ interface HandDockProps {
   localLegacySide: LegacySide;
   player: Fighter;
   enemy: Fighter;
+  wheelPanelWidth?: number;
+  wheelPanelBounds?: { left: number; width: number } | null;
   selectedCardId: string | null;
   setSelectedCardId: (value: string | null) => void;
   assign: { player: (Card | null)[]; enemy: (Card | null)[] };
@@ -36,6 +38,8 @@ const HandDock: React.FC<HandDockProps> = ({
   localLegacySide,
   player,
   enemy,
+  wheelPanelWidth,
+  wheelPanelBounds,
   selectedCardId,
   setSelectedCardId,
   assign,
@@ -87,14 +91,43 @@ const HandDock: React.FC<HandDockProps> = ({
   const awaitingCardTarget =
     awaitingManualTarget && pendingSpell?.spell.target.type === "card";
 
+  const overlayStyle = useMemo<React.CSSProperties>(() => {
+    const bottom = "calc(env(safe-area-inset-bottom, 0px) + -30px)";
+    const measuredWidth = wheelPanelBounds?.width ?? wheelPanelWidth;
+
+    if (wheelPanelBounds) {
+      return {
+        bottom,
+        left: wheelPanelBounds.left,
+        width: measuredWidth,
+      };
+    }
+
+    const style: React.CSSProperties = {
+      bottom,
+      left: "50%",
+      transform: "translateX(-50%)",
+    };
+
+    if (typeof measuredWidth === "number") {
+      style.width = measuredWidth;
+    }
+
+    style.maxWidth = "min(100vw, 1400px)";
+
+    return style;
+  }, [wheelPanelBounds, wheelPanelWidth]);
+
   return (
     <div
       ref={dockRef}
-      className="fixed left-0 right-0 bottom-0 z-40 pointer-events-none select-none"
-      style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + -30px)" }}
+      className="fixed bottom-0 z-40 pointer-events-none select-none"
+      style={overlayStyle}
       data-awaiting-spell-target={awaitingCardTarget ? "true" : "false"}
     >
-      <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
+      <div
+        className="flex w-full justify-center gap-1.5 py-0.5"
+      >
         {localFighter.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
           return (
