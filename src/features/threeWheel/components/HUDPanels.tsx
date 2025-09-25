@@ -179,7 +179,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
         </div>
 
         {isReserveVisible && (
-          <div className="mt-1 w-full sm:hidden">
+          <div className="mt-0 w-full sm:hidden">
             <div className="w-full flex flex-col gap-1">
               <div
                 className="w-full rounded-full border px-3 py-1 text-[11px] text-center"
