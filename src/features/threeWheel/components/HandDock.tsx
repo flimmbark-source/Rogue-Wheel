@@ -95,14 +95,6 @@ const HandDock: React.FC<HandDockProps> = ({
     const bottom = "calc(env(safe-area-inset-bottom, 0px) + -30px)";
     const measuredWidth = wheelPanelBounds?.width ?? wheelPanelWidth;
 
-    if (wheelPanelBounds) {
-      return {
-        bottom,
-        left: wheelPanelBounds.left,
-        width: measuredWidth,
-      };
-    }
-
     const style: React.CSSProperties = {
       bottom,
       left: "50%",
@@ -112,11 +104,8 @@ const HandDock: React.FC<HandDockProps> = ({
     if (typeof measuredWidth === "number") {
       style.width = measuredWidth;
     }
-
-    style.maxWidth = "min(100vw, 1400px)";
-
+    
     return style;
-  }, [wheelPanelBounds, wheelPanelWidth]);
 
   return (
     <div
