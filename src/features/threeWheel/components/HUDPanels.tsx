@@ -125,7 +125,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
     };
 
     return (
-      <div className="flex h-full flex-col items-center w-full">
+      <div className="flex h-full flex-col items-start w-full">
         <div
           className="relative flex min-w-0 items-start sm:items-center gap-2 rounded-lg border px-0.5 py-0.5 sm:py-1 text-[12px] shadow w-full flex-wrap sm:flex-nowrap min-h-[40px] sm:min-h-0"
           style={{
@@ -148,7 +148,6 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
                 <span className="opacity-80">Wins</span>
                 <span className="text-base font-extrabold tabular-nums">{win}</span>
               </div>
-              {renderManaPill()}
             </div>
             {isReserveVisible && (
               <div
@@ -181,7 +180,9 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
             </span>
           )}
         </div>
-
+        <div className="mt-1 self-start">
+          {renderManaPill()}
+        </div>
       </div>
     );
   };
