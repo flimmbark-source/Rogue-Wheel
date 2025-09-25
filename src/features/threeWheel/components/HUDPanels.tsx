@@ -127,7 +127,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
     return (
       <div className="flex h-full flex-col items-center w-full">
         <div
-          className="relative flex min-w-0 items-start sm:items-center gap-2 rounded-lg border px-2 py-2 sm:py-1 text-[12px] shadow w-full flex-wrap sm:flex-nowrap min-h-[40px] sm:min-h-0"
+          className="relative flex min-w-0 items-start sm:items-center gap-2 rounded-lg border px-0.5 py-0.5 sm:py-1 text-[12px] shadow w-full flex-wrap sm:flex-nowrap min-h-[40px] sm:min-h-0"
           style={{
             maxWidth: "100%",
             background: theme.panelBg,
