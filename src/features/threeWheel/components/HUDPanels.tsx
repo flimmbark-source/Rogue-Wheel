@@ -127,7 +127,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
     return (
       <div className="flex h-full flex-col items-center w-full">
         <div
-          className="relative flex min-w-0 items-center gap-2 rounded-lg border px-2 py-1 text-[12px] shadow w-full"
+          className="relative flex min-w-0 items-start sm:items-center gap-2 rounded-lg border px-2 py-2 sm:py-1 text-[12px] shadow w-full flex-wrap sm:flex-nowrap min-h-[84px] sm:min-h-0"
           style={{
             maxWidth: "100%",
             background: theme.panelBg,
@@ -135,14 +135,14 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
             color: theme.textWarm,
           }}
         >
-          <div className="w-1.5 h-6 rounded" style={{ background: color }} />
-          <div className="flex items-center min-w-0 flex-1">
+          <div className="w-1.5 rounded self-stretch sm:self-auto sm:h-6" style={{ background: color }} />
+          <div className="flex items-center min-w-0 flex-1 w-full sm:w-auto">
             <span className="truncate block font-semibold">{name}</span>
             {(isPlayer ? "player" : "enemy") === localLegacySide && (
               <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px]">You</span>
             )}
           </div>
-          <div className="flex items-center gap-3 ml-1 flex-shrink-0">
+          <div className="flex items-center gap-3 ml-1 flex-shrink-0 w-full justify-between sm:w-auto sm:justify-end">
             <div className="flex items-center gap-1">
               <span className="opacity-80">Wins</span>
               <span className="text-base font-extrabold tabular-nums">{win}</span>

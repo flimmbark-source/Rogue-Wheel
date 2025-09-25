@@ -1119,7 +1119,7 @@ const renderWheelPanel = (i: number) => {
       </div>
 
       {/* HUD */}
-      <div className="relative z-10">
+      <div className="relative z-10 mb-3 sm:mb-4">
         <HUDPanels
           manaPools={manaPools}
           isGrimoireMode={isGrimoireMode}
