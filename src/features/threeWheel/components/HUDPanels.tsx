@@ -150,11 +150,10 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
             {renderManaPill()}
           </div>
           <div
-            className={`ml-2 hidden sm:flex rounded-full border px-2 py-0.5 text-[11px] overflow-hidden text-ellipsis whitespace-nowrap transition-opacity ${
+            className={`${isReserveVisible ? "flex" : "hidden"} sm:flex sm:ml-2 mt-2 sm:mt-0 w-full sm:w-auto justify-center sm:justify-start text-center sm:text-left rounded-full border px-3 py-1 sm:px-2 sm:py-0.5 text-[11px] sm:max-w-[44vw] overflow-hidden text-ellipsis whitespace-nowrap transition-opacity ${
               isReserveVisible ? "opacity-100 visible" : "opacity-0 invisible"
             }`}
             style={{
-              maxWidth: "44vw",
               minWidth: "90px",
               background: "#1b1209ee",
               borderColor: theme.slotBorder,
@@ -162,7 +161,9 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
             }}
             title={rs !== null ? `Reserve: ${rs}` : undefined}
           >
-            Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
+            <span className="sm:hidden mr-1">Reserve:</span>
+            <span className="hidden sm:inline">Reserve: </span>
+            <span className="font-bold tabular-nums">{rs ?? 0}</span>
           </div>
           {hasInit && (
             <span
@@ -178,23 +179,6 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
           )}
         </div>
 
-        {isReserveVisible && (
-          <div className="mt-0 w-full sm:hidden">
-            <div className="w-full flex flex-col gap-1">
-              <div
-                className="w-full rounded-full border px-3 py-1 text-[11px] text-center"
-                style={{
-                  background: "#1b1209ee",
-                  borderColor: theme.slotBorder,
-                  color: theme.textWarm,
-                }}
-                title={rs !== null ? `Reserve: ${rs}` : undefined}
-              >
-                Reserve: <span className="font-bold tabular-nums">{rs ?? 0}</span>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   };
