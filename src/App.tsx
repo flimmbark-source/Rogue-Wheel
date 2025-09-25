@@ -399,7 +399,7 @@ export default function ThreeWheel_WinsOnly({
       borderWidth: 2,
       contain: "paint",
       backfaceVisibility: "hidden",
-      transform: "translateX(clamp(-48px, -6vw, -24px)) translateZ(0)",
+      transform: "translateX(clamp(-24px, -6vw, -3px)) translateZ(0)",
       isolation: "isolate",
 
     }),
