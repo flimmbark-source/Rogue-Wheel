@@ -126,7 +126,11 @@ const HandDock: React.FC<HandDockProps> = ({
       data-awaiting-spell-target={awaitingCardTarget ? "true" : "false"}
     >
       <div
-        className="flex w-full justify-center gap-1.5 py-0.5"
+        className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5"
+        style={{
+          width: typeof wheelPanelWidth === "number" ? wheelPanelWidth : undefined,
+          maxWidth: "min(100vw, 1400px)",
+        }}
       >
         {localFighter.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
