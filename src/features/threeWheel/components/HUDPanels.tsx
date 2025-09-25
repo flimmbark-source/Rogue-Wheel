@@ -142,11 +142,27 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
               <span className="ml-2 rounded bg-white/10 px-1.5 py-0.5 text-[10px]">You</span>
             )}
           </div>
-          <div className="flex items-center gap-3 ml-1 flex-shrink-0 w-full justify-between sm:w-auto sm:justify-end">
+          <div className="flex items-center gap-2 ml-1 flex-shrink-0 w-full justify-between sm:w-auto sm:justify-end flex-wrap sm:flex-nowrap">
             <div className="flex items-center gap-1">
               <span className="opacity-80">Wins</span>
               <span className="text-base font-extrabold tabular-nums">{win}</span>
             </div>
+            {isReserveVisible && (
+              <div
+                className="flex items-center gap-1 rounded-full border px-3 py-1 sm:px-2 sm:py-0.5 text-[11px] sm:max-w-[44vw] overflow-hidden text-ellipsis whitespace-nowrap"
+                style={{
+                  minWidth: "90px",
+                  background: "#1b1209ee",
+                  borderColor: theme.slotBorder,
+                  color: theme.textWarm,
+                }}
+                title={rs !== null ? `Reserve: ${rs}` : undefined}
+              >
+                <span className="sm:hidden mr-1">Reserve:</span>
+                <span className="hidden sm:inline">Reserve: </span>
+                <span className="font-bold tabular-nums">{rs ?? 0}</span>
+              </div>
+            )}
             {renderManaPill()}
           </div>
           <div
