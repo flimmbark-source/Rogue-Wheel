@@ -13,6 +13,7 @@ interface HandDockProps {
   localLegacySide: LegacySide;
   player: Fighter;
   enemy: Fighter;
+  wheelPanelWidth?: number;
   selectedCardId: string | null;
   setSelectedCardId: (value: string | null) => void;
   assign: { player: (Card | null)[]; enemy: (Card | null)[] };
@@ -36,6 +37,7 @@ const HandDock: React.FC<HandDockProps> = ({
   localLegacySide,
   player,
   enemy,
+  wheelPanelWidth,
   selectedCardId,
   setSelectedCardId,
   assign,
@@ -94,7 +96,13 @@ const HandDock: React.FC<HandDockProps> = ({
       style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + -30px)" }}
       data-awaiting-spell-target={awaitingCardTarget ? "true" : "false"}
     >
-      <div className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5">
+      <div
+        className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5"
+        style={{
+          width: typeof wheelPanelWidth === "number" ? wheelPanelWidth : undefined,
+          maxWidth: "min(100vw, 1400px)",
+        }}
+      >
         {localFighter.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
           return (
