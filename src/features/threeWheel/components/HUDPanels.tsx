@@ -143,12 +143,14 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
             )}
           </div>
           <div className="flex items-start gap-2 ml-1 w-full justify-between sm:w-auto sm:justify-end flex-nowrap">
-            <div className="flex flex-col flex-shrink-0 items-start sm:items-end">
+            <div className="relative flex flex-col flex-shrink-0 items-start sm:items-end">
               <div className="flex items-center gap-1">
                 <span className="opacity-80">Wins</span>
                 <span className="text-base font-extrabold tabular-nums">{win}</span>
               </div>
-              {renderManaPill()}
+              <div className="absolute top-full mt-1 right-0">
+                {renderManaPill()}
+              </div>
             </div>
             {isReserveVisible && (
               <div
