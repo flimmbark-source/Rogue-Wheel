@@ -15,8 +15,8 @@ const CanvasWheel = memo(forwardRef<WheelHandle, CanvasWheelProps>(
 
     // Small safety margin and alignment offsets
     const CLIP_PAD = 3;
-    const WHEEL_OFFSET_X = 0; // tweak to move left/right
-    const WHEEL_OFFSET_Y = 0; // tweak to move up/down
+    const WHEEL_OFFSET_X = -8; // tweak to move left/right
+    const WHEEL_OFFSET_Y = -1; // tweak to move up/down
 
     const drawBase = () => {
       const canvas = canvasRef.current; if (!canvas) return;
