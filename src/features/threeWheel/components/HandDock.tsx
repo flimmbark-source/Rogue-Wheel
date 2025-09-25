@@ -104,8 +104,14 @@ const HandDock: React.FC<HandDockProps> = ({
     if (typeof measuredWidth === "number") {
       style.width = measuredWidth;
     }
-    
+
+    if (wheelPanelBounds) {
+      const centerX = wheelPanelBounds.left + wheelPanelBounds.width / 2;
+      style.left = `${centerX}px`;
+    }
+
     return style;
+  }, [wheelPanelBounds, wheelPanelWidth]);
 
   return (
     <div

@@ -393,7 +393,6 @@ export default function ThreeWheel_WinsOnly({
   const wheelPanelContainerStyle = useMemo(
     () => ({
       width: wheelPanelLayout.panelWidth,
-      margin: "0 auto",
       background: "transparent",
       borderColor: "transparent",
       borderWidth: 2,
@@ -1145,7 +1144,7 @@ const renderWheelPanel = (i: number) => {
       >
         <div
           ref={wheelPanelContainerRef}
-          className="flex h-full flex-col items-stretch justify-center gap-0 rounded-xl border border-transparent p-2 shadow"
+          className="mx-auto flex h-full flex-col items-center justify-center gap-0 rounded-xl border border-transparent p-2 shadow"
           style={wheelPanelContainerStyle}
         >
           {[0, 1, 2].map((i) => (
