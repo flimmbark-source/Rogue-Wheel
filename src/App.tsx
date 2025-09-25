@@ -396,8 +396,9 @@ export default function ThreeWheel_WinsOnly({
   const wheelPanelContainerStyle = useMemo(
     () => ({
       width: wheelPanelLayout.panelWidth,
-      background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
-      borderColor: THEME.panelBorder,
+      margin: "0 auto",
+      background: "transparent",
+      borderColor: "transparent",
       borderWidth: 2,
       boxShadow: wheelPanelShadow,
       contain: "paint",
@@ -1096,7 +1097,7 @@ const renderWheelPanel = (i: number) => {
       {/* Wheels center */}
       <div className="relative z-0" style={{ paddingBottom: handClearance }}>
         <div
-          className="flex flex-col items-stretch gap-1 rounded-xl border p-2 shadow"
+          className="flex flex-col items-stretch gap-1 rounded-xl border border-transparent p-2 shadow"
           style={wheelPanelContainerStyle}
         >
           {[0, 1, 2].map((i) => (
