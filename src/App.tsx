@@ -405,6 +405,54 @@ export default function ThreeWheel_WinsOnly({
     }),
     [wheelPanelLayout.panelWidth],
   );
+  const wheelPanelContainerRef = useRef<HTMLDivElement | null>(null);
+  const [wheelPanelBounds, setWheelPanelBounds] = useState<
+    { left: number; width: number } | null
+  >(null);
+
+  useLayoutEffect(() => {
+    const node = wheelPanelContainerRef.current;
+    if (!node) {
+      setWheelPanelBounds(null);
+      return;
+    }
+
+    const updateBounds = () => {
+      const rect = node.getBoundingClientRect();
+      const next = {
+        left: Math.round(rect.left),
+        width: Math.round(rect.width),
+      };
+      setWheelPanelBounds((prev) => {
+        if (prev && prev.left === next.left && prev.width === next.width) {
+          return prev;
+        }
+        return next;
+      });
+    };
+
+    updateBounds();
+
+    const handleResize = () => updateBounds();
+    const handleOrientation = () => updateBounds();
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleOrientation);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => updateBounds());
+      resizeObserver.observe(node);
+    }
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleOrientation);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
+  }, [wheelPanelLayout.panelWidth]);
   const initiativeOverride: LegacySide | null = null;
 
   const playerManaButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1096,6 +1144,7 @@ const renderWheelPanel = (i: number) => {
         style={{ paddingBottom: handClearance }}
       >
         <div
+          ref={wheelPanelContainerRef}
           className="flex h-full flex-col items-stretch justify-center gap-0 rounded-xl border border-transparent p-2 shadow"
           style={wheelPanelContainerStyle}
         >
@@ -1149,6 +1198,7 @@ const renderWheelPanel = (i: number) => {
         player={player}
         enemy={enemy}
         wheelPanelWidth={wheelPanelLayout.panelWidth}
+        wheelPanelBounds={wheelPanelBounds}
         selectedCardId={selectedCardId}
         setSelectedCardId={setSelectedCardId}
         assign={assign}
