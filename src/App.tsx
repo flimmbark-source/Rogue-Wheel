@@ -921,15 +921,7 @@ const renderWheelPanel = (i: number) => {
 
                       {/* Shared content */}
                       <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
-                        <div className="flex items-center justify-between text-[11px] text-slate-300">
-                          <span className="flex items-center gap-1">
-                            <span aria-hidden className="text-sky-300">🔹</span>
-                            <span>Mana</span>
-                          </span>
-                          <span className="font-semibold text-slate-100">{localMana}</span>
-                        </div>
-
-                        <div className="mt-3 space-y-2">
+                        <div className="space-y-2">
                           {localSpellDefinitions.length === 0 ? (
                             <div className="italic text-slate-400">No spells learned yet.</div>
                           ) : (
@@ -970,16 +962,6 @@ const renderWheelPanel = (i: number) => {
       {spell.description}
     </div>
 
-    {!phaseAllowed && (
-      <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
-        Unavailable this phase
-      </div>
-    )}
-    {!canAfford && (
-      <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
-        Not enough mana
-      </div>
-    )}
   </button>
 </li>
 
@@ -1008,15 +990,7 @@ const renderWheelPanel = (i: number) => {
 
                       {/* Same shared content as above */}
                       <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
-                        <div className="flex items-center justify-between text-[11px] text-slate-300">
-                          <span className="flex items-center gap-1">
-                            <span aria-hidden className="text-sky-300">🔹</span>
-                            <span>Mana</span>
-                          </span>
-                          <span className="font-semibold text-slate-100">{localMana}</span>
-                        </div>
-
-                        <div className="mt-3 space-y-2">
+                        <div className="space-y-2">
                           {localSpellDefinitions.length === 0 ? (
                             <div className="italic text-slate-400">No spells learned yet.</div>
                           ) : (
@@ -1057,16 +1031,6 @@ const renderWheelPanel = (i: number) => {
       {spell.description}
     </div>
 
-    {!phaseAllowed && (
-      <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
-        Unavailable this phase
-      </div>
-    )}
-    {!canAfford && (
-      <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
-        Not enough mana
-      </div>
-    )}
   </button>
 </li>
 
