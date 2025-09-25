@@ -915,7 +915,7 @@ const renderWheelPanel = (i: number) => {
                       <div>
                         Spells cost <span className="font-semibold">Mana</span> to cast. Your
                         <span className="font-semibold"> Grimoire</span> can be accessed by pressing on your
-                        <span className="font-semibold"> Mana</span>. You gain
+                        <span className="font-semibold"> 🔮 Mana</span>. You gain
                         <span className="font-semibold"> +1 Mana</span> for each wheel you win. Some spells require you to
                         select <span className="font-semibold">either a card or a wheel</span> before they resolve. Most
                         spells are available after the Resolve phase, but some can be cast at any time.
