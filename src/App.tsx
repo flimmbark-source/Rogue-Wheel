@@ -704,7 +704,7 @@ const renderWheelPanel = (i: number) => {
                     className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-2.5 py-1.5 text-left transition hover:bg-slate-800/90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1 font-semibold text-[12px] text-slate-100">
+                      <div className="flex items-center gap-1 font-semibold text-[16px] text-slate-100">
                         {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
                         <span>{spell.name}</span>
                       </div>
@@ -716,7 +716,7 @@ const renderWheelPanel = (i: number) => {
                       </div>
                     </div>
 
-                    <div className="mt-1 text-[10px] text-slate-300">{spell.description}</div>
+                    <div className="mt-1 text-[14px] text-slate-300">{spell.description}</div>
 
                     {!phaseAllowed && (
                       <div className="mt-1 text-[9px] uppercase tracking-wide text-amber-200">
