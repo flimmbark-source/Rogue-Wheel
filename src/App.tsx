@@ -40,15 +40,7 @@ import {
   LEGACY_FROM_SIDE,
 } from "./game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
-import {
-  VC_META,
-  VC_ORDER,
-  WHEEL_PALETTES,
-  WHEEL_SHAPE_PATHS,
-  type WheelPaletteMode,
-  type WheelShape,
-  genWheelSections,
-} from "./game/wheel";
+import { VC_META, genWheelSections } from "./game/wheel";
 import {
   ARCHETYPE_DEFINITIONS,
   ARCHETYPE_IDS,
@@ -131,30 +123,6 @@ const laneSpellStatesEqual = (a: LaneSpellState, b: LaneSpellState) =>
   a.damageModifier === b.damageModifier &&
   a.mirrorTargetCardId === b.mirrorTargetCardId &&
   a.occupantCardId === b.occupantCardId;
-
-const WheelLegendIcon = ({
-  shape,
-  color,
-}: {
-  shape: WheelShape;
-  color: string;
-}) => {
-  const path = WHEEL_SHAPE_PATHS[shape];
-  if (!path) return null;
-  return (
-    <svg
-      width={24}
-      height={24}
-      viewBox="0 0 100 100"
-      className="h-6 w-6 shrink-0"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <circle cx={50} cy={50} r={46} fill={color} stroke="#0f172a" strokeWidth={6} />
-      <path d={path} fill="#0f172a" stroke="#f8fafc" strokeWidth={8} strokeLinejoin="round" />
-    </svg>
-  );
-};
 
 // Multiplayer intents
 type SpellTargetIntentPayload = {
@@ -420,12 +388,6 @@ export default function ThreeWheel_WinsOnly({
   const infoPopoverRootRef = useRef<HTMLDivElement | null>(null);
   const [showRef, setShowRef] = useState(false);
 
-  const [wheelPaletteMode, setWheelPaletteMode] = useState<WheelPaletteMode>("default");
-  const toggleWheelPalette = useCallback(() => {
-    setWheelPaletteMode((prev) => (prev === "default" ? "colorblind" : "default"));
-  }, []);
-  const activeWheelPalette = WHEEL_PALETTES[wheelPaletteMode];
-
   const handlePlayerManaToggle = useCallback(() => {
     if (!isGrimoireMode) return;
     setShowGrimoire((prev) => {
@@ -604,12 +566,7 @@ const renderWheelPanel = (i: number) => {
           }}
           aria-label={`Wheel ${i + 1}`}
         >
-          <CanvasWheel
-            ref={wheelRefs[i]}
-            sections={wheelSections[i]}
-            size={ws}
-            paletteMode={wheelPaletteMode}
-          />
+          <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0 rounded-full"
@@ -808,23 +765,6 @@ const renderWheelPanel = (i: number) => {
         </div>
 
         <div ref={infoPopoverRootRef} className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={toggleWheelPalette}
-            aria-pressed={wheelPaletteMode === "colorblind"}
-            className={`px-2.5 py-0.5 rounded border transition focus:outline-none focus:ring-2 focus:ring-amber-300 focus:ring-offset-1 focus:ring-offset-slate-900 ${
-              wheelPaletteMode === "colorblind"
-                ? "border-sky-300 bg-sky-500 text-slate-900 hover:bg-sky-400"
-                : "border-slate-600 bg-slate-700 text-white hover:bg-slate-600"
-            }`}
-            title={
-              wheelPaletteMode === "colorblind"
-                ? "Color-blind safe palette enabled"
-                : "Switch to color-blind safe palette"
-            }
-          >
-            {wheelPaletteMode === "colorblind" ? "Color-blind palette" : "Standard palette"}
-          </button>
           {/* Reference button + popover */}
           <div className="relative">
             <button
@@ -859,36 +799,13 @@ const renderWheelPanel = (i: number) => {
                     the player who matches it gets <span className="font-semibold">1 win</span>.
                     First to <span className="font-semibold">{winGoal}</span> wins takes the match.
                   </div>
-                  <p className="text-[11px] text-slate-300">
-                    Colors and bold shapes on the wheel match each rule, and you can
-                    switch to a color-blind safe palette at any time.
-                  </p>
-                  <ul className="space-y-1">
-                    {VC_ORDER.map((id) => {
-                      const meta = VC_META[id];
-                      const color = activeWheelPalette[id];
-                      return (
-                        <li key={id} className="flex items-center gap-2">
-                          <WheelLegendIcon shape={meta.shape} color={color} />
-                          <div>
-                            <span className="font-semibold">{meta.label}</span>
-                            <span className="opacity-80"> — {meta.explain}</span>
-                          </div>
-                        </li>
-                      );
-                    })}
-                    <li className="flex items-center gap-2">
-                      <span
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-slate-500 bg-slate-600 text-[11px] font-semibold text-white"
-                        aria-hidden
-                      >
-                        0
-                      </span>
-                      <div>
-                        <span className="font-semibold">Start</span>
-                        <span className="opacity-80"> — no one wins this slice</span>
-                      </div>
-                    </li>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>💥 Strongest — higher value wins</li>
+                    <li>🦊 Weakest — lower value wins</li>
+                    <li>🗃️ Reserve — compare the two cards left in hand</li>
+                    <li>🎯 Closest — value closest to target wins</li>
+                    <li>⚑ Initiative — initiative holder wins</li>
+                    <li><span className="font-semibold">0 Start</span> — no one wins</li>
                   </ul>
                   <div><span className="font-semibold">Grimoire - Casting Spells</span></div>
                     <div> Spells cost <span className="font-semibold">Mana</span> to cast. 
@@ -1186,7 +1103,6 @@ const renderWheelPanel = (i: number) => {
                 onSpellTargetSelect={handleSpellTargetSelect}
                 onWheelTargetSelect={handleWheelTargetSelect}
                 isAwaitingSpellTarget={isAwaitingSpellTarget}
-                wheelPaletteMode={wheelPaletteMode}
               />
             </div>
           ))}
