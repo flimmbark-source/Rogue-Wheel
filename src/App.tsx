@@ -1091,9 +1091,12 @@ const renderWheelPanel = (i: number) => {
       </div>
 
       {/* Wheels center */}
-      <div className="relative z-0" style={{ paddingBottom: handClearance }}>
+      <div
+        className="relative z-0 flex h-full items-center justify-center"
+        style={{ paddingBottom: handClearance }}
+      >
         <div
-          className="flex flex-col items-stretch gap-0 rounded-xl border border-transparent p-2 shadow"
+          className="flex h-full flex-col items-stretch justify-center gap-0 rounded-xl border border-transparent p-2 shadow"
           style={wheelPanelContainerStyle}
         >
           {[0, 1, 2].map((i) => (
