@@ -347,7 +347,8 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const panelClassName =
     variant === "standalone"
       ? "relative rounded-xl border p-2 shadow flex-none"
-      : "relative flex-none";
+      : "relative flex-none mx-auto";
+
 
   const panelStyle = variant === "standalone" ? standaloneStyle : groupedStyle;
 
@@ -380,7 +381,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     );
 
   const content = (
-    <div className="flex items-center justify-center gap-2" style={{ height: panelHeight }}>
+    <div className="flex items-center justify-center gap-1" style={{ height: panelHeight }}>
       <div
         data-drop="slot"
         data-idx={index}

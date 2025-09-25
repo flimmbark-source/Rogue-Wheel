@@ -68,10 +68,12 @@ import { useSpellCasting } from "./game/hooks/useSpellCasting";
 
 // components
 import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
+
 import WheelPanel, {
   getWheelPanelLayout,
   wheelPanelShadow,
 } from "./features/threeWheel/components/WheelPanel";
+
 import HandDock from "./features/threeWheel/components/HandDock";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
@@ -402,6 +404,7 @@ export default function ThreeWheel_WinsOnly({
       backfaceVisibility: "hidden",
       transform: "translateZ(0)",
       isolation: "isolate",
+
     }),
     [wheelPanelLayout.panelWidth],
   );
