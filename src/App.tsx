@@ -665,6 +665,78 @@ const renderWheelPanel = (i: number) => {
 
   const rootModeClassName = isGrimoireMode ? "grimoire-mode" : "classic-mode";
   const grimoireAttrValue = isGrimoireMode ? "true" : "false";
+
+  const renderGrimoireContent = () => (
+    <div className="max-h-[60vh] overflow-y-auto px-3 py-3 text-[11px] leading-snug">
+      <div className="flex items-center justify-between text-[10px] text-slate-300">
+        <span className="flex items-center gap-1">
+          <span aria-hidden className="text-sky-300">
+            🔹
+          </span>
+          <span>Mana</span>
+        </span>
+        <span className="font-semibold text-slate-100">{localMana}</span>
+      </div>
+
+      <div className="mt-2 space-y-1.5">
+        {localSpellDefinitions.length === 0 ? (
+          <div className="italic text-slate-400">No spells learned yet.</div>
+        ) : (
+          <ul className="space-y-1.5">
+            {localSpellDefinitions.map((spell) => {
+              const allowedPhases = spell.allowedPhases ?? ["choose"];
+              const phaseAllowed = allowedPhases.includes(phase);
+              const effectiveCost = getSpellCost(spell);
+              const canAfford = localMana >= effectiveCost;
+              const disabled = !phaseAllowed || !canAfford || !!pendingSpell;
+
+              return (
+                <li key={spell.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSpellActivate(spell);
+                      setShowGrimoire(false);
+                      const el = document.activeElement as HTMLElement | null;
+                      if (el) el.blur();
+                    }}
+                    disabled={disabled}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-2.5 py-1.5 text-left transition hover:bg-slate-800/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1 font-semibold text-[16px] text-slate-100">
+                        {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
+                        <span>{spell.name}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px] text-sky-200">
+                        <span aria-hidden className="text-[13px] leading-none">
+                          🔹
+                        </span>
+                        <span>{effectiveCost}</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-1 text-[14px] text-slate-300">{spell.description}</div>
+
+                    {!phaseAllowed && (
+                      <div className="mt-1 text-[9px] uppercase tracking-wide text-amber-200">
+                        Unavailable this phase
+                      </div>
+                    )}
+                    {!canAfford && (
+                      <div className="mt-1 text-[9px] uppercase tracking-wide text-rose-200">
+                        Not enough mana
+                      </div>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
   const isAwaitingSpellTarget = Boolean(awaitingSpellTarget);
   const targetingPrompt = pendingSpell
     ? (() => {
@@ -865,13 +937,13 @@ const renderWheelPanel = (i: number) => {
                   />
 
                   {/* Desktop (>=sm) anchored popover */}
-                  <div className="absolute top-[110%] right-0 z-[80] hidden sm:block w-80 max-w-xs sm:max-w-sm">
+                  <div className="absolute top-[110%] right-0 z-[80] hidden w-72 max-w-xs sm:block sm:max-w-sm">
                     <div className="rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
-                      <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-4 py-3">
-                        <div className="text-base font-semibold text-slate-100">Grimoire</div>
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-3 py-2">
+                        <div className="text-sm font-semibold text-slate-100">Grimoire</div>
                         <button
                           onClick={() => setShowGrimoire(false)}
-                          className="text-xl leading-none text-slate-300 transition hover:text-white"
+                          className="text-lg leading-none text-slate-300 transition hover:text-white"
                           aria-label="Close grimoire"
                         >
                           ×
@@ -879,86 +951,18 @@ const renderWheelPanel = (i: number) => {
                       </div>
 
                       {/* Shared content */}
-                      <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
-                        <div className="flex items-center justify-between text-[11px] text-slate-300">
-                          <span className="flex items-center gap-1">
-                            <span aria-hidden className="text-sky-300">🔹</span>
-                            <span>Mana</span>
-                          </span>
-                          <span className="font-semibold text-slate-100">{localMana}</span>
-                        </div>
-
-                        <div className="mt-3 space-y-2">
-                          {localSpellDefinitions.length === 0 ? (
-                            <div className="italic text-slate-400">No spells learned yet.</div>
-                          ) : (
-                            <ul className="space-y-2">
-                              {localSpellDefinitions.map((spell) => {
-                                const allowedPhases = spell.allowedPhases ?? ["choose"];
-                                const phaseAllowed = allowedPhases.includes(phase);
-                                const effectiveCost = getSpellCost(spell);
-                                const canAfford = localMana >= effectiveCost;
-                                const disabled = !phaseAllowed || !canAfford || !!pendingSpell;
-
-                                return (
-                                  <li key={spell.id}>
-  <button
-    type="button"
-    onClick={() => {
-      handleSpellActivate(spell);
-      setShowGrimoire(false);
-      const el = document.activeElement as HTMLElement | null;
-      if (el) el.blur();
-    }}
-    disabled={disabled}
-    className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-left transition
-               hover:bg-slate-800/90 disabled:opacity-50 disabled:cursor-not-allowed"
-  >
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
-        {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
-        <span>{spell.name}</span>
-      </div>
-      <div className="flex items-center gap-1 text-[11px] text-sky-200">
-        <span aria-hidden className="text-[14px] leading-none">🔹</span>
-        <span>{effectiveCost}</span>
-      </div>
-    </div>
-
-    <div className="mt-1 text-[11px] leading-snug text-slate-300">
-      {spell.description}
-    </div>
-
-    {!phaseAllowed && (
-      <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
-        Unavailable this phase
-      </div>
-    )}
-    {!canAfford && (
-      <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
-        Not enough mana
-      </div>
-    )}
-  </button>
-</li>
-
-                                );
-                              })}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
+                      {renderGrimoireContent()}
                     </div>
                   </div>
 
                   {/* Mobile (<sm) centered modal */}
                   <div className="fixed inset-x-4 top-20 z-[80] sm:hidden flex justify-center">
                     <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
-                      <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-4 py-3">
-                        <div className="text-base font-semibold text-slate-100">Grimoire</div>
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-3 py-2">
+                        <div className="text-sm font-semibold text-slate-100">Grimoire</div>
                         <button
                           onClick={() => setShowGrimoire(false)}
-                          className="text-xl leading-none text-slate-300 transition hover:text-white"
+                          className="text-lg leading-none text-slate-300 transition hover:text-white"
                           aria-label="Close grimoire"
                         >
                           ×
@@ -966,75 +970,7 @@ const renderWheelPanel = (i: number) => {
                       </div>
 
                       {/* Same shared content as above */}
-                      <div className="max-h-[65vh] overflow-y-auto px-4 py-4 text-[12px]">
-                        <div className="flex items-center justify-between text-[11px] text-slate-300">
-                          <span className="flex items-center gap-1">
-                            <span aria-hidden className="text-sky-300">🔹</span>
-                            <span>Mana</span>
-                          </span>
-                          <span className="font-semibold text-slate-100">{localMana}</span>
-                        </div>
-
-                        <div className="mt-3 space-y-2">
-                          {localSpellDefinitions.length === 0 ? (
-                            <div className="italic text-slate-400">No spells learned yet.</div>
-                          ) : (
-                            <ul className="space-y-2">
-                              {localSpellDefinitions.map((spell) => {
-                                const allowedPhases = spell.allowedPhases ?? ["choose"];
-                                const phaseAllowed = allowedPhases.includes(phase);
-                                const effectiveCost = getSpellCost(spell);
-                                const canAfford = localMana >= effectiveCost;
-                                const disabled = !phaseAllowed || !canAfford || !!pendingSpell;
-
-                                return (
-                                  <li key={spell.id}>
-  <button
-    type="button"
-    onClick={() => {
-      handleSpellActivate(spell);
-      setShowGrimoire(false);
-      const el = document.activeElement as HTMLElement | null;
-      if (el) el.blur();
-    }}
-    disabled={disabled}
-    className="w-full rounded-xl border border-slate-700 bg-slate-800/60 px-3 py-2 text-left transition
-               hover:bg-slate-800/90 disabled:opacity-50 disabled:cursor-not-allowed"
-  >
-    <div className="flex items-center justify-between gap-3">
-      <div className="flex items-center gap-1 font-semibold text-[13px] text-slate-100">
-        {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
-        <span>{spell.name}</span>
-      </div>
-      <div className="flex items-center gap-1 text-[11px] text-sky-200">
-        <span aria-hidden className="text-[14px] leading-none">🔹</span>
-        <span>{effectiveCost}</span>
-      </div>
-    </div>
-
-    <div className="mt-1 text-[11px] leading-snug text-slate-300">
-      {spell.description}
-    </div>
-
-    {!phaseAllowed && (
-      <div className="mt-1 text-[10px] uppercase tracking-wide text-amber-200">
-        Unavailable this phase
-      </div>
-    )}
-    {!canAfford && (
-      <div className="mt-1 text-[10px] uppercase tracking-wide text-rose-200">
-        Not enough mana
-      </div>
-    )}
-  </button>
-</li>
-
-                                );
-                              })}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
+                      {renderGrimoireContent()}
                     </div>
                   </div>
                 </>
