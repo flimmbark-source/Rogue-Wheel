@@ -17,6 +17,7 @@ export default function HubRoute({ onStart, onMultiplayer, onProfile }: Props) {
 
   return (
     <RogueWheelHub
+      backgroundUrl="/assets/Desk.png"
       hasSave={false}
       onNew={onStart}
       onContinue={onStart}
