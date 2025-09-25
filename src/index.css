@@ -19,6 +19,15 @@ body {
   background-position: center;
 }
 
+@media (max-width: 768px) {
+  body {
+    /* On narrow screens the focal point of the desk background sits higher
+     * in the frame. Anchor the image to the top center so the important
+     * details line up with the play area instead of drifting off screen. */
+    background-position: top center;
+  }
+}
+
 h1, h2, h3, h4, h5, h6 {
   @apply font-heading;
 }
