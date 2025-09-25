@@ -68,7 +68,10 @@ import { useSpellCasting } from "./game/hooks/useSpellCasting";
 
 // components
 import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
-import WheelPanel from "./features/threeWheel/components/WheelPanel";
+import WheelPanel, {
+  getWheelPanelLayout,
+  wheelPanelShadow,
+} from "./features/threeWheel/components/WheelPanel";
 import HandDock from "./features/threeWheel/components/HandDock";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
@@ -384,6 +387,24 @@ export default function ThreeWheel_WinsOnly({
   const wheelLocks = useMemo(() => createWheelLockState(), []);
   const pointerShifts = useMemo(() => createPointerShiftState(), []);
   const reservePenalties = useMemo(() => createReservePenaltyState(), []);
+  const wheelPanelLayout = useMemo(
+    () => getWheelPanelLayout(wheelSize, lockedWheelSize),
+    [wheelSize, lockedWheelSize],
+  );
+  const wheelPanelContainerStyle = useMemo(
+    () => ({
+      width: wheelPanelLayout.panelWidth,
+      background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
+      borderColor: THEME.panelBorder,
+      borderWidth: 2,
+      boxShadow: wheelPanelShadow,
+      contain: "paint",
+      backfaceVisibility: "hidden",
+      transform: "translateZ(0)",
+      isolation: "isolate",
+    }),
+    [wheelPanelLayout.panelWidth],
+  );
   const initiativeOverride: LegacySide | null = null;
 
   const playerManaButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1071,46 +1092,49 @@ const renderWheelPanel = (i: number) => {
 
       {/* Wheels center */}
       <div className="relative z-0" style={{ paddingBottom: handClearance }}>
-        <div className="flex flex-col items-center justify-start gap-1">
+        <div
+          className="flex flex-col items-stretch gap-1 rounded-xl border p-2 shadow"
+          style={wheelPanelContainerStyle}
+        >
           {[0, 1, 2].map((i) => (
-            <div key={i} className="flex-shrink-0">
-              <WheelPanel
-                index={i}
-                assign={assign}
-                namesByLegacy={namesByLegacy}
-                wheelSize={wheelSize}
-                lockedWheelSize={lockedWheelSize}
-                wheelDamage={wheelDamage[i]}
-                wheelMirror={wheelMirror[i]}
-                wheelLocked={wheelLocks[i]}
-                pointerShift={pointerShifts[i]}
-                reservePenalties={reservePenalties}
-                selectedCardId={selectedCardId}
-                setSelectedCardId={setSelectedCardId}
-                localLegacySide={localLegacySide}
-                phase={phase}
-                archetypeGateOpen={archetypeGateOpen}
-                setDragCardId={setDragCardId}
-                dragCardId={dragCardId}
-                setDragOverWheel={setDragOverWheel}
-                dragOverWheel={dragOverWheel}
-                player={player}
-                enemy={enemy}
-                assignToWheelLocal={assignToWheelLocal}
-                isWheelActive={active[i]}
-                wheelRef={wheelRefs[i]}
-                wheelSection={wheelSections[i]}
-                hudColors={HUD_COLORS}
-                theme={THEME}
-                initiativeOverride={initiativeOverride}
-                startPointerDrag={startPointerDrag}
-                wheelHudColor={wheelHUD[i]}
-                pendingSpell={pendingSpell}
-                onSpellTargetSelect={handleSpellTargetSelect}
-                onWheelTargetSelect={handleWheelTargetSelect}
-                isAwaitingSpellTarget={isAwaitingSpellTarget}
-              />
-            </div>
+            <WheelPanel
+              key={i}
+              index={i}
+              assign={assign}
+              namesByLegacy={namesByLegacy}
+              wheelSize={wheelSize}
+              lockedWheelSize={lockedWheelSize}
+              wheelDamage={wheelDamage[i]}
+              wheelMirror={wheelMirror[i]}
+              wheelLocked={wheelLocks[i]}
+              pointerShift={pointerShifts[i]}
+              reservePenalties={reservePenalties}
+              selectedCardId={selectedCardId}
+              setSelectedCardId={setSelectedCardId}
+              localLegacySide={localLegacySide}
+              phase={phase}
+              archetypeGateOpen={archetypeGateOpen}
+              setDragCardId={setDragCardId}
+              dragCardId={dragCardId}
+              setDragOverWheel={setDragOverWheel}
+              dragOverWheel={dragOverWheel}
+              player={player}
+              enemy={enemy}
+              assignToWheelLocal={assignToWheelLocal}
+              isWheelActive={active[i]}
+              wheelRef={wheelRefs[i]}
+              wheelSection={wheelSections[i]}
+              hudColors={HUD_COLORS}
+              theme={THEME}
+              initiativeOverride={initiativeOverride}
+              startPointerDrag={startPointerDrag}
+              wheelHudColor={wheelHUD[i]}
+              pendingSpell={pendingSpell}
+              onSpellTargetSelect={handleSpellTargetSelect}
+              onWheelTargetSelect={handleWheelTargetSelect}
+              isAwaitingSpellTarget={isAwaitingSpellTarget}
+              variant="grouped"
+            />
           ))}
         </div>
       </div>
