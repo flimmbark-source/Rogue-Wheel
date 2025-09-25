@@ -68,7 +68,7 @@ export interface WheelPanelProps {
 }
 
 const slotWidthPx = 80;
-const gapXPx = 16;
+const gapXPx = 4;
 const paddingXPx = 16;
 const borderXPx = 4;
 const extraHeightPx = 16;
@@ -381,7 +381,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     );
 
   const content = (
-    <div className="flex items-center justify-center gap-1" style={{ height: panelHeight }}>
+    <div className="flex items-center justify-center gap-[2px]" style={{ height: panelHeight }}>
       <div
         data-drop="slot"
         data-idx={index}
