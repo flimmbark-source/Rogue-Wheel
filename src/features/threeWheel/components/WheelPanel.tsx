@@ -64,6 +64,7 @@ export interface WheelPanelProps {
   onSpellTargetSelect?: (selection: { side: LegacySide; lane: number | null; cardId: string }) => void;
   onWheelTargetSelect?: (wheelIndex: number) => void;
   isAwaitingSpellTarget: boolean;
+  variant?: "standalone" | "grouped";
 }
 
 const slotWidthPx = 80;
@@ -71,6 +72,16 @@ const gapXPx = 16;
 const paddingXPx = 16;
 const borderXPx = 4;
 const extraHeightPx = 16;
+
+export const wheelPanelShadow = "0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)";
+
+export function getWheelPanelLayout(wheelSize: number, lockedWheelSize: number | null) {
+  const wheelDisplaySize = Math.round(lockedWheelSize ?? wheelSize);
+  const panelWidth = wheelDisplaySize + slotWidthPx * 2 + gapXPx + paddingXPx + borderXPx;
+  const panelHeight = wheelDisplaySize + extraHeightPx;
+
+  return { wheelDisplaySize, panelWidth, panelHeight };
+}
 
 const WheelPanel: React.FC<WheelPanelProps> = ({
   index,
@@ -107,6 +118,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   onSpellTargetSelect,
   onWheelTargetSelect,
   isAwaitingSpellTarget,
+  variant = "standalone",
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -138,7 +150,10 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const leftSlot = { side: "player" as const, card: playerCard, name: namesByLegacy.player };
   const rightSlot = { side: "enemy" as const, card: enemyCard, name: namesByLegacy.enemy };
 
-  const ws = Math.round(lockedWheelSize ?? wheelSize);
+  const { wheelDisplaySize: ws, panelWidth, panelHeight } = getWheelPanelLayout(
+    wheelSize,
+    lockedWheelSize,
+  );
 
   const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
   const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
@@ -193,8 +208,6 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     awaitingWheelTarget &&
     pendingSpell?.side === localLegacySide &&
     (wheelScope === "any" || (wheelScope === "current" && isWheelActive));
-
-  const panelWidth = ws + slotWidthPx * 2 + gapXPx + paddingXPx + borderXPx;
 
   const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
     if (!slot.card) return null;
@@ -312,23 +325,223 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     if (card) assignToWheelLocal(index, card);
   };
 
-  const panelShadow = "0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)";
+  const basePanelStyle: React.CSSProperties = {
+    width: panelWidth,
+    height: panelHeight,
+    contain: "paint",
+    backfaceVisibility: "hidden",
+    transform: "translateZ(0)",
+    isolation: "isolate",
+  };
+
+  const standaloneStyle: React.CSSProperties = {
+    ...basePanelStyle,
+    background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${theme.panelBg}`,
+    borderColor: theme.panelBorder,
+    borderWidth: 2,
+    boxShadow: wheelPanelShadow,
+  };
+
+  const groupedStyle: React.CSSProperties = basePanelStyle;
+
+  const panelClassName =
+    variant === "standalone"
+      ? "relative rounded-xl border p-2 shadow flex-none"
+      : "relative flex-none";
+
+  const panelStyle = variant === "standalone" ? standaloneStyle : groupedStyle;
+
+  const resultIndicators =
+    (phase === "roundEnd" || phase === "ended") && (
+      <>
+        <span
+          aria-label={`Wheel ${index + 1} player result`}
+          className="absolute top-1 left-1 rounded-full border"
+          style={{
+            width: 10,
+            height: 10,
+            background: wheelHudColor === hudColors.player ? hudColors.player : "transparent",
+            borderColor: wheelHudColor === hudColors.player ? hudColors.player : theme.panelBorder,
+            boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
+          }}
+        />
+        <span
+          aria-label={`Wheel ${index + 1} enemy result`}
+          className="absolute top-1 right-1 rounded-full border"
+          style={{
+            width: 10,
+            height: 10,
+            background: wheelHudColor === hudColors.enemy ? hudColors.enemy : "transparent",
+            borderColor: wheelHudColor === hudColors.enemy ? hudColors.enemy : theme.panelBorder,
+            boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
+          }}
+        />
+      </>
+    );
+
+  const content = (
+    <div className="flex items-center justify-center gap-2" style={{ height: panelHeight }}>
+      <div
+        data-drop="slot"
+        data-idx={index}
+        onDragOver={onZoneDragOver}
+        onDragEnter={onZoneDragOver}
+        onDragLeave={onZoneLeave}
+        onDrop={(e) => onZoneDrop(e, "player")}
+        onClick={(e) => {
+          e.stopPropagation();
+          const card = leftSlot.card;
+          if (
+            isAwaitingSpellTarget &&
+            pendingSpell?.spell.target.type === "card" &&
+            card
+          ) {
+            const ownership = pendingSpell.spell.target.ownership;
+            const isAlly = leftSlot.side === localLegacySide;
+            if (
+              ownership === "any" ||
+              (ownership === "ally" && isAlly) ||
+              (ownership === "enemy" && !isAlly)
+            ) {
+              onSpellTargetSelect?.({ side: leftSlot.side, lane: index, cardId: card.id });
+              return;
+            }
+          }
+          if (awaitingSpellTarget) return;
+          if (leftSlot.side !== localLegacySide) return;
+          if (selectedCardId) {
+            tapAssignIfSelected();
+          } else if (leftSlot.card) {
+            setSelectedCardId(leftSlot.card.id);
+          }
+        }}
+        className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+        style={{
+          backgroundColor:
+            dragOverWheel === index || isLeftSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
+          borderColor:
+            dragOverWheel === index || isLeftSelected || leftSlotTargetable
+              ? theme.brass
+              : theme.slotBorder,
+          boxShadow: isLeftSelected
+            ? "0 0 0 1px rgba(251,191,36,0.7)"
+            : leftSlotTargetable
+            ? "0 0 0 2px rgba(56,189,248,0.55)"
+            : "none",
+        }}
+        aria-label={`Wheel ${index + 1} left slot`}
+      >
+        {shouldShowLeftCard ? (
+          renderSlotCard(leftSlot, isLeftSelected)
+        ) : (
+          <div className="text-[11px] opacity-80 text-center">
+            {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
+          </div>
+        )}
+      </div>
+
+      <div
+        data-drop="wheel"
+        data-idx={index}
+        className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
+        style={{ width: ws, height: ws, cursor: wheelTargetable ? "pointer" : undefined }}
+        onDragOver={onZoneDragOver}
+        onDragEnter={onZoneDragOver}
+        onDragLeave={onZoneLeave}
+        onDrop={onZoneDrop}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isAwaitingSpellTarget && pendingSpell?.spell.target.type === "wheel") {
+            if (wheelTargetable) {
+              onWheelTargetSelect?.(index);
+            }
+            return;
+          }
+          if (awaitingSpellTarget) return;
+          tapAssignIfSelected();
+        }}
+        aria-label={`Wheel ${index + 1}`}
+      >
+        <CanvasWheel ref={wheelRef as React.RefObject<WheelHandle>} sections={wheelSection} size={ws} />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-full"
+          style={{
+            boxShadow:
+              dragOverWheel === index
+                ? "0 0 0 2px rgba(251,191,36,0.7) inset"
+                : wheelTargetable
+                ? "0 0 0 2px rgba(56,189,248,0.55) inset"
+                : "none",
+          }}
+        />
+      </div>
+
+      <div
+        className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+        style={{
+          backgroundColor:
+            dragOverWheel === index || isRightSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
+          borderColor:
+            dragOverWheel === index || isRightSelected || rightSlotTargetable
+              ? theme.brass
+              : theme.slotBorder,
+          boxShadow: isRightSelected
+            ? "0 0 0 1px rgba(251,191,36,0.7)"
+            : rightSlotTargetable
+            ? "0 0 0 2px rgba(56,189,248,0.55)"
+            : "none",
+        }}
+        aria-label={`Wheel ${index + 1} right slot`}
+        data-drop="slot"
+        data-idx={index}
+        onDragOver={onZoneDragOver}
+        onDragEnter={onZoneDragOver}
+        onDragLeave={onZoneLeave}
+        onDrop={(e) => onZoneDrop(e, "enemy")}
+        onClick={(e) => {
+          e.stopPropagation();
+          const card = rightSlot.card;
+          if (
+            isAwaitingSpellTarget &&
+            pendingSpell?.spell.target.type === "card" &&
+            card
+          ) {
+            const ownership = pendingSpell.spell.target.ownership;
+            const isAlly = rightSlot.side === localLegacySide;
+            if (
+              ownership === "any" ||
+              (ownership === "ally" && isAlly) ||
+              (ownership === "enemy" && !isAlly)
+            ) {
+              onSpellTargetSelect?.({ side: rightSlot.side, lane: index, cardId: card.id });
+              return;
+            }
+          }
+          if (awaitingSpellTarget) return;
+          if (rightSlot.side !== localLegacySide) return;
+          if (selectedCardId) {
+            tapAssignIfSelected();
+          } else if (rightSlot.card) {
+            setSelectedCardId(rightSlot.card.id);
+          }
+        }}
+      >
+        {shouldShowRightCard ? (
+          renderSlotCard(rightSlot, isRightSelected)
+        ) : (
+          <div className="text-[11px] opacity-60 text-center">
+            {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div
-      className="relative rounded-xl border p-2 shadow flex-none"
-      style={{
-        width: panelWidth,
-        height: ws + extraHeightPx,
-        background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${theme.panelBg}`,
-        borderColor: theme.panelBorder,
-        borderWidth: 2,
-        boxShadow: panelShadow,
-        contain: "paint",
-        backfaceVisibility: "hidden",
-        transform: "translateZ(0)",
-        isolation: "isolate",
-      }}
+      className={panelClassName}
+      style={panelStyle}
       data-wheel-locked={lockState ? "true" : "false"}
       data-pointer-shift={pointerShift}
       data-player-damage={damageState.player}
@@ -339,192 +552,8 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       data-enemy-reserve-penalty={enemyPenalty}
       data-initiative-override={initiativeOverride ?? ""}
     >
-      {(phase === "roundEnd" || phase === "ended") && (
-        <>
-          <span
-            aria-label={`Wheel ${index + 1} player result`}
-            className="absolute top-1 left-1 rounded-full border"
-            style={{
-              width: 10,
-              height: 10,
-              background: wheelHudColor === hudColors.player ? hudColors.player : "transparent",
-              borderColor: wheelHudColor === hudColors.player ? hudColors.player : theme.panelBorder,
-              boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
-            }}
-          />
-          <span
-            aria-label={`Wheel ${index + 1} enemy result`}
-            className="absolute top-1 right-1 rounded-full border"
-            style={{
-              width: 10,
-              height: 10,
-              background: wheelHudColor === hudColors.enemy ? hudColors.enemy : "transparent",
-              borderColor: wheelHudColor === hudColors.enemy ? hudColors.enemy : theme.panelBorder,
-              boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
-            }}
-          />
-        </>
-      )}
-
-      <div
-        className="flex items-center justify-center gap-2"
-        style={{ height: ws + extraHeightPx }}
-      >
-        <div
-          data-drop="slot"
-          data-idx={index}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, "player")}
-          onClick={(e) => {
-            e.stopPropagation();
-            const card = leftSlot.card;
-            if (
-              isAwaitingSpellTarget &&
-              pendingSpell?.spell.target.type === "card" &&
-              card
-            ) {
-              const ownership = pendingSpell.spell.target.ownership;
-              const isAlly = leftSlot.side === localLegacySide;
-              if (
-                ownership === "any" ||
-                (ownership === "ally" && isAlly) ||
-                (ownership === "enemy" && !isAlly)
-              ) {
-                onSpellTargetSelect?.({ side: leftSlot.side, lane: index, cardId: card.id });
-                return;
-              }
-            }
-            if (awaitingSpellTarget) return;
-            if (leftSlot.side !== localLegacySide) return;
-            if (selectedCardId) {
-              tapAssignIfSelected();
-            } else if (leftSlot.card) {
-              setSelectedCardId(leftSlot.card.id);
-            }
-          }}
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{
-            backgroundColor:
-              dragOverWheel === index || isLeftSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
-            borderColor:
-              dragOverWheel === index || isLeftSelected || leftSlotTargetable
-                ? theme.brass
-                : theme.slotBorder,
-            boxShadow: isLeftSelected
-              ? "0 0 0 1px rgba(251,191,36,0.7)"
-              : leftSlotTargetable
-              ? "0 0 0 2px rgba(56,189,248,0.55)"
-              : "none",
-          }}
-          aria-label={`Wheel ${index + 1} left slot`}
-        >
-          {shouldShowLeftCard ? (
-            renderSlotCard(leftSlot, isLeftSelected)
-          ) : (
-            <div className="text-[11px] opacity-80 text-center">
-              {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
-            </div>
-          )}
-        </div>
-
-        <div
-          data-drop="wheel"
-          data-idx={index}
-          className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
-          style={{ width: ws, height: ws, cursor: wheelTargetable ? "pointer" : undefined }}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={onZoneDrop}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isAwaitingSpellTarget && pendingSpell?.spell.target.type === "wheel") {
-              if (wheelTargetable) {
-                onWheelTargetSelect?.(index);
-              }
-              return;
-            }
-            if (awaitingSpellTarget) return;
-            tapAssignIfSelected();
-          }}
-          aria-label={`Wheel ${index + 1}`}
-        >
-          <CanvasWheel ref={wheelRef as React.RefObject<WheelHandle>} sections={wheelSection} size={ws} />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 rounded-full"
-            style={{
-              boxShadow:
-                dragOverWheel === index
-                  ? "0 0 0 2px rgba(251,191,36,0.7) inset"
-                  : wheelTargetable
-                  ? "0 0 0 2px rgba(56,189,248,0.55) inset"
-                  : "none",
-            }}
-          />
-        </div>
-
-        <div
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{
-            backgroundColor:
-              dragOverWheel === index || isRightSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
-            borderColor:
-              dragOverWheel === index || isRightSelected || rightSlotTargetable
-                ? theme.brass
-                : theme.slotBorder,
-            boxShadow: isRightSelected
-              ? "0 0 0 1px rgba(251,191,36,0.7)"
-              : rightSlotTargetable
-              ? "0 0 0 2px rgba(56,189,248,0.55)"
-              : "none",
-          }}
-          aria-label={`Wheel ${index + 1} right slot`}
-          data-drop="slot"
-          data-idx={index}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, "enemy")}
-          onClick={(e) => {
-            e.stopPropagation();
-            const card = rightSlot.card;
-            if (
-              isAwaitingSpellTarget &&
-              pendingSpell?.spell.target.type === "card" &&
-              card
-            ) {
-              const ownership = pendingSpell.spell.target.ownership;
-              const isAlly = rightSlot.side === localLegacySide;
-              if (
-                ownership === "any" ||
-                (ownership === "ally" && isAlly) ||
-                (ownership === "enemy" && !isAlly)
-              ) {
-                onSpellTargetSelect?.({ side: rightSlot.side, lane: index, cardId: card.id });
-                return;
-              }
-            }
-            if (awaitingSpellTarget) return;
-            if (rightSlot.side !== localLegacySide) return;
-            if (selectedCardId) {
-              tapAssignIfSelected();
-            } else if (rightSlot.card) {
-              setSelectedCardId(rightSlot.card.id);
-            }
-          }}
-        >
-          {shouldShowRightCard ? (
-            renderSlotCard(rightSlot, isRightSelected)
-          ) : (
-            <div className="text-[11px] opacity-60 text-center">
-              {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
-            </div>
-          )}
-        </div>
-      </div>
+      {resultIndicators}
+      {content}
     </div>
   );
 };
