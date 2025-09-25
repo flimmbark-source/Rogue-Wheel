@@ -857,14 +857,6 @@ const renderWheelPanel = (i: number) => {
       <div className="flex items-center justify-between text-[12px] min-h-[24px]">
         <div className="flex items-center gap-3">
           <div>
-            <span className="opacity-70">Round</span>{" "}
-            <span className="font-semibold">{round}</span>
-          </div>
-          <div>
-            <span className="opacity-70">Phase</span>{" "}
-            <span className="font-semibold">{phase}</span>
-          </div>
-          <div>
             <span className="opacity-70">Goal</span>{" "}
             <span className="font-semibold">First to {winGoal} wins</span>
           </div>
