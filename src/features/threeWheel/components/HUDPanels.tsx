@@ -24,6 +24,7 @@ interface HUDPanelsProps {
   theme: Theme;
   onPlayerManaToggle?: () => void;
   isGrimoireOpen?: boolean;
+  playerManaButtonRef?: React.Ref<HTMLButtonElement>;
 }
 
 const HUDPanels: React.FC<HUDPanelsProps> = ({
@@ -39,6 +40,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
   theme,
   onPlayerManaToggle,
   isGrimoireOpen,
+  playerManaButtonRef,
 }) => {
   const rsP = reserveSums ? reserveSums.player : null;
   const rsE = reserveSums ? reserveSums.enemy : null;
@@ -76,6 +78,8 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
       </>
     );
 
+    const manaRef = isPlayer ? playerManaButtonRef : undefined;
+
     const renderManaPill = () => {
       if (!isGrimoireMode) {
         return (
@@ -101,6 +105,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
             title={`Mana: ${manaCount}`}
             aria-pressed={isGrimoireOpen}
             aria-label={`Mana: ${manaCount}. ${isGrimoireOpen ? "Hide" : "Show"} grimoire.`}
+            ref={manaRef}
           >
             {manaPillContent}
           </button>
