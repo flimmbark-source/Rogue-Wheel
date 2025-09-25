@@ -68,12 +68,10 @@ export interface WheelPanelProps {
 }
 
 const slotWidthPx = 80;
-const gapXPx = 16;
+const gapXPx = 4;
 const paddingXPx = 16;
 const borderXPx = 4;
 const extraHeightPx = 16;
-
-export const wheelPanelShadow = "0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)";
 
 export function getWheelPanelLayout(wheelSize: number, lockedWheelSize: number | null) {
   const wheelDisplaySize = Math.round(lockedWheelSize ?? wheelSize);
@@ -339,14 +337,13 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${theme.panelBg}`,
     borderColor: theme.panelBorder,
     borderWidth: 2,
-    boxShadow: wheelPanelShadow,
   };
 
   const groupedStyle: React.CSSProperties = basePanelStyle;
 
   const panelClassName =
     variant === "standalone"
-      ? "relative rounded-xl border p-2 shadow flex-none"
+      ? "relative rounded-xl border p-2 flex-none"
       : "relative flex-none mx-auto";
 
 
@@ -381,7 +378,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     );
 
   const content = (
-    <div className="flex items-center justify-center gap-1" style={{ height: panelHeight }}>
+    <div className="flex items-center justify-center gap-[2px]" style={{ height: panelHeight }}>
       <div
         data-drop="slot"
         data-idx={index}
