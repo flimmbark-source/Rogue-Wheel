@@ -41,7 +41,7 @@ export interface MenuItem {
 
 export default function RogueWheelHub(props: HubShellProps) {
   const {
-    backgroundUrl = "/fantasy-hero.jpg",
+    backgroundUrl = "/assets/Desk.png",
     logoText = "Rotogo Snap",
     logoUrl, // optional override path/URL
     hasSave = false,
