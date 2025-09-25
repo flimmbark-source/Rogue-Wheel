@@ -1093,48 +1093,49 @@ const renderWheelPanel = (i: number) => {
       {/* Wheels center */}
       <div className="relative z-0" style={{ paddingBottom: handClearance }}>
         <div
-          className="flex flex-col items-stretch gap-1 rounded-xl border border-transparent p-2 shadow"
+          className="flex flex-col items-stretch gap-0 rounded-xl border border-transparent p-2 shadow"
           style={wheelPanelContainerStyle}
         >
           {[0, 1, 2].map((i) => (
-            <WheelPanel
-              key={i}
-              index={i}
-              assign={assign}
-              namesByLegacy={namesByLegacy}
-              wheelSize={wheelSize}
-              lockedWheelSize={lockedWheelSize}
-              wheelDamage={wheelDamage[i]}
-              wheelMirror={wheelMirror[i]}
-              wheelLocked={wheelLocks[i]}
-              pointerShift={pointerShifts[i]}
-              reservePenalties={reservePenalties}
-              selectedCardId={selectedCardId}
-              setSelectedCardId={setSelectedCardId}
-              localLegacySide={localLegacySide}
-              phase={phase}
-              archetypeGateOpen={archetypeGateOpen}
-              setDragCardId={setDragCardId}
-              dragCardId={dragCardId}
-              setDragOverWheel={setDragOverWheel}
-              dragOverWheel={dragOverWheel}
-              player={player}
-              enemy={enemy}
-              assignToWheelLocal={assignToWheelLocal}
-              isWheelActive={active[i]}
-              wheelRef={wheelRefs[i]}
-              wheelSection={wheelSections[i]}
-              hudColors={HUD_COLORS}
-              theme={THEME}
-              initiativeOverride={initiativeOverride}
-              startPointerDrag={startPointerDrag}
-              wheelHudColor={wheelHUD[i]}
-              pendingSpell={pendingSpell}
-              onSpellTargetSelect={handleSpellTargetSelect}
-              onWheelTargetSelect={handleWheelTargetSelect}
-              isAwaitingSpellTarget={isAwaitingSpellTarget}
-              variant="grouped"
-            />
+            <div key={i} className={i === 0 ? undefined : "-mt-3 md:-mt-4"}>
+              <WheelPanel
+                index={i}
+                assign={assign}
+                namesByLegacy={namesByLegacy}
+                wheelSize={wheelSize}
+                lockedWheelSize={lockedWheelSize}
+                wheelDamage={wheelDamage[i]}
+                wheelMirror={wheelMirror[i]}
+                wheelLocked={wheelLocks[i]}
+                pointerShift={pointerShifts[i]}
+                reservePenalties={reservePenalties}
+                selectedCardId={selectedCardId}
+                setSelectedCardId={setSelectedCardId}
+                localLegacySide={localLegacySide}
+                phase={phase}
+                archetypeGateOpen={archetypeGateOpen}
+                setDragCardId={setDragCardId}
+                dragCardId={dragCardId}
+                setDragOverWheel={setDragOverWheel}
+                dragOverWheel={dragOverWheel}
+                player={player}
+                enemy={enemy}
+                assignToWheelLocal={assignToWheelLocal}
+                isWheelActive={active[i]}
+                wheelRef={wheelRefs[i]}
+                wheelSection={wheelSections[i]}
+                hudColors={HUD_COLORS}
+                theme={THEME}
+                initiativeOverride={initiativeOverride}
+                startPointerDrag={startPointerDrag}
+                wheelHudColor={wheelHUD[i]}
+                pendingSpell={pendingSpell}
+                onSpellTargetSelect={handleSpellTargetSelect}
+                onWheelTargetSelect={handleWheelTargetSelect}
+                isAwaitingSpellTarget={isAwaitingSpellTarget}
+                variant="grouped"
+              />
+            </div>
           ))}
         </div>
       </div>
