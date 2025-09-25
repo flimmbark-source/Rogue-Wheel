@@ -13,7 +13,7 @@ body {
    * slate fallback ensures the UI remains legible if the image fails to
    * load.  Text uses the custom font defined in tailwind.config.js. */
   @apply bg-slate-900 text-slate-200 font-text;
-  background-image: url("/assets/Desk.png");
+  background-image: url("/assets/Desk1.png");
   background-size: cover;
   background-repeat: no-repeat;
   background-position: center;
