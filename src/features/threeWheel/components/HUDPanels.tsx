@@ -165,6 +165,22 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
             )}
             {renderManaPill()}
           </div>
+          <div
+            className={`${isReserveVisible ? "flex" : "hidden"} sm:flex sm:ml-2 mt-2 sm:mt-0 w-full sm:w-auto justify-center sm:justify-start text-center sm:text-left rounded-full border px-3 py-1 sm:px-2 sm:py-0.5 text-[11px] sm:max-w-[44vw] overflow-hidden text-ellipsis whitespace-nowrap transition-opacity ${
+              isReserveVisible ? "opacity-100 visible" : "opacity-0 invisible"
+            }`}
+            style={{
+              minWidth: "90px",
+              background: "#1b1209ee",
+              borderColor: theme.slotBorder,
+              color: theme.textWarm,
+            }}
+            title={rs !== null ? `Reserve: ${rs}` : undefined}
+          >
+            <span className="sm:hidden mr-1">Reserve:</span>
+            <span className="hidden sm:inline">Reserve: </span>
+            <span className="font-bold tabular-nums">{rs ?? 0}</span>
+          </div>
           {hasInit && (
             <span
               aria-label="Has initiative"
