@@ -2,6 +2,7 @@ import React from "react";
 import CanvasWheel, { WheelHandle } from "../../../components/CanvasWheel";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter, Phase, Section } from "../../../game/types";
+import type { WheelPaletteMode } from "../../../game/wheel";
 import {
   spellTargetRequiresManualSelection,
   type SpellDefinition,
@@ -64,6 +65,7 @@ export interface WheelPanelProps {
   onSpellTargetSelect?: (selection: { side: LegacySide; lane: number | null; cardId: string }) => void;
   onWheelTargetSelect?: (wheelIndex: number) => void;
   isAwaitingSpellTarget: boolean;
+  wheelPaletteMode: WheelPaletteMode;
 }
 
 const slotWidthPx = 80;
@@ -107,6 +109,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   onSpellTargetSelect,
   onWheelTargetSelect,
   isAwaitingSpellTarget,
+  wheelPaletteMode,
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -451,7 +454,12 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           }}
           aria-label={`Wheel ${index + 1}`}
         >
-          <CanvasWheel ref={wheelRef as React.RefObject<WheelHandle>} sections={wheelSection} size={ws} />
+          <CanvasWheel
+            ref={wheelRef as React.RefObject<WheelHandle>}
+            sections={wheelSection}
+            size={ws}
+            paletteMode={wheelPaletteMode}
+          />
           <div
             aria-hidden
             className="pointer-events-none absolute inset-0 rounded-full"
