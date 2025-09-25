@@ -149,6 +149,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
             </div>
             {isReserveVisible && (
               <div
+
                 className="flex items-center gap-1 rounded-full border px-3 py-1 sm:px-2 sm:py-0.5 text-[11px] sm:max-w-[44vw] overflow-hidden text-ellipsis whitespace-nowrap flex-shrink-0"
                 style={{
                   minWidth: "90px",
