@@ -72,7 +72,7 @@ const slotWidthPx = 80;
 const gapXPx = 16;
 const paddingXPx = 16;
 const borderXPx = 4;
-const extraHeightPx = 16;
+const extraHeightPx = 96;
 
 const WheelPanel: React.FC<WheelPanelProps> = ({
   index,
@@ -198,6 +198,48 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     (wheelScope === "any" || (wheelScope === "current" && isWheelActive));
 
   const panelWidth = ws + slotWidthPx * 2 + gapXPx + paddingXPx + borderXPx;
+
+  const environmentOffset = extraHeightPx / 2;
+  const clampLength = Math.max(120, ws * 0.7);
+  const clampWidth = Math.max(26, ws * 0.18);
+  const clampJawWidth = Math.max(48, ws * 0.28);
+  const clampJawHeight = clampJawWidth * 0.55;
+  const clampAnchorTop = Math.max(environmentOffset - clampLength * 0.58, -clampLength * 0.25);
+  const clampTranslateY = lockState ? Math.min(ws * 0.22, 52) : -Math.min(ws * 0.2, 48);
+  const clampRotationOpen = 28;
+  const clampRotationClosed = 6;
+  const clampTransform = (side: "left" | "right") => {
+    const rotate = lockState
+      ? side === "left"
+        ? -clampRotationClosed
+        : clampRotationClosed
+      : side === "left"
+      ? -clampRotationOpen
+      : clampRotationOpen;
+    const translateX =
+      side === "left"
+        ? lockState
+          ? -clampWidth * 0.1
+          : -clampWidth * 0.45
+        : lockState
+        ? clampWidth * 0.1
+        : clampWidth * 0.45;
+    return `translate(${translateX}px, ${clampTranslateY}px) rotate(${rotate}deg)`;
+  };
+  const clampJawTransform = (side: "left" | "right") => {
+    const rotate = lockState
+      ? side === "left"
+        ? 4
+        : -4
+      : side === "left"
+      ? -18
+      : 18;
+    const translateY = lockState ? -clampJawHeight * 0.15 : 0;
+    return `translateY(${translateY}px) rotate(${rotate}deg)`;
+  };
+  const wheelYOffset = environmentOffset;
+  const baseWidth = Math.max(ws * 0.8, 200);
+  const baseHeight = Math.max(64, ws * 0.35);
 
   const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
     if (!slot.card) return null;
@@ -433,45 +475,237 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         </div>
 
         <div
-          data-drop="wheel"
-          data-idx={index}
-          className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
-          style={{ width: ws, height: ws, cursor: wheelTargetable ? "pointer" : undefined }}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={onZoneDrop}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isAwaitingSpellTarget && pendingSpell?.spell.target.type === "wheel") {
-              if (wheelTargetable) {
-                onWheelTargetSelect?.(index);
-              }
-              return;
-            }
-            if (awaitingSpellTarget) return;
-            tapAssignIfSelected();
-          }}
-          aria-label={`Wheel ${index + 1}`}
+          className="relative flex-none"
+          style={{ width: ws, height: ws + extraHeightPx }}
         >
-          <CanvasWheel
-            ref={wheelRef as React.RefObject<WheelHandle>}
-            sections={wheelSection}
-            size={ws}
-            paletteMode={wheelPaletteMode}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-1/2"
+            style={{
+              top: wheelYOffset - ws * 0.55,
+              transform: "translateX(-50%)",
+              width: ws * 1.45,
+              height: ws * 1.45,
+              background:
+                "radial-gradient(circle at 50% 38%, rgba(148,163,184,0.14) 0%, rgba(15,23,42,0.22) 55%, transparent 78%)",
+              filter: "drop-shadow(0 16px 24px rgba(8,15,35,0.55))",
+              zIndex: 0,
+            }}
           />
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 rounded-full"
+            className="pointer-events-none absolute left-1/2"
             style={{
-              boxShadow:
-                dragOverWheel === index
-                  ? "0 0 0 2px rgba(251,191,36,0.7) inset"
-                  : wheelTargetable
-                  ? "0 0 0 2px rgba(56,189,248,0.55) inset"
-                  : "none",
+              top: wheelYOffset - ws * 0.08,
+              transform: "translateX(-50%)",
+              width: ws * 1.1,
+              height: ws * 1.1,
+              borderRadius: "50%",
+              background:
+                "radial-gradient(circle, rgba(15,23,42,0.85) 0%, rgba(15,23,42,0.32) 64%, rgba(15,23,42,0) 78%)",
+              boxShadow: "0 10px 18px rgba(8,11,24,0.55) inset, 0 12px 28px rgba(8,11,24,0.45)",
+              zIndex: 1,
             }}
           />
+
+          <div
+            aria-hidden
+            className="pointer-events-none absolute left-1/2"
+            style={{
+              bottom: -baseHeight * 0.2,
+              transform: "translateX(-50%)",
+              width: baseWidth,
+              height: baseHeight,
+              zIndex: 1,
+            }}
+          >
+            <div
+              className="absolute top-3 left-1/2 -translate-x-1/2 rounded-full"
+              style={{
+                width: baseWidth * 0.78,
+                height: Math.max(12, baseHeight * 0.14),
+                background:
+                  "linear-gradient(180deg, rgba(100,116,139,0.38) 0%, rgba(30,41,59,0.92) 100%)",
+                boxShadow: "0 6px 14px rgba(8,11,24,0.55)",
+              }}
+            />
+            <div
+              className="absolute bottom-0 left-1/2 -translate-x-1/2 rounded-2xl border"
+              style={{
+                width: baseWidth,
+                height: baseHeight * 0.82,
+                borderColor: "rgba(71,85,105,0.55)",
+                background:
+                  "linear-gradient(180deg, rgba(51,65,85,0.92) 0%, rgba(15,23,42,0.9) 60%, rgba(15,23,42,0.8) 100%)",
+                boxShadow: "0 16px 28px rgba(8,11,24,0.55)",
+              }}
+            />
+            <div
+              className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2"
+              style={{
+                width: baseWidth * 0.64,
+                justifyContent: "space-between",
+              }}
+            >
+              {[0, 1, 2].map((idx) => (
+                <span
+                  key={idx}
+                  className="h-2 w-[30%] rounded-sm"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, rgba(148,163,184,0.32) 0%, rgba(226,232,240,0.12) 40%, rgba(148,163,184,0.32) 100%)",
+                    boxShadow: "0 0 6px rgba(148,163,184,0.35)",
+                  }}
+                />
+              ))}
+            </div>
+            <div
+              className="absolute -bottom-6 left-1/2 -translate-x-1/2 rounded-full"
+              style={{
+                width: baseWidth * 0.85,
+                height: Math.max(14, baseHeight * 0.2),
+                background: "radial-gradient(circle, rgba(0,0,0,0.55) 0%, transparent 70%)",
+                filter: "blur(1px)",
+              }}
+            />
+          </div>
+
+          <div
+            aria-hidden
+            className="pointer-events-none absolute"
+            style={{
+              top: clampAnchorTop,
+              left: -clampWidth * 0.65,
+              width: clampWidth,
+              height: clampLength,
+              zIndex: 2,
+            }}
+          >
+            <div
+              className="absolute inset-0 rounded-tr-[28px] rounded-br-[12px] border"
+              style={{
+                borderColor: "rgba(71,85,105,0.6)",
+                background:
+                  "linear-gradient(180deg, rgba(191,219,254,0.28) 0%, rgba(51,65,85,0.92) 55%, rgba(30,41,59,0.95) 100%)",
+                boxShadow: "0 12px 26px rgba(8,11,24,0.45)",
+                transformOrigin: "top right",
+                transform: clampTransform("left"),
+                transition: "transform 320ms ease-in-out, filter 320ms ease-in-out",
+                filter: lockState ? "brightness(1.05)" : "brightness(0.92)",
+              }}
+            >
+              <div
+                className="absolute -bottom-5 -right-6 rounded-full border"
+                style={{
+                  width: clampJawWidth,
+                  height: clampJawHeight,
+                  borderColor: "rgba(30,41,59,0.8)",
+                  background:
+                    "linear-gradient(180deg, rgba(226,232,240,0.2) 0%, rgba(51,65,85,0.95) 60%, rgba(15,23,42,0.95) 100%)",
+                  boxShadow: "0 8px 16px rgba(8,11,24,0.45)",
+                  transformOrigin: "top left",
+                  transform: clampJawTransform("left"),
+                  transition: "transform 320ms ease-in-out",
+                }}
+              />
+            </div>
+          </div>
+
+          <div
+            aria-hidden
+            className="pointer-events-none absolute"
+            style={{
+              top: clampAnchorTop,
+              right: -clampWidth * 0.65,
+              width: clampWidth,
+              height: clampLength,
+              zIndex: 2,
+            }}
+          >
+            <div
+              className="absolute inset-0 rounded-tl-[28px] rounded-bl-[12px] border"
+              style={{
+                borderColor: "rgba(71,85,105,0.6)",
+                background:
+                  "linear-gradient(180deg, rgba(191,219,254,0.28) 0%, rgba(51,65,85,0.92) 55%, rgba(30,41,59,0.95) 100%)",
+                boxShadow: "0 12px 26px rgba(8,11,24,0.45)",
+                transformOrigin: "top left",
+                transform: clampTransform("right"),
+                transition: "transform 320ms ease-in-out, filter 320ms ease-in-out",
+                filter: lockState ? "brightness(1.05)" : "brightness(0.92)",
+              }}
+            >
+              <div
+                className="absolute -bottom-5 -left-6 rounded-full border"
+                style={{
+                  width: clampJawWidth,
+                  height: clampJawHeight,
+                  borderColor: "rgba(30,41,59,0.8)",
+                  background:
+                    "linear-gradient(180deg, rgba(226,232,240,0.2) 0%, rgba(51,65,85,0.95) 60%, rgba(15,23,42,0.95) 100%)",
+                  boxShadow: "0 8px 16px rgba(8,11,24,0.45)",
+                  transformOrigin: "top right",
+                  transform: clampJawTransform("right"),
+                  transition: "transform 320ms ease-in-out",
+                }}
+              />
+            </div>
+          </div>
+
+          <div
+            data-drop="wheel"
+            data-idx={index}
+            className="absolute left-1/2 flex items-center justify-center rounded-full"
+            style={{
+              top: wheelYOffset,
+              transform: "translateX(-50%)",
+              width: ws,
+              height: ws,
+              cursor: wheelTargetable ? "pointer" : undefined,
+              overflow: "hidden",
+              zIndex: 3,
+            }}
+            onDragOver={onZoneDragOver}
+            onDragEnter={onZoneDragOver}
+            onDragLeave={onZoneLeave}
+            onDrop={onZoneDrop}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isAwaitingSpellTarget && pendingSpell?.spell.target.type === "wheel") {
+                if (wheelTargetable) {
+                  onWheelTargetSelect?.(index);
+                }
+                return;
+              }
+              if (awaitingSpellTarget) return;
+              tapAssignIfSelected();
+            }}
+            aria-label={`Wheel ${index + 1}`}
+          >
+            <CanvasWheel ref={wheelRef as React.RefObject<WheelHandle>} sections={wheelSection} size={ws} />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 rounded-full"
+              style={{
+                boxShadow:
+                  dragOverWheel === index
+                    ? "0 0 0 2px rgba(251,191,36,0.7) inset"
+                    : wheelTargetable
+                    ? "0 0 0 2px rgba(56,189,248,0.55) inset"
+                    : "none",
+              }}
+            />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(15,23,42,0.28) 70%, rgba(15,23,42,0.45) 100%)",
+                mixBlendMode: "screen",
+                opacity: 0.45,
+              }}
+            />
+          </div>
         </div>
 
         <div
