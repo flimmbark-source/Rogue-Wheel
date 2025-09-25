@@ -349,6 +349,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       ? "relative rounded-xl border p-2 shadow flex-none"
       : "relative flex-none mx-auto";
 
+
   const panelStyle = variant === "standalone" ? standaloneStyle : groupedStyle;
 
   const resultIndicators =

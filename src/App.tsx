@@ -68,7 +68,12 @@ import { useSpellCasting } from "./game/hooks/useSpellCasting";
 
 // components
 import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
-import WheelPanel, { getWheelPanelLayout } from "./features/threeWheel/components/WheelPanel";
+
+import WheelPanel, {
+  getWheelPanelLayout,
+  wheelPanelShadow,
+} from "./features/threeWheel/components/WheelPanel";
+
 import HandDock from "./features/threeWheel/components/HandDock";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
@@ -391,7 +396,15 @@ export default function ThreeWheel_WinsOnly({
   const wheelPanelContainerStyle = useMemo(
     () => ({
       width: wheelPanelLayout.panelWidth,
-      margin: "0 auto",
+      background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
+      borderColor: THEME.panelBorder,
+      borderWidth: 2,
+      boxShadow: wheelPanelShadow,
+      contain: "paint",
+      backfaceVisibility: "hidden",
+      transform: "translateZ(0)",
+      isolation: "isolate",
+
     }),
     [wheelPanelLayout.panelWidth],
   );
@@ -1081,11 +1094,11 @@ const renderWheelPanel = (i: number) => {
       </div>
 
       {/* Wheels center */}
-      <div
-        className="relative z-0 flex justify-center"
-        style={{ paddingBottom: handClearance }}
-      >
-        <div className="flex flex-col items-center gap-1" style={wheelPanelContainerStyle}>
+      <div className="relative z-0" style={{ paddingBottom: handClearance }}>
+        <div
+          className="flex flex-col items-stretch gap-1 rounded-xl border p-2 shadow"
+          style={wheelPanelContainerStyle}
+        >
           {[0, 1, 2].map((i) => (
             <WheelPanel
               key={i}
