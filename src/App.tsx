@@ -10,6 +10,7 @@ import React, {
   memo,
   startTransition,
   useCallback,
+  useLayoutEffect,
 } from "react";
 import { Realtime } from "ably";
 
@@ -385,6 +386,23 @@ export default function ThreeWheel_WinsOnly({
   const reservePenalties = useMemo(() => createReservePenaltyState(), []);
   const initiativeOverride: LegacySide | null = null;
 
+  const playerManaButtonRef = useRef<HTMLButtonElement | null>(null);
+  const grimoireDesktopRef = useRef<HTMLDivElement | null>(null);
+
+  const updateGrimoirePosition = useCallback(() => {
+    const anchorEl = playerManaButtonRef.current;
+    const popoverEl = grimoireDesktopRef.current;
+    if (!anchorEl || !popoverEl) {
+      return;
+    }
+    const rect = anchorEl.getBoundingClientRect();
+    const yOffset = 12;
+    popoverEl.style.position = "fixed";
+    popoverEl.style.top = `${rect.bottom + yOffset}px`;
+    popoverEl.style.left = `${rect.left + rect.width / 2}px`;
+    popoverEl.style.transform = "translateX(-50%)";
+  }, []);
+
   const infoPopoverRootRef = useRef<HTMLDivElement | null>(null);
   const [showRef, setShowRef] = useState(false);
 
@@ -398,6 +416,26 @@ export default function ThreeWheel_WinsOnly({
       return next;
     });
   }, [isGrimoireMode]);
+
+  useLayoutEffect(() => {
+    if (!showGrimoire) {
+      return;
+    }
+
+    updateGrimoirePosition();
+
+    const handleReposition = () => {
+      updateGrimoirePosition();
+    };
+
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
+
+    return () => {
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
+    };
+  }, [showGrimoire, updateGrimoirePosition]);
 
   // grant mana on wins (client-side only demo)
   const prevWinsRef = useRef(wins);
@@ -937,7 +975,10 @@ const renderWheelPanel = (i: number) => {
                   />
 
                   {/* Desktop (>=sm) anchored popover */}
-                  <div className="absolute top-[110%] right-0 z-[80] hidden w-72 max-w-xs sm:block sm:max-w-sm">
+                  <div
+                    className="hidden w-72 max-w-xs sm:block sm:max-w-sm z-[80]"
+                    ref={grimoireDesktopRef}
+                  >
                     <div className="rounded-2xl border border-slate-700 bg-slate-900/95 shadow-2xl">
                       <div className="flex items-center justify-between gap-2 border-b border-slate-700/70 px-3 py-2">
                         <div className="text-sm font-semibold text-slate-100">Grimoire</div>
@@ -996,6 +1037,7 @@ const renderWheelPanel = (i: number) => {
           theme={THEME}
           onPlayerManaToggle={handlePlayerManaToggle}
           isGrimoireOpen={showGrimoire}
+          playerManaButtonRef={playerManaButtonRef}
         />
       </div>
 
