@@ -880,7 +880,7 @@ const renderWheelPanel = (i: number) => {
 
             {showRef && (
               <div
-                className="absolute top-[110%] right-0 w-[calc(100vw-2rem)] max-w-xs sm:w-80 sm:max-w-none rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50"
+                className="absolute top-[110%] left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] max-w-xs sm:right-0 sm:left-auto sm:translate-x-0 sm:w-80 sm:max-w-none rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50"
               >
                 <div className="flex items-center justify-between mb-1">
                   <div className="font-semibold">Reference</div>
@@ -907,13 +907,21 @@ const renderWheelPanel = (i: number) => {
                     <li>⚑ Initiative — initiative holder wins</li>
                     <li><span className="font-semibold">0 Start</span> — no one wins</li>
                   </ul>
-                  <div><span className="font-semibold">Grimoire - Casting Spells</span></div>
-                    <div> Spells cost <span className="font-semibold">Mana</span> to cast. 
-                      Your <span className="font-semibold">Grimoire</span> can be acceessed by pressing on your <span className="font-semibold">Mana. </span>
-                      You gain <span className="font-semibold">+1 Mana</span> for each wheel you win. 
-                      Some spells require you to select<span className="font-semibold"> either a card or a wheel</span> before they resolve. 
-                      Most spells are available after the Resolve phase, but some can be cast at any time.
-                  </div>
+                  {isGrimoireMode && (
+                    <div className="space-y-1">
+                      <div>
+                        <span className="font-semibold">Grimoire - Casting Spells</span>
+                      </div>
+                      <div>
+                        Spells cost <span className="font-semibold">Mana</span> to cast. Your
+                        <span className="font-semibold"> Grimoire</span> can be accessed by pressing on your
+                        <span className="font-semibold"> Mana</span>. You gain
+                        <span className="font-semibold"> +1 Mana</span> for each wheel you win. Some spells require you to
+                        select <span className="font-semibold">either a card or a wheel</span> before they resolve. Most
+                        spells are available after the Resolve phase, but some can be cast at any time.
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
