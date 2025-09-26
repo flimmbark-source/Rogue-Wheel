@@ -4,9 +4,48 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Three Wheel Roguelike</title>
+    <style>
+      .rw-loading-screen {
+        min-height: 100vh;
+        width: 100%;
+        background: #000;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 2.5rem 1.5rem;
+        box-sizing: border-box;
+        gap: 1.5rem;
+      }
+
+      .rw-loading-screen__logo {
+        width: min(60vw, 320px);
+        max-width: 100%;
+        height: auto;
+        filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.6));
+      }
+
+      .rw-loading-screen__message {
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.85);
+      }
+
+      .rw-loading-screen__extra {
+        font-size: 0.85rem;
+        color: rgba(255, 255, 255, 0.7);
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="rw-loading-screen" role="status" aria-live="polite" aria-busy="true" aria-label="Loading">
+        <img class="rw-loading-screen__logo" src="/assets/rogue-wheel-logo.png" alt="Rogue Wheel logo" />
+        <div class="rw-loading-screen__message">Loading…</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

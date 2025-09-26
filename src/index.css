@@ -8,6 +8,43 @@
  * tailwind.config.js.  It also includes typographic rules for headings.
  */
 
+.rw-loading-screen {
+  min-height: 100vh;
+  width: 100%;
+  background-color: #000;
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+  box-sizing: border-box;
+  gap: 1.5rem;
+}
+
+.rw-loading-screen__logo {
+  width: min(60vw, 320px);
+  max-width: 100%;
+  height: auto;
+  filter: drop-shadow(0 18px 32px rgba(0, 0, 0, 0.6));
+}
+
+.rw-loading-screen__message {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.rw-loading-screen__extra {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: center;
+}
+
 body {
   /* Apply a warm wood background texture across the entire game.  The dark
    * slate fallback ensures the UI remains legible if the image fails to

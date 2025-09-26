@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import LoadingScreen from "./components/LoadingScreen";
 import {
   getProfileBundle,
   expRequiredForLevel,
@@ -16,6 +17,12 @@ export default function ProfilePage() {
     bundle?.profile.displayName ?? "Local Player"
   );
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const handleHardReset = useCallback(() => {
+    try {
+      localStorage.removeItem("rw:single:state");
+    } catch {}
+    location.reload();
+  }, []);
 
   // Refresh once on mount (covers first-run seed or any changes)
   useEffect(() => {
@@ -63,15 +70,15 @@ export default function ProfilePage() {
 
   if (!bundle) {
     return (
-      <div className="p-4">
-        Loading profile…
+      <LoadingScreen message="Loading profile…">
         <button
-          className="ml-3 underline text-xs"
-          onClick={() => { try { localStorage.removeItem("rw:single:state"); } catch {}; location.reload(); }}
+          type="button"
+          onClick={handleHardReset}
+          className="rounded-full border border-white/30 px-3 py-1 text-xs font-semibold text-white/80 transition hover:border-white/60 hover:text-white"
         >
-          reset
+          Reset local data
         </button>
-      </div>
+      </LoadingScreen>
     );
   }
 
