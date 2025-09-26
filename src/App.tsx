@@ -48,6 +48,7 @@ import {
   DEFAULT_ARCHETYPE,
   type ArchetypeId,
 } from "./game/archetypes";
+import { DEFAULT_GAME_MODE, normalizeGameMode } from "./gameModes";
 import {
   makeFighter,
   drawOne,
@@ -183,7 +184,7 @@ export default function ThreeWheel_WinsOnly({
   localPlayerId,
   players,
   seed,
-  gameMode = "classic",
+  gameMode = DEFAULT_GAME_MODE,
   roomCode,
   hostId,
   targetWins,
@@ -276,9 +277,13 @@ export default function ThreeWheel_WinsOnly({
   } = actions;
 
   // --- local UI/Grimoire state (from Spells branch) ---
-  const isGrimoireMode = gameMode === "grimoire";
-  const isAnteMode = gameMode === "ante";
-  const effectiveGameMode = gameMode as GameMode;
+  const activeGameModes = useMemo(
+    () => normalizeGameMode(gameMode ?? DEFAULT_GAME_MODE),
+    [gameMode],
+  );
+  const isGrimoireMode = activeGameModes.includes("grimoire");
+  const isAnteMode = activeGameModes.includes("ante");
+  const effectiveGameMode = activeGameModes.length > 0 ? activeGameModes.join("+") : "classic";
   const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
 
   const [manaPools, setManaPools] = useState<SideState<number>>({ player: 0, enemy: 0 });
@@ -796,7 +801,13 @@ const renderWheelPanel = (i: number) => {
     if (phase !== "ended") setVictoryCollapsed(false);
   }, [phase]);
 
-  const rootModeClassName = isGrimoireMode ? "grimoire-mode" : "classic-mode";
+  const rootModeClassName = [
+    "classic-mode",
+    isGrimoireMode && "grimoire-mode",
+    isAnteMode && "ante-mode",
+  ]
+    .filter(Boolean)
+    .join(" ");
   const grimoireAttrValue = isGrimoireMode ? "true" : "false";
   const isAwaitingSpellTarget = Boolean(awaitingSpellTarget);
   const targetingPrompt = pendingSpell
@@ -1067,7 +1078,7 @@ const renderWheelPanel = (i: number) => {
           )}
 
           {/* Grimoire button + popover/modal */}
-          {gameMode === "grimoire" && (
+          {isGrimoireMode && (
             <div className="relative">
               {showGrimoire && (
                 <>
