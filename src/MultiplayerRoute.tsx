@@ -778,7 +778,7 @@ function clampTargetWins(value: number) {
 }
 
 function isGameMode(value: unknown): value is GameMode {
-  return value === "classic" || value === "grimoire";
+  return value === "classic" || value === "grimoire" || value === "ante";
 }
 
 // Assign sides from presence order (host=left, first joiner=right)
