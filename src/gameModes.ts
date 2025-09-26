@@ -1,4 +1,4 @@
-export type GameMode = "classic" | "grimoire";
+export type GameMode = "classic" | "grimoire" | "ante";
 
 export const DEFAULT_GAME_MODE: GameMode = "classic";
 
@@ -24,6 +24,14 @@ export const GAME_MODE_DETAILS: Record<
     highlights: [
       "Adds spells, which can alter match outcomes",
       "Best for advanced players seeking depth",
+    ],
+  },
+  ante: {
+    title: "Ante",
+    subtitle: "Risk wins each round for boosted payouts.",
+    highlights: [
+      "Wager existing wins at the start of every round",
+      "Win the round to multiply your ante by dynamic odds",
     ],
   },
 };
