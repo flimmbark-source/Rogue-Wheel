@@ -28,10 +28,11 @@ type ConnectOptions = {
   requireExistingMembers?: boolean;
 };
 
-const LOBBY_MODE_OPTIONS: GameMode[] = ["classic", "grimoire"];
+const LOBBY_MODE_OPTIONS: GameMode[] = ["classic", "grimoire", "ante"];
 const MODE_LABELS: Record<GameMode, string> = {
   classic: "Classic",
   grimoire: "Grimoire",
+  ante: "Ante",
 };
 
 export default function MultiplayerRoute({

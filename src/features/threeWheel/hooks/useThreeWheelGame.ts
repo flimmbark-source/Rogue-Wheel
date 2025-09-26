@@ -21,6 +21,7 @@ import {
   type CorePhase,
   LEGACY_FROM_SIDE,
 } from "../../../game/types";
+import type { GameMode } from "../../../gameModes";
 import { easeInOutCubic, inSection, createSeededRng } from "../../../game/math";
 import { genWheelSections } from "../../../game/wheel";
 import {
@@ -48,6 +49,7 @@ export type MPIntent =
   | { type: "nextRound"; side: LegacySide }
   | { type: "rematch"; side: LegacySide }
   | { type: "reserve"; side: LegacySide; reserve: number; round: number }
+  | { type: "ante"; side: LegacySide; bet: number; round: number }
   | { type: "spellEffects"; payload: SpellEffectPayload };
 
 export type ThreeWheelGameProps = {
@@ -58,7 +60,14 @@ export type ThreeWheelGameProps = {
   roomCode?: string;
   hostId?: string;
   targetWins?: number;
+  gameMode?: GameMode;
   onExit?: () => void;
+};
+
+type AnteState = {
+  round: number;
+  bets: Record<LegacySide, number>;
+  odds: Record<LegacySide, number>;
 };
 
 export type ThreeWheelGameState = {
@@ -67,6 +76,7 @@ export type ThreeWheelGameState = {
   initiative: LegacySide;
   wins: { player: number; enemy: number };
   round: number;
+  ante: AnteState;
   freezeLayout: boolean;
   lockedWheelSize: number | null;
   phase: CorePhase;
@@ -128,6 +138,7 @@ export type ThreeWheelGameActions = {
   handleRematchClick: () => void;
   handleExitClick: () => void;
   applySpellEffects: (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => void;
+  setAnteBet: (bet: number) => void;
 };
 
 export type ThreeWheelGameReturn = {
@@ -145,6 +156,7 @@ export function useThreeWheelGame({
   roomCode,
   hostId,
   targetWins,
+  gameMode,
   onExit,
 }: ThreeWheelGameProps): ThreeWheelGameReturn {
   const mountedRef = useRef(true);
@@ -187,6 +199,9 @@ export function useThreeWheelGame({
       ? Math.max(1, Math.min(25, Math.round(targetWins)))
       : TARGET_WINS;
 
+  const currentGameMode: GameMode = gameMode ?? "classic";
+  const isAnteMode = currentGameMode === "ante";
+
   const hostLegacySide: LegacySide = (() => {
     if (!hostId) return "player";
     if (players.left.id === hostId) return "player";
@@ -207,6 +222,11 @@ export function useThreeWheelGame({
   );
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
   const [round, setRound] = useState(1);
+  const [anteState, setAnteState] = useState<AnteState>(() => ({
+    round: 0,
+    bets: { player: 0, enemy: 0 },
+    odds: { player: 1.2, enemy: 1.2 },
+  }));
   const [freezeLayout, setFreezeLayout] = useState(false);
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
   const [phase, setPhase] = useState<CorePhase>("choose");
@@ -222,6 +242,54 @@ export function useThreeWheelGame({
     player: false,
     enemy: false,
   });
+
+  const anteStateRef = useRef(anteState);
+  useEffect(() => {
+    anteStateRef.current = anteState;
+  }, [anteState]);
+
+  const roundRef = useRef(round);
+  useEffect(() => {
+    roundRef.current = round;
+  }, [round]);
+
+  const clampAnteValue = useCallback(
+    (side: LegacySide, value: number) => {
+      if (!Number.isFinite(value)) return 0;
+      const floored = Math.floor(value);
+      const max = Math.max(0, wins[side]);
+      if (floored <= 0) return 0;
+      return Math.min(floored, max);
+    },
+    [wins]
+  );
+
+  useEffect(() => {
+    if (!isAnteMode) {
+      setAnteState((prev) => {
+        if (prev.round === round && prev.bets.player === 0 && prev.bets.enemy === 0) {
+          return prev;
+        }
+        return {
+          round,
+          bets: { player: 0, enemy: 0 },
+          odds: { player: 1.1, enemy: 1.1 },
+        };
+      });
+      return;
+    }
+
+    if (phase !== "choose") return;
+
+    setAnteState((prev) => {
+      if (prev.round === round) return prev;
+      return {
+        round,
+        bets: { player: 0, enemy: 0 },
+        odds: calculateAnteOdds({ wins, winGoal, initiative }),
+      };
+    });
+  }, [initiative, isAnteMode, phase, round, winGoal, wins]);
 
   const markResolveVote = useCallback((side: LegacySide) => {
     setResolveVotes((prev) => {
@@ -936,13 +1004,65 @@ export function useThreeWheelGame({
       if (!mountedRef.current) return;
 
       const prevInitiative = initiative;
+      const playerRoundWins = roundWinsCount.player;
+      const enemyRoundWins = roundWinsCount.enemy;
+      const roundWinner: LegacySide | null =
+        playerRoundWins === enemyRoundWins
+          ? null
+          : playerRoundWins > enemyRoundWins
+            ? "player"
+            : "enemy";
+
+      if (isAnteMode && anteStateRef.current.round === round) {
+        const bets = anteStateRef.current.bets;
+        const odds = anteStateRef.current.odds;
+
+        if (roundWinner === "player") {
+          const profit = Math.round(bets.player * Math.max(0, odds.player - 1));
+          const loss = bets.enemy;
+          if (profit > 0) {
+            pWins += profit;
+            appendLog(`${namesByLegacy.player} wins ante (+${profit}).`);
+          }
+          if (loss > 0) {
+            const nextEnemy = Math.max(0, eWins - loss);
+            if (nextEnemy !== eWins) {
+              eWins = nextEnemy;
+              appendLog(`${namesByLegacy.enemy} loses ante (-${loss}).`);
+            }
+          }
+        } else if (roundWinner === "enemy") {
+          const profit = Math.round(bets.enemy * Math.max(0, odds.enemy - 1));
+          const loss = bets.player;
+          if (profit > 0) {
+            eWins += profit;
+            appendLog(`${namesByLegacy.enemy} wins ante (+${profit}).`);
+          }
+          if (loss > 0) {
+            const nextPlayer = Math.max(0, pWins - loss);
+            if (nextPlayer !== pWins) {
+              pWins = nextPlayer;
+              appendLog(`${namesByLegacy.player} loses ante (-${loss}).`);
+            }
+          }
+        } else if (bets.player > 0 || bets.enemy > 0) {
+          appendLog(`Ante pushes on a tie.`);
+        }
+
+        setAnteState((prev) => {
+          if (prev.round !== round) return prev;
+          if (prev.bets.player === 0 && prev.bets.enemy === 0) return prev;
+          return { ...prev, bets: { player: 0, enemy: 0 } };
+        });
+      }
+
       const roundScore = `${roundWinsCount.player}-${roundWinsCount.enemy}`;
       let nextInitiative: LegacySide;
       let initiativeLog: string;
-      if (roundWinsCount.player === roundWinsCount.enemy) {
+      if (roundWinner === null) {
         nextInitiative = prevInitiative === "player" ? "enemy" : "player";
         initiativeLog = `Round ${round} tie (${roundScore}) — initiative swaps to ${namesByLegacy[nextInitiative]}.`;
-      } else if (roundWinsCount.player > roundWinsCount.enemy) {
+      } else if (roundWinner === "player") {
         nextInitiative = "player";
         initiativeLog = `${namesByLegacy.player} wins the round ${roundScore} and takes initiative next round.`;
       } else {
@@ -1039,6 +1159,24 @@ export function useThreeWheelGame({
         case "nextRound": {
           if (msg.side === localLegacySide) break;
           markAdvanceVote(msg.side);
+          break;
+        }
+        case "ante": {
+          if (!isAnteMode) break;
+          if (typeof msg.round !== "number") break;
+          if (roundRef.current !== msg.round) break;
+          const clamped = clampAnteValue(msg.side, msg.bet);
+          setAnteState((prev) => {
+            if (prev.round !== msg.round) {
+              return {
+                round: msg.round,
+                bets: { ...prev.bets, [msg.side]: clamped },
+                odds: calculateAnteOdds({ wins, winGoal, initiative }),
+              };
+            }
+            if (prev.bets[msg.side] === clamped) return prev;
+            return { ...prev, bets: { ...prev.bets, [msg.side]: clamped } };
+          });
           break;
         }
         case "rematch": {
@@ -1190,6 +1328,7 @@ export function useThreeWheelGame({
 
     setWins({ player: 0, enemy: 0 });
     setRound(1);
+    setAnteState({ round: 0, bets: { player: 0, enemy: 0 }, odds: { player: 1.2, enemy: 1.2 } });
     setPhase("choose");
 
     const emptyAssign: { player: (Card | null)[]; enemy: (Card | null)[] } = {
@@ -1263,6 +1402,27 @@ export function useThreeWheelGame({
     sendIntent({ type: "rematch", side: localLegacySide });
   }, [isMultiplayer, localLegacySide, markRematchVote, phase, rematchVotes, resetMatch, sendIntent]);
 
+  const setAnteBet = useCallback(
+    (bet: number) => {
+      if (!isAnteMode) return;
+      if (phase !== "choose") return;
+
+      const clamped = clampAnteValue(localLegacySide, bet);
+      const prevBet = anteStateRef.current.bets[localLegacySide];
+      if (prevBet === clamped) return;
+
+      setAnteState((prev) => {
+        if (prev.round !== round) return prev;
+        return { ...prev, bets: { ...prev.bets, [localLegacySide]: clamped } };
+      });
+
+      if (isMultiplayer) {
+        sendIntent({ type: "ante", side: localLegacySide, bet: clamped, round });
+      }
+    },
+    [clampAnteValue, isAnteMode, isMultiplayer, localLegacySide, phase, round, sendIntent]
+  );
+
   const handleExitClick = useCallback(() => {
     onExit?.();
   }, [onExit]);
@@ -1319,6 +1479,7 @@ export function useThreeWheelGame({
     initiative,
     wins,
     round,
+    ante: anteState,
     freezeLayout,
     lockedWheelSize,
     phase,
@@ -1380,7 +1541,35 @@ export function useThreeWheelGame({
     handleRematchClick,
     handleExitClick,
     applySpellEffects,
+    setAnteBet,
   };
 
   return { state, derived, refs, actions };
+}
+
+function calculateAnteOdds({
+  wins,
+  winGoal,
+  initiative,
+}: {
+  wins: { player: number; enemy: number };
+  winGoal: number;
+  initiative: LegacySide;
+}): Record<LegacySide, number> {
+  const result: Record<LegacySide, number> = { player: 1.2, enemy: 1.2 };
+  (Object.keys(result) as LegacySide[]).forEach((side) => {
+    const other: LegacySide = side === "player" ? "enemy" : "player";
+    const winsLeftSelf = Math.max(0, winGoal - wins[side]);
+    const winsLeftOpp = Math.max(0, winGoal - wins[other]);
+    const totalLeft = winsLeftSelf + winsLeftOpp;
+    let probability = totalLeft === 0 ? 0.5 : winsLeftOpp / totalLeft;
+
+    if (initiative === side) probability += 0.05;
+    else probability -= 0.05;
+
+    probability = Math.max(0.15, Math.min(0.85, probability));
+    const payout = Math.max(1.1, Math.round((1 / probability) * 100) / 100);
+    result[side] = payout;
+  });
+  return result;
 }
