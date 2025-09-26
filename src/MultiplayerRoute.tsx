@@ -3,6 +3,7 @@ import { Realtime } from "ably";
 import type { PresenceMessage } from "ably";
 import { TARGET_WINS, type Players, type Side } from "./game/types";
 import { DEFAULT_GAME_MODE, type GameMode } from "./gameModes";
+import LoadingScreen from "./components/LoadingScreen";
 
 // ----- Start payload now includes targetWins (wins goal) -----
 type StartMessagePayload = {
@@ -53,6 +54,8 @@ export default function MultiplayerRoute({
 
   // Game mode (host controls)
   const [gameMode, setGameMode] = useState<GameMode>(DEFAULT_GAME_MODE);
+
+  const showLoadingScreen = mode === "creating" || mode === "joining";
 
   // ---- Ably core refs ----
   const ablyRef = useRef<Realtime | null>(null);
@@ -574,6 +577,11 @@ export default function MultiplayerRoute({
 
   return (
     <div className="min-h-screen grid place-items-center bg-slate-950 text-slate-100 p-4">
+      {showLoadingScreen && (
+        <LoadingScreen>
+          <div>{mode === "creating" ? "Creating room…" : "Joining room…"}</div>
+        </LoadingScreen>
+      )}
       <div className="w-full max-w-md rounded-2xl bg-slate-900/70 p-4 ring-1 ring-white/10">
         <h1 className="text-xl font-bold mb-3">Multiplayer</h1>
 
