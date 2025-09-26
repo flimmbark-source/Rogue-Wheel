@@ -21,7 +21,7 @@ import {
   type CorePhase,
   LEGACY_FROM_SIDE,
 } from "../../../game/types";
-import type { GameMode } from "../../../gameModes";
+import { DEFAULT_GAME_MODE, normalizeGameMode, type GameMode } from "../../../gameModes";
 import { easeInOutCubic, inSection, createSeededRng } from "../../../game/math";
 import { genWheelSections } from "../../../game/wheel";
 import {
@@ -199,8 +199,8 @@ export function useThreeWheelGame({
       ? Math.max(1, Math.min(25, Math.round(targetWins)))
       : TARGET_WINS;
 
-  const currentGameMode: GameMode = gameMode ?? "classic";
-  const isAnteMode = currentGameMode === "ante";
+  const currentGameMode = normalizeGameMode(gameMode ?? DEFAULT_GAME_MODE);
+  const isAnteMode = currentGameMode.includes("ante");
 
   const hostLegacySide: LegacySide = (() => {
     if (!hostId) return "player";

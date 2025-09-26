@@ -6,7 +6,7 @@ import MultiplayerRoute from "./MultiplayerRoute";
 import { TARGET_WINS, type Players, type Side } from "./game/types";
 import ProfilePage from "./ProfilePage";
 import ModeSelect from "./ModeSelect";
-import { DEFAULT_GAME_MODE, type GameMode } from "./gameModes";
+import { DEFAULT_GAME_MODE, normalizeGameMode, type GameMode } from "./gameModes";
 
 type MPStartPayload = Parameters<
   NonNullable<React.ComponentProps<typeof MultiplayerRoute>["onStart"]>
@@ -24,7 +24,7 @@ type View =
 export default function AppShell() {
   const [view, setView] = useState<View>({ key: "hub" });
   const [mpPayload, setMpPayload] = useState<MPStartPayload | null>(null);
-  const [gameMode, setGameMode] = useState<GameMode>(DEFAULT_GAME_MODE);
+  const [gameMode, setGameMode] = useState<GameMode>(() => [...DEFAULT_GAME_MODE]);
   const [soloTargetWins, setSoloTargetWins] = useState<number>(TARGET_WINS);
 
   if (view.key === "hub") {
@@ -44,7 +44,7 @@ export default function AppShell() {
       <MultiplayerRoute
         onBack={() => setView({ key: "hub" })}
         onStart={(payload) => {
-          setGameMode(payload.gameMode);
+          setGameMode(normalizeGameMode(payload.gameMode));
           setMpPayload(payload);
           setView({
             key: "modeSelect",
@@ -89,7 +89,7 @@ export default function AppShell() {
           setMpPayload(null);
         }}
         onConfirm={(mode, winsGoal) => {
-          setGameMode(mode);
+          setGameMode(normalizeGameMode(mode));
 
           if (view.next.mode === "mp") {
             const payload = view.next.mpPayload ?? mpPayload;
@@ -97,7 +97,11 @@ export default function AppShell() {
               setView({ key: "mp" });
               return;
             }
-            const nextPayload = { ...payload, targetWins: winsGoal, gameMode: mode };
+            const nextPayload = {
+              ...payload,
+              targetWins: winsGoal,
+              gameMode: normalizeGameMode(mode),
+            };
             setMpPayload(nextPayload);
             setView({ key: "game", mode: "mp", mpPayload: nextPayload });
             return;

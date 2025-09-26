@@ -2,7 +2,16 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Realtime } from "ably";
 import type { PresenceMessage } from "ably";
 import { TARGET_WINS, type Players, type Side } from "./game/types";
-import { DEFAULT_GAME_MODE, type GameMode } from "./gameModes";
+import {
+  DEFAULT_GAME_MODE,
+  GAME_MODE_LABELS,
+  GAME_MODE_OPTIONS,
+  coerceGameMode,
+  normalizeGameMode,
+  toggleGameMode,
+  type GameMode,
+  type GameModeOption,
+} from "./gameModes";
 import LoadingScreen from "./components/LoadingScreen";
 
 // ----- Start payload now includes targetWins (wins goal) -----
@@ -28,12 +37,8 @@ type ConnectOptions = {
   requireExistingMembers?: boolean;
 };
 
-const LOBBY_MODE_OPTIONS: GameMode[] = ["classic", "grimoire", "ante"];
-const MODE_LABELS: Record<GameMode, string> = {
-  classic: "Classic",
-  grimoire: "Grimoire",
-  ante: "Ante",
-};
+const LOBBY_MODE_OPTIONS: readonly GameModeOption[] = GAME_MODE_OPTIONS;
+const MODE_LABELS: Record<GameModeOption, string> = GAME_MODE_LABELS;
 
 export default function MultiplayerRoute({
   onBack,
@@ -54,7 +59,7 @@ export default function MultiplayerRoute({
   const [targetWinsInput, setTargetWinsInput] = useState<string>(String(TARGET_WINS));
 
   // Game mode (host controls)
-  const [gameMode, setGameMode] = useState<GameMode>(DEFAULT_GAME_MODE);
+  const [gameMode, setGameMode] = useState<GameMode>(() => [...DEFAULT_GAME_MODE]);
 
   const showLoadingScreen = mode === "creating" || mode === "joining";
 
@@ -89,7 +94,7 @@ export default function MultiplayerRoute({
         clientId,
         name,
         targetWins,
-        gameMode,
+        gameMode: gameMode ? [...gameMode] : undefined,
       }))
     );
 
@@ -100,8 +105,9 @@ export default function MultiplayerRoute({
       setTargetWins(clampTargetWins(hostTargetWins));
     }
 
-    if (host?.gameMode && isGameMode(host.gameMode)) {
-      setGameMode(host.gameMode);
+    if (host) {
+      const hostModes = host.gameMode ?? DEFAULT_GAME_MODE;
+      setGameMode(normalizeGameMode(hostModes));
     }
   }, []);
 
@@ -125,6 +131,9 @@ export default function MultiplayerRoute({
               : serverTs
             : prev?.ts ?? Date.now();
 
+        const coercedMode = coerceGameMode(rawGameMode);
+        const nextMode = coercedMode ?? prev?.gameMode ?? DEFAULT_GAME_MODE;
+
         next.set(msg.clientId, {
           clientId: msg.clientId,
           name: data?.name ?? "Player",
@@ -133,7 +142,7 @@ export default function MultiplayerRoute({
             typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
               ? clampTargetWins(rawTargetWins)
               : prev?.targetWins,
-          gameMode: isGameMode(rawGameMode) ? rawGameMode : prev?.gameMode,
+          gameMode: normalizeGameMode(nextMode),
         });
       }
     }
@@ -181,7 +190,8 @@ export default function MultiplayerRoute({
         typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
           ? clampTargetWins(rawTargetWins)
           : existing?.targetWins;
-      const memberGameMode = isGameMode(rawGameMode) ? rawGameMode : existing?.gameMode;
+      const coercedMode = coerceGameMode(rawGameMode);
+      const memberGameMode = normalizeGameMode(coercedMode ?? existing?.gameMode ?? DEFAULT_GAME_MODE);
 
       if (action === "leave" || action === "absent") {
         map.delete(msg.clientId);
@@ -301,7 +311,8 @@ export default function MultiplayerRoute({
       chan.presence.subscribe(onPresence);
 
       // 3) Enter presence with the current name, targetWins, and gameMode
-      await chan.presence.enter({ name, targetWins, gameMode });
+      const initialGameMode = normalizeGameMode(gameMode);
+      await chan.presence.enter({ name, targetWins, gameMode: initialGameMode });
 
       // Seed self immediately so the UI shows the host right away
       {
@@ -310,7 +321,7 @@ export default function MultiplayerRoute({
           name,
           ts: Date.now(),
           targetWins,
-          gameMode,
+          gameMode: initialGameMode,
         };
         const map = new Map<string, MemberEntry>([[clientId, self]]);
         memberMapRef.current = map;
@@ -415,7 +426,8 @@ export default function MultiplayerRoute({
     (async () => {
       if (mode === "in-room" && channelRef.current) {
         try {
-          await channelRef.current.presence.update({ name, targetWins, gameMode });
+          const normalized = normalizeGameMode(gameMode);
+          await channelRef.current.presence.update({ name, targetWins, gameMode: normalized });
 
           const current = memberMapRef.current.get(clientId);
           const map = new Map(memberMapRef.current);
@@ -424,7 +436,7 @@ export default function MultiplayerRoute({
             name,
             targetWins,
             ts: current?.ts ?? Date.now(),
-            gameMode,
+            gameMode: normalized,
           });
           memberMapRef.current = map;
           commitMembers(map);
@@ -512,7 +524,7 @@ export default function MultiplayerRoute({
     setJoinCode("");
     setTargetWins(TARGET_WINS);
     setTargetWinsInput(TARGET_WINS.toString());
-    setGameMode(DEFAULT_GAME_MODE);
+    setGameMode([...DEFAULT_GAME_MODE]);
   }
 
   async function onStartGame() {
@@ -534,7 +546,7 @@ export default function MultiplayerRoute({
       hostId: members[0].clientId, // first in presence is host
       playersArr: members,         // optional, for debugging/analytics
       targetWins: winsGoal,        // 👈 pass wins goal into the game
-      gameMode,                    // 👈 pass lobby-selected mode
+      gameMode: normalizeGameMode(gameMode), // 👈 pass lobby-selected mode
     };
 
     await channelRef.current?.publish("start", payload);
@@ -568,10 +580,10 @@ export default function MultiplayerRoute({
     }
   }, [targetWinsInput]);
 
-  const handleGameModeSelect = useCallback(
-    (nextMode: GameMode) => {
+  const handleGameModeToggle = useCallback(
+    (option: GameModeOption) => {
       if (!isHost) return;
-      setGameMode(nextMode);
+      setGameMode((prev) => toggleGameMode(prev, option));
     },
     [isHost]
   );
@@ -667,17 +679,18 @@ export default function MultiplayerRoute({
                   </div>
                 </div>
                 <div className="flex-1">
-                  <div className="text-sm opacity-80 mb-1">Mode</div>
-                  <div className="inline-flex rounded-lg bg-black/40 p-0.5 ring-1 ring-white/10">
+                  <div className="text-sm opacity-80 mb-1">Modes</div>
+                  <div className="inline-flex flex-wrap gap-1 rounded-lg bg-black/40 p-1 ring-1 ring-white/10">
                     {LOBBY_MODE_OPTIONS.map((option) => {
-                      const selected = gameMode === option;
+                      const selected = gameMode.includes(option);
                       return (
                         <button
                           key={option}
                           type="button"
-                          onClick={() => handleGameModeSelect(option)}
+                          onClick={() => handleGameModeToggle(option)}
                           aria-pressed={selected}
                           aria-disabled={!isHost}
+                          disabled={!isHost}
                           className={[
                             "rounded-md px-3 py-1.5 text-sm font-semibold transition",
                             selected
@@ -690,6 +703,9 @@ export default function MultiplayerRoute({
                         </button>
                       );
                     })}
+                  </div>
+                  <div className="mt-2 text-xs text-white/60">
+                    Leave all toggles off to play Classic.
                   </div>
                 </div>
               </div>
@@ -775,10 +791,6 @@ function clampTargetWins(value: number) {
   const rounded = Math.round(value);
   const clamped = Math.max(1, Math.min(25, rounded));
   return clamped;
-}
-
-function isGameMode(value: unknown): value is GameMode {
-  return value === "classic" || value === "grimoire" || value === "ante";
 }
 
 // Assign sides from presence order (host=left, first joiner=right)
