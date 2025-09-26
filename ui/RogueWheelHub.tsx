@@ -329,7 +329,10 @@ function HowToContent() {
         <div className="grid gap-3 rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
           <div className="font-semibold">Tips</div>
           <ul className="list-disc pl-5 space-y-1">
-            <li>Win a wheel to gain <b>+1 Mana</b>; save for key moments or chain multiple small spells.</li>
+            <li>
+              After both players resolve a round, gain <b>Mana equal to half of your reserve sum</b> (rounded up);
+              save it for key moments or chain multiple small spells.
+            </li>
             <li>Check spell <b>phase</b>, most work in <i>Choose</i>, some only after Resolve.</li>
             <li>If a spell is disabled, you’re either short on Mana or it’s the wrong phase.</li>
           </ul>
@@ -346,7 +349,8 @@ function HowToContent() {
           <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
             <div className="font-semibold">Mana & Availability</div>
             <p>
-              🔹 Mana increases by winning wheels. Spells show cost and whether they’re usable <i>now</i>.
+              🔹 Mana is awarded after Resolve based on half of your remaining reserve (rounded up). Spells show cost
+              and whether they’re usable <i>now</i>.
             </p>
           </div>
         </div>

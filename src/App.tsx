@@ -279,6 +279,7 @@ export default function ThreeWheel_WinsOnly({
 
   const [manaPools, setManaPools] = useState<SideState<number>>({ player: 0, enemy: 0 });
   const localMana = manaPools[localLegacySide];
+  const lastManaAwardedRoundRef = useRef<number | null>(null);
 
   const [showGrimoire, setShowGrimoire] = useState(false);
   const closeGrimoire = useCallback(() => setShowGrimoire(false), [setShowGrimoire]);
@@ -505,20 +506,27 @@ export default function ThreeWheel_WinsOnly({
     };
   }, [showGrimoire, updateGrimoirePosition]);
 
-  // grant mana on wins (client-side only demo)
-  const prevWinsRef = useRef(wins);
   useEffect(() => {
-    const prev = prevWinsRef.current;
-    const playerGain = Math.max(0, wins.player - prev.player);
-    const enemyGain = Math.max(0, wins.enemy - prev.enemy);
-    if (playerGain > 0 || enemyGain > 0) {
-      setManaPools((current) => ({
-        player: current.player + playerGain,
-        enemy: current.enemy + enemyGain,
-      }));
+    if (!(phaseForLogic === "roundEnd" || phaseForLogic === "ended")) {
+      return;
     }
-    prevWinsRef.current = wins;
-  }, [wins]);
+    if (!reserveSums) {
+      return;
+    }
+    if (lastManaAwardedRoundRef.current === round) {
+      return;
+    }
+    lastManaAwardedRoundRef.current = round;
+    const playerGain = Math.ceil(reserveSums.player / 2);
+    const enemyGain = Math.ceil(reserveSums.enemy / 2);
+    if (playerGain === 0 && enemyGain === 0) {
+      return;
+    }
+    setManaPools((current) => ({
+      player: current.player + playerGain,
+      enemy: current.enemy + enemyGain,
+    }));
+  }, [phaseForLogic, reserveSums, round]);
 
   // --- render helpers ---
 type SlotView = { side: LegacySide; card: Card | null; name: string };
@@ -915,10 +923,11 @@ const renderWheelPanel = (i: number) => {
                       <div>
                         Spells cost <span className="font-semibold">Mana</span> to cast. Your
                         <span className="font-semibold"> Grimoire</span> can be accessed by pressing on your
-                        <span className="font-semibold"> 🔮 Mana</span>. You gain
-                        <span className="font-semibold"> +1 Mana</span> for each wheel you win. Some spells require you to
-                        select <span className="font-semibold">either a card or a wheel</span> before they resolve. Most
-                        spells are available after the Resolve phase, but some can be cast at any time.
+                        <span className="font-semibold"> 🔮 Mana</span>. After both players resolve and the wheels finish
+                        moving, you gain <span className="font-semibold">Mana equal to half your reserve sum</span>
+                        (rounded up). Some spells require you to select{" "}
+                        <span className="font-semibold">either a card or a wheel</span> before they resolve. Most spells
+                        are available after the Resolve phase, but some can be cast at any time.
                       </div>
                     </div>
                   )}
