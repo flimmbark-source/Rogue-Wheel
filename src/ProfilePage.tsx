@@ -5,6 +5,7 @@ import {
   type ProfileBundle,
   updateProfileDisplayName,
 } from "./player/profileStore";
+import LoadingScreen from "./components/LoadingScreen";
 
 export default function ProfilePage() {
   // Initialize immediately so we can render without waiting for an effect
@@ -63,15 +64,20 @@ export default function ProfilePage() {
 
   if (!bundle) {
     return (
-      <div className="p-4">
-        Loading profile…
+      <LoadingScreen>
+        <div>Loading profile…</div>
         <button
-          className="ml-3 underline text-xs"
-          onClick={() => { try { localStorage.removeItem("rw:single:state"); } catch {}; location.reload(); }}
+          className="inline-flex items-center justify-center rounded bg-white/10 px-3 py-1 text-xs font-medium text-white/80 ring-1 ring-white/20 transition hover:bg-white/15 hover:text-white"
+          onClick={() => {
+            try {
+              localStorage.removeItem("rw:single:state");
+            } catch {}
+            location.reload();
+          }}
         >
-          reset
+          Reset profile
         </button>
-      </div>
+      </LoadingScreen>
     );
   }
 
