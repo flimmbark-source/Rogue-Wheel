@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import {
   getProfileBundle,
   expRequiredForLevel,
   type ProfileBundle,
   updateProfileDisplayName,
+  getOnboardingState,
+  type OnboardingState,
+  setTutorialEnabled,
 } from "./player/profileStore";
 import LoadingScreen from "./components/LoadingScreen";
 
@@ -17,16 +20,33 @@ export default function ProfilePage() {
     bundle?.profile.displayName ?? "Local Player"
   );
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const isTutorialDisabled = useCallback(
+    (state: OnboardingState) =>
+      state.stage >= 3 && state.dismissed.includes("firstRunCoach"),
+    [],
+  );
+  const [tutorialEnabled, setTutorialEnabledState] = useState<boolean>(() => {
+    try {
+      const onboarding = getOnboardingState();
+      return !(
+        onboarding.stage >= 3 && onboarding.dismissed.includes("firstRunCoach")
+      );
+    } catch {
+      return true;
+    }
+  });
 
   // Refresh once on mount (covers first-run seed or any changes)
   useEffect(() => {
     try {
       const b = getProfileBundle();
       setBundle(b);
+      const onboarding = getOnboardingState();
+      setTutorialEnabledState(!isTutorialDisabled(onboarding));
     } catch (e) {
       console.error("getProfileBundle failed:", e);
     }
-  }, []);
+  }, [isTutorialDisabled]);
 
   useEffect(() => {
     setNameInput(bundle?.profile.displayName ?? "Local Player");
@@ -61,6 +81,20 @@ export default function ProfilePage() {
     setNameInput(bundle?.profile.displayName ?? "Local Player");
     setIsEditingName(false);
   }, [bundle?.profile.displayName]);
+
+  const handleTutorialChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const enabled = event.target.value === "enabled";
+      try {
+        const updated = setTutorialEnabled(enabled);
+        setTutorialEnabledState(!isTutorialDisabled(updated));
+      } catch (error) {
+        console.error("setTutorialEnabled failed:", error);
+        setTutorialEnabledState(enabled);
+      }
+    },
+    [isTutorialDisabled],
+  );
 
   if (!bundle) {
     return (
@@ -137,6 +171,22 @@ export default function ProfilePage() {
             />
           </div>
           <div className="mt-1 text-xs text-white/60">Current streak: {profile.winStreak}</div>
+        </div>
+        <div className="mt-3 flex flex-col gap-2 rounded-lg bg-white/5 p-3 ring-1 ring-white/10 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm font-medium text-white">Tutorial</div>
+            <div className="text-xs text-white/60">
+              Choose whether to see the guided tutorial in future runs.
+            </div>
+          </div>
+          <select
+            className="w-full rounded border border-white/20 bg-slate-900/60 px-2 py-1 text-sm text-white shadow-inner transition focus:border-emerald-300 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 sm:w-40"
+            value={tutorialEnabled ? "enabled" : "disabled"}
+            onChange={handleTutorialChange}
+          >
+            <option value="enabled">Enabled</option>
+            <option value="disabled">Disabled</option>
+          </select>
         </div>
       </section>
     </div>
