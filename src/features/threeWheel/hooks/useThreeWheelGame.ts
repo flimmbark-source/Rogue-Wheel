@@ -1285,7 +1285,8 @@ export function useThreeWheelGame({
         ablyRef.current = null;
       }
     };
-  }, [roomCode, localPlayerId, handleMPIntent]);
+    // handleMPIntent is intentionally omitted: handleMPIntentRef keeps the latest callback.
+  }, [roomCode, localPlayerId]);
 
   const handleRevealClick = useCallback(() => {
     if (phase !== "choose" || !canReveal) return;
