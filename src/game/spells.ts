@@ -1,11 +1,7 @@
 // game/spells.ts (merged)
 
-import type { Fighter, Phase } from "./types";
-import {
-  ARCHETYPE_DEFINITIONS,
-  type ArchetypeId as SpellArchetype,
-  type SpellId, // single source of truth for IDs (camelCase)
-} from "./archetypes";
+import type { Fighter, Phase } from "./types.js";
+import { ARCHETYPE_DEFINITIONS, DEFAULT_ARCHETYPE, type ArchetypeId as SpellArchetype } from "./archetypes.js";
 
 export type SpellTargetOwnership = "ally" | "enemy" | "any";
 
@@ -30,7 +26,7 @@ export const spellTargetRequiresManualSelection = (
 
 export function getSpellDefinitions(ids: SpellId[]): SpellDefinition[] {
   return ids
-    .map((id) => getSpellById(id))
+    .map((id: SpellId) => getSpellById(id))
     .filter((s): s is SpellDefinition => Boolean(s));
 }
 
@@ -53,7 +49,7 @@ export type SpellResolverContext = {
 export type SpellResolver = (context: SpellResolverContext) => void;
 
 export type SpellDefinition = {
-  id: SpellId;
+  id: string;
   name: string;
   description: string;
   cost: number;
@@ -89,7 +85,7 @@ const describeTarget = (target?: SpellTargetInstance): string => {
 };
 
 // ---------- registry (IDs MUST match archetypes SpellId union: camelCase) ----------
-const SPELL_REGISTRY: Record<SpellId, SpellDefinition> = {
+const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   fireball: {
     id: "fireball",
     name: "Fireball",
@@ -262,7 +258,7 @@ function inferSpellArchetypeFromFighter(fighter: Fighter): SpellArchetype {
   if (n.includes("bandit")) return "bandit";
   if (n.includes("sorcerer")) return "sorcerer";
   if (n.includes("beast")) return "beast";
-  return "wanderer";
+  return DEFAULT_ARCHETYPE;
 }
 
 export function getLearnedSpellsForFighter(fighter: Fighter): SpellDefinition[] {
@@ -280,3 +276,5 @@ export function getLearnedSpellsForFighter(fighter: Fighter): SpellDefinition[] 
   }
   return baseBook;
 }
+
+export type SpellId = keyof typeof SPELL_REGISTRY;

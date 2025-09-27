@@ -1,12 +1,12 @@
-import type { Fighter, Phase } from "./types";
-import { SLICES } from "./types";
+import type { Fighter, Phase } from "./types.js";
+import { SLICES } from "./types.js";
 import type {
   SpellDefinition,
   SpellRuntimeState,
   SpellTargetInstance,
   SpellTargetOwnership,
-} from "./spells";
-import { spellTargetRequiresManualSelection } from "./spells";
+} from "./spells.js";
+import { spellTargetRequiresManualSelection } from "./spells.js";
 import {
   applyCardStatAdjustments,
   applyChilledCardUpdates,
@@ -16,10 +16,10 @@ import {
   type LaneChillStacks,
   type LegacySide,
   type SpellEffectPayload,
-} from "../features/threeWheel/utils/spellEffectTransforms";
+} from "../features/threeWheel/utils/spellEffectTransforms.js";
 
-export type { LegacySide, SpellEffectPayload, LaneChillStacks } from "../features/threeWheel/utils/spellEffectTransforms";
-export type { SpellDefinition, SpellRuntimeState, SpellTargetInstance, SpellTargetOwnership } from "./spells";
+export type { LegacySide, SpellEffectPayload, LaneChillStacks } from "../features/threeWheel/utils/spellEffectTransforms.js";
+export type { SpellDefinition, SpellRuntimeState, SpellTargetInstance, SpellTargetOwnership } from "./spells.js";
 
 export { spellTargetRequiresManualSelection };
 
@@ -118,70 +118,64 @@ export function resolvePendingSpell(params: ResolveSpellParams): SpellResolution
   }
 
   const mirrorCopyEffects = Array.isArray(runtimeState.mirrorCopyEffects)
-    ? (runtimeState.mirrorCopyEffects
-        .map((effect) => {
-          if (effect && typeof effect.targetCardId === "string") {
-            return {
-              targetCardId: effect.targetCardId,
-              mode: typeof effect.mode === "string" ? effect.mode : undefined,
-            };
-          }
-          return null;
+    ? runtimeState.mirrorCopyEffects
+        .map((effect: unknown) => {
+          if (!effect || typeof effect !== "object") return null;
+          const targetCardId = (effect as { targetCardId?: unknown }).targetCardId;
+          if (typeof targetCardId !== "string") return null;
+          const mode = (effect as { mode?: unknown }).mode;
+          return {
+            targetCardId,
+            mode: typeof mode === "string" ? mode : undefined,
+          };
         })
-        .filter((effect): effect is { targetCardId: string; mode?: string } => effect !== null) as Array<{
-        targetCardId: string;
-        mode?: string;
-      }>)
+        .filter((effect): effect is { targetCardId: string; mode: string | undefined } => effect !== null)
     : undefined;
 
   const wheelTokenAdjustments = Array.isArray(runtimeState.wheelTokenAdjustments)
-    ? (runtimeState.wheelTokenAdjustments
-        .map((entry) => {
-          if (
-            entry &&
-            typeof entry.amount === "number" &&
-            entry.target &&
-            entry.target.type === "wheel" &&
-            typeof entry.target.wheelId === "string"
-          ) {
-            const idx = Number.parseInt(entry.target.wheelId, 10);
-            if (Number.isInteger(idx)) {
-              return { wheelIndex: idx, amount: entry.amount };
-            }
-          }
-          return null;
+    ? runtimeState.wheelTokenAdjustments
+        .map((entry: unknown) => {
+          if (!entry || typeof entry !== "object") return null;
+          const amount = (entry as { amount?: unknown }).amount;
+          if (typeof amount !== "number") return null;
+          const target = (entry as { target?: unknown }).target;
+          if (!target || typeof target !== "object") return null;
+          const targetType = (target as { type?: unknown }).type;
+          const wheelId = (target as { wheelId?: unknown }).wheelId;
+          if (targetType !== "wheel" || typeof wheelId !== "string") return null;
+          const idx = Number.parseInt(wheelId, 10);
+          if (!Number.isInteger(idx)) return null;
+          return { wheelIndex: idx, amount };
         })
-        .filter((entry): entry is { wheelIndex: number; amount: number } => entry !== null) as Array<{
-        wheelIndex: number;
-        amount: number;
-      }>)
+        .filter((entry): entry is { wheelIndex: number; amount: number } => entry !== null)
     : undefined;
 
   const reserveDrains = Array.isArray(runtimeState.reserveDrains)
-    ? (runtimeState.reserveDrains
-        .map((entry) => {
-          if (!entry || typeof entry.amount !== "number") return null;
+    ? runtimeState.reserveDrains
+        .map((entry: unknown) => {
+          if (!entry || typeof entry !== "object") return null;
+          const amount = (entry as { amount?: unknown }).amount;
+          if (typeof amount !== "number") return null;
 
           let targetSide: LegacySide | null = null;
-          if (entry.target && entry.target.type === "card") {
-            if (entry.target.owner === "ally") targetSide = descriptor.side;
-            else if (entry.target.owner === "enemy") targetSide = descriptor.side === "player" ? "enemy" : "player";
+          const target = (entry as { target?: unknown }).target;
+          if (target && typeof target === "object" && (target as { type?: unknown }).type === "card") {
+            const owner = (target as { owner?: unknown }).owner;
+            if (owner === "ally") targetSide = descriptor.side;
+            else if (owner === "enemy") targetSide = descriptor.side === "player" ? "enemy" : "player";
           }
 
           if (!targetSide) {
             targetSide = descriptor.side === "player" ? "enemy" : "player";
           }
 
-          return { side: targetSide, amount: entry.amount };
+          return { side: targetSide, amount };
         })
-        .filter((entry): entry is { side: LegacySide; amount: number } => entry !== null) as Array<{
-        side: LegacySide;
-        amount: number;
-      }>)
+        .filter((entry): entry is { side: LegacySide; amount: number } => entry !== null)
     : undefined;
 
   const logMessages = Array.isArray(runtimeState.log)
-    ? runtimeState.log.filter((entry): entry is string => typeof entry === "string")
+    ? runtimeState.log.filter((entry: unknown): entry is string => typeof entry === "string")
     : undefined;
 
   const runtimeSummary = collectRuntimeSpellEffects(runtimeState, descriptor.side);
@@ -319,6 +313,7 @@ export function applySpellEffects<CardT extends { id: string }>(
     logMessages,
   } = payload;
 
+  let mirrorUpdatedAssignments: AssignmentState<CardT> | null = null;
   if (mirrorCopyEffects?.length) {
     updateAssignments((prev) => {
       let nextPlayer = prev.player;
@@ -372,7 +367,29 @@ export function applySpellEffects<CardT extends { id: string }>(
       });
 
       if (!changed) return prev;
-      return { player: nextPlayer, enemy: nextEnemy };
+      const updated = { player: nextPlayer, enemy: nextEnemy };
+      mirrorUpdatedAssignments = updated;
+      return updated;
+    });
+  }
+
+  if (mirrorUpdatedAssignments) {
+    const nextTokens = computeWheelTokenTargets(mirrorUpdatedAssignments);
+    const changedIndices: number[] = [];
+    updateTokens((prev) => {
+      let next = prev;
+      for (let i = 0; i < nextTokens.length; i++) {
+        if (nextTokens[i] !== prev[i]) {
+          if (next === prev) next = [...prev] as [number, number, number];
+          next[i] = nextTokens[i];
+          changedIndices.push(i);
+        }
+      }
+      return next === prev ? prev : next;
+    });
+
+    changedIndices.forEach((index) => {
+      updateTokenVisual?.(index, nextTokens[index]);
     });
   }
 
