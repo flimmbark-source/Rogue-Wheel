@@ -625,6 +625,11 @@ export default function ThreeWheel_WinsOnly({
     phase !== "ended" &&
     phase !== "spellTargeting";
 
+  const handleCoachAdvance = useCallback(() => {
+    const nextStage = Math.min(onboardingStage + 1, 3);
+    persistStage(nextStage);
+  }, [onboardingStage, persistStage]);
+
   const handleCoachDismiss = useCallback(() => {
     const staged = persistStage(3);
     const updated = dismissOnboardingHint("firstRunCoach");
@@ -1427,6 +1432,7 @@ const renderWheelPanel = (i: number) => {
         handCount={player.hand.length}
         phase={phaseForLogic}
         onDismiss={handleCoachDismiss}
+        onAdvance={handleCoachAdvance}
       />
 
       {/* Ended overlay (banner + modal) */}
