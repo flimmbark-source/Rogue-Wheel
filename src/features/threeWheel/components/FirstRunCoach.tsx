@@ -130,13 +130,13 @@ const FirstRunCoach: React.FC<FirstRunCoachProps> = ({
       return {
         title: "Play a card",
         body:
-          "Drag a card from your hand onto any wheel slot to get started. Cards you play stay until the round resolves.",
+          "Drag a card from your hand into a card slot beside any wheel to get started.",
         meta: handCount > 0 ? `${handCount} card${handCount === 1 ? "" : "s"} in hand` : undefined,
       };
     }
     if (stage === 1) {
       return {
-        title: "Fill each wheel",
+        title: " Each wheel uses the sum of both cards placed beside it to determine its Victory Condition. Fill each slot beside a wheel with a card",
         body: `You still need to cover every wheel before resolving. Slots filled: ${assignedCount}/${totalSlots}.`,
       };
     }
@@ -144,7 +144,7 @@ const FirstRunCoach: React.FC<FirstRunCoachProps> = ({
       return {
         title: "Resolve the round",
         body: readyToResolve
-          ? "Press Resolve to spin the wheels and find out which rule decides the winner."
+          ? "Press Resolve to spin the wheels and find out which rule decides the winner for each wheel."
           : "Resolve becomes available once both sides finish assigning cards.",
       };
     }
