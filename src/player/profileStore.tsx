@@ -225,6 +225,30 @@ export function dismissOnboardingHint(id: string): OnboardingState {
   return { stage: onboarding.stage, dismissed: [...onboarding.dismissed] };
 }
 
+export function setTutorialEnabled(enabled: boolean): OnboardingState {
+  const state = loadStateRaw();
+  const onboarding = ensureOnboarding(state);
+
+  const nextStage = enabled ? 0 : Math.max(3, onboarding.stage);
+  const nextDismissed = enabled
+    ? onboarding.dismissed.filter((id) => id !== "firstRunCoach")
+    : Array.from(new Set([...onboarding.dismissed, "firstRunCoach"]));
+
+  const stageChanged = onboarding.stage !== nextStage;
+  const dismissedChanged = nextDismissed.length !== onboarding.dismissed.length ||
+    nextDismissed.some((id, index) => onboarding.dismissed[index] !== id);
+
+  onboarding.stage = nextStage;
+  onboarding.dismissed = nextDismissed;
+  state.onboarding = { stage: onboarding.stage, dismissed: [...onboarding.dismissed] };
+
+  if (stageChanged || dismissedChanged) {
+    saveState(state);
+  }
+
+  return { stage: onboarding.stage, dismissed: [...onboarding.dismissed] };
+}
+
 // ===== Helpers =====
 const findActive = (s: LocalState) => s.decks.find(d => d.isActive) ?? s.decks[0];
 const sum = (cards: DeckCard[]) => cards.reduce((a, c) => a + c.qty, 0);
