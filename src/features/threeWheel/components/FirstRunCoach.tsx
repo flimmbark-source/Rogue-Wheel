@@ -15,6 +15,7 @@ type FirstRunCoachProps = {
   handCount: number;
   phase: CorePhase;
   onDismiss: () => void;
+  onAdvance: () => void;
 };
 
 type CoachGeometry = {
@@ -77,6 +78,7 @@ const FirstRunCoach: React.FC<FirstRunCoachProps> = ({
   handCount,
   phase,
   onDismiss,
+  onAdvance,
 }) => {
   const [geometry, setGeometry] = useState<CoachGeometry | null>(null);
 
@@ -202,13 +204,22 @@ const FirstRunCoach: React.FC<FirstRunCoachProps> = ({
           {stageCopy.meta ? (
             <div className="mt-2 text-xs uppercase tracking-wide text-emerald-300/80">{stageCopy.meta}</div>
           ) : null}
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="mt-3 inline-flex items-center justify-center rounded border border-emerald-400/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-200 transition hover:border-emerald-300 hover:text-emerald-100"
-          >
-            Skip tutorial
-          </button>
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onDismiss}
+              className="inline-flex items-center justify-center rounded border border-emerald-400/60 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-200 transition hover:border-emerald-300 hover:text-emerald-100"
+            >
+              Skip tutorial
+            </button>
+            <button
+              type="button"
+              onClick={onAdvance}
+              className="inline-flex items-center justify-center rounded bg-emerald-400/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-950 transition hover:bg-emerald-300"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
     </div>
