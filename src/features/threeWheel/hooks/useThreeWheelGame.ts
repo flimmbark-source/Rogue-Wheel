@@ -1295,8 +1295,6 @@ export function useThreeWheelGame({
       return;
     }
 
-    if (resolveVotes[localLegacySide]) return;
-
     markResolveVote(localLegacySide);
     sendIntent({ type: "reveal", side: localLegacySide });
     setTimeout(() => {
