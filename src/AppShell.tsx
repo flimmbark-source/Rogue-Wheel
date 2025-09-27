@@ -44,13 +44,11 @@ export default function AppShell() {
       <MultiplayerRoute
         onBack={() => setView({ key: "hub" })}
         onStart={(payload) => {
-          setGameMode(normalizeGameMode(payload.gameMode));
-          setMpPayload(payload);
-          setView({
-            key: "modeSelect",
-            from: "mp",
-            next: { key: "game", mode: "mp", mpPayload: payload },
-          });
+          const normalizedMode = normalizeGameMode(payload.gameMode);
+          const nextPayload = { ...payload, gameMode: normalizedMode };
+          setGameMode(normalizedMode);
+          setMpPayload(nextPayload);
+          setView({ key: "game", mode: "mp", mpPayload: nextPayload });
         }}
       />
     );

@@ -230,10 +230,18 @@ export function useThreeWheelGame({
   const [freezeLayout, setFreezeLayout] = useState(false);
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
   const [phase, setPhase] = useState<CorePhase>("choose");
+  const phaseRef = useRef(phase);
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
   const [resolveVotes, setResolveVotes] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
   });
+  const resolveVotesRef = useRef(resolveVotes);
+  useEffect(() => {
+    resolveVotesRef.current = resolveVotes;
+  }, [resolveVotes]);
   const [advanceVotes, setAdvanceVotes] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
@@ -242,6 +250,9 @@ export function useThreeWheelGame({
     player: false,
     enemy: false,
   });
+
+  const canRevealRef = useRef(false);
+  const revealRoundCoreRef = useRef<((opts?: { force?: boolean }) => boolean) | null>(null);
 
   const anteStateRef = useRef(anteState);
   useEffect(() => {
@@ -291,17 +302,45 @@ export function useThreeWheelGame({
     });
   }, [initiative, isAnteMode, phase, round, winGoal, wins]);
 
-  const markResolveVote = useCallback((side: LegacySide) => {
-    setResolveVotes((prev) => {
-      if (prev[side]) return prev;
-      return { ...prev, [side]: true };
-    });
-  }, []);
+  const markResolveVote = useCallback(
+    (side: LegacySide) => {
+      setResolveVotes((prev) => {
+        if (prev[side]) return prev;
+        const next = { ...prev, [side]: true };
+        resolveVotesRef.current = next;
+
+        if (
+          isMultiplayer &&
+          phaseRef.current === "choose" &&
+          canRevealRef.current &&
+          next.player &&
+          next.enemy
+        ) {
+          setSafeTimeout(() => {
+            if (!mountedRef.current) return;
+            const currentVotes = resolveVotesRef.current;
+            if (
+              currentVotes.player &&
+              currentVotes.enemy &&
+              phaseRef.current === "choose"
+            ) {
+              revealRoundCoreRef.current?.();
+            }
+          }, 0);
+        }
+
+        return next;
+      });
+    },
+    [isMultiplayer, setSafeTimeout],
+  );
 
   const clearResolveVotes = useCallback(() => {
     setResolveVotes((prev) => {
       if (!prev.player && !prev.enemy) return prev;
-      return { player: false, enemy: false };
+      const reset = { player: false, enemy: false };
+      resolveVotesRef.current = reset;
+      return reset;
     });
   }, []);
 
@@ -567,6 +606,9 @@ export function useThreeWheelGame({
     const lane = localLegacySide === "player" ? assign.player : assign.enemy;
     return lane.every((c, i) => !active[i] || !!c);
   }, [assign, active, localLegacySide]);
+  useEffect(() => {
+    canRevealRef.current = canReveal;
+  }, [canReveal]);
 
   const wheelRefs = [
     useRef<WheelHandle | null>(null),
@@ -843,6 +885,9 @@ export function useThreeWheelGame({
     },
     [broadcastLocalReserve, canReveal, clearResolveVotes, isMultiplayer, wheelSize]
   );
+  useEffect(() => {
+    revealRoundCoreRef.current = revealRoundCore;
+  }, [revealRoundCore]);
 
   const onReveal = useCallback(() => {
     revealRoundCore();
