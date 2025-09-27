@@ -148,6 +148,25 @@ export type ThreeWheelGameReturn = {
   actions: ThreeWheelGameActions;
 };
 
+type WheelOutcome = {
+  steps: number;
+  targetSlice: number;
+  section: Section;
+  winner: LegacySide | null;
+  tie: boolean;
+  wheel: number;
+  detail: string;
+};
+
+type RoundAnalysis = {
+  outcomes: WheelOutcome[];
+  localReserve: number;
+  remoteReserve: number;
+  pReserve: number;
+  eReserve: number;
+  usedRemoteReport: boolean;
+};
+
 export function useThreeWheelGame({
   localSide,
   localPlayerId,
@@ -230,6 +249,10 @@ export function useThreeWheelGame({
   const [freezeLayout, setFreezeLayout] = useState(false);
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
   const [phase, setPhase] = useState<CorePhase>("choose");
+  const phaseRef = useRef(phase);
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
   const [resolveVotes, setResolveVotes] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
@@ -500,6 +523,7 @@ export function useThreeWheelGame({
   }, [seed, generateWheelSet]);
 
   const [tokens, setTokens] = useState<[number, number, number]>([0, 0, 0]);
+  const tokensRef = useRef(tokens);
   const [active] = useState<[boolean, boolean, boolean]>([true, true, true]);
   const [wheelHUD, setWheelHUD] = useState<[string | null, string | null, string | null]>([null, null, null]);
   const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>({
@@ -512,12 +536,16 @@ export function useThreeWheelGame({
   });
   const laneChillRef = useRef(laneChillStacks);
   const assignRef = useRef(assign);
+  const roundAnalysisRef = useRef<RoundAnalysis | null>(null);
   useEffect(() => {
     assignRef.current = assign;
   }, [assign]);
   useEffect(() => {
     laneChillRef.current = laneChillStacks;
   }, [laneChillStacks]);
+  useEffect(() => {
+    tokensRef.current = tokens;
+  }, [tokens]);
 
   const reserveReportsRef = useRef<
     Record<LegacySide, { reserve: number; round: number } | null>
@@ -750,6 +778,94 @@ export function useThreeWheelGame({
     return Math.max(0, base - penalty);
   }
 
+  function analyzeRound(played: { p: Card | null; e: Card | null }[]): RoundAnalysis {
+    const localPlayed =
+      localLegacySide === "player" ? played.map((pe) => pe.p) : played.map((pe) => pe.e);
+    const remotePlayed =
+      localLegacySide === "player" ? played.map((pe) => pe.e) : played.map((pe) => pe.p);
+
+    const localReport = reserveReportsRef.current[localLegacySide];
+    const localReserve =
+      localReport && localReport.round === round
+        ? localReport.reserve
+        : computeReserveSum(localLegacySide, localPlayed);
+    let remoteReserve: number;
+    let usedRemoteReport = false;
+
+    if (isMultiplayer) {
+      const report = reserveReportsRef.current[remoteLegacySide];
+      if (report && report.round === round) {
+        remoteReserve = report.reserve;
+        usedRemoteReport = true;
+      } else {
+        remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+      }
+    } else {
+      remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
+    }
+
+    const pReserve = localLegacySide === "player" ? localReserve : remoteReserve;
+    const eReserve = localLegacySide === "enemy" ? localReserve : remoteReserve;
+
+    const outcomes: WheelOutcome[] = [];
+    const tokensSnapshot = tokensRef.current ?? tokens;
+
+    for (let w = 0; w < 3; w++) {
+      const secList = wheelSections[w];
+      const baseP = played[w].p?.number ?? 0;
+      const baseE = played[w].e?.number ?? 0;
+      const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
+      const startToken = tokensSnapshot[w] ?? 0;
+      const targetSlice = (startToken + steps) % SLICES;
+      const section =
+        secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) ||
+        ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
+
+      const pVal = baseP;
+      const eVal = baseE;
+      let winner: LegacySide | null = null;
+      let tie = false;
+      let detail = "";
+      switch (section.id) {
+        case "Strongest":
+          if (pVal === eVal) tie = true;
+          else winner = pVal > eVal ? "player" : "enemy";
+          detail = `Strongest ${pVal} vs ${eVal}`;
+          break;
+        case "Weakest":
+          if (pVal === eVal) tie = true;
+          else winner = pVal < eVal ? "player" : "enemy";
+          detail = `Weakest ${pVal} vs ${eVal}`;
+          break;
+        case "ReserveSum":
+          if (pReserve === eReserve) tie = true;
+          else winner = pReserve > eReserve ? "player" : "enemy";
+          detail = `Reserve ${pReserve} vs ${eReserve}`;
+          break;
+        case "ClosestToTarget": {
+          const t = targetSlice === 0 ? section.target ?? 0 : targetSlice;
+          const pd = Math.abs(pVal - t);
+          const ed = Math.abs(eVal - t);
+          if (pd === ed) tie = true;
+          else winner = pd < ed ? "player" : "enemy";
+          detail = `Closest to ${t}: ${pVal} vs ${eVal}`;
+          break;
+        }
+        case "Initiative":
+          winner = initiative;
+          detail = `Initiative -> ${winner}`;
+          break;
+        default:
+          tie = true;
+          detail = `Slice 0: no section`;
+          break;
+      }
+      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail });
+    }
+
+    return { outcomes, localReserve, remoteReserve, pReserve, eReserve, usedRemoteReport };
+  }
+
   const broadcastLocalReserve = useCallback(() => {
     const lane = localLegacySide === "player" ? assignRef.current.player : assignRef.current.enemy;
     const reserve = computeReserveSum(localLegacySide, lane);
@@ -787,6 +903,10 @@ export function useThreeWheelGame({
         },
         options,
       );
+
+      if (phaseRef.current === "anim" || phaseRef.current === "roundEnd") {
+        resolveRound(undefined, { skipAnimation: true });
+      }
     },
     [
       appendLog,
@@ -799,6 +919,7 @@ export function useThreeWheelGame({
       setLaneChillStacks,
       setInitiative,
       applyReservePenalty,
+      resolveRound,
       wheelRefs,
     ],
   );
@@ -891,116 +1012,39 @@ export function useThreeWheelGame({
     attemptAutoReveal();
   }, [attemptAutoReveal, resolveVotes]);
 
-  function resolveRound(enemyPicks?: (Card | null)[]) {
+  function resolveRound(
+    enemyPicks?: (Card | null)[],
+    options?: { skipAnimation?: boolean },
+  ) {
+    const currentAssign = assignRef.current;
     const played = [0, 1, 2].map((i) => ({
-      p: assign.player[i] as Card | null,
-      e: (enemyPicks?.[i] ?? assign.enemy[i]) as Card | null,
+      p: currentAssign.player[i] as Card | null,
+      e: (enemyPicks?.[i] ?? currentAssign.enemy[i]) as Card | null,
     }));
 
-    const localPlayed =
-      localLegacySide === "player" ? played.map((pe) => pe.p) : played.map((pe) => pe.e);
-    const remotePlayed =
-      remoteLegacySide === "player" ? played.map((pe) => pe.p) : played.map((pe) => pe.e);
+    const analysis = analyzeRound(played);
+    roundAnalysisRef.current = analysis;
 
-    const localReport = reserveReportsRef.current[localLegacySide];
-    const localReserve =
-      localReport && localReport.round === round
-        ? localReport.reserve
-        : computeReserveSum(localLegacySide, localPlayed);
-    let remoteReserve: number;
-    let usedRemoteReport = false;
-
-    if (!isMultiplayer) {
-      remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
-    } else {
-      const report = reserveReportsRef.current[remoteLegacySide];
-      if (report && report.round === round) {
-        remoteReserve = report.reserve;
-        usedRemoteReport = true;
-      } else {
-        remoteReserve = computeReserveSum(remoteLegacySide, remotePlayed);
-      }
+    storeReserveReport(localLegacySide, analysis.localReserve, round);
+    if (!isMultiplayer || !analysis.usedRemoteReport) {
+      storeReserveReport(remoteLegacySide, analysis.remoteReserve, round);
     }
 
-    storeReserveReport(localLegacySide, localReserve, round);
-    if (!isMultiplayer || !usedRemoteReport) {
-      storeReserveReport(remoteLegacySide, remoteReserve, round);
-    }
+    setReserveSums({ player: analysis.pReserve, enemy: analysis.eReserve });
 
-    const pReserve = localLegacySide === "player" ? localReserve : remoteReserve;
-    const eReserve = localLegacySide === "enemy" ? localReserve : remoteReserve;
-
-    setReserveSums({ player: pReserve, enemy: eReserve });
-
-    type Outcome = {
-      steps: number;
-      targetSlice: number;
-      section: Section;
-      winner: LegacySide | null;
-      tie: boolean;
-      wheel: number;
-      detail: string;
-    };
-    const outcomes: Outcome[] = [];
-
-    for (let w = 0; w < 3; w++) {
-      const secList = wheelSections[w];
-      const baseP = played[w].p?.number ?? 0;
-      const baseE = played[w].e?.number ?? 0;
-      const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
-      const targetSlice = (tokens[w] + steps) % SLICES;
-      const section =
-        secList.find((s) => targetSlice !== 0 && inSection(targetSlice, s)) ||
-        ({ id: "Strongest", color: "transparent", start: 0, end: 0 } as Section);
-
-      const pVal = baseP;
-      const eVal = baseE;
-      let winner: LegacySide | null = null;
-      let tie = false;
-      let detail = "";
-      switch (section.id) {
-        case "Strongest":
-          if (pVal === eVal) tie = true;
-          else winner = pVal > eVal ? "player" : "enemy";
-          detail = `Strongest ${pVal} vs ${eVal}`;
-          break;
-        case "Weakest":
-          if (pVal === eVal) tie = true;
-          else winner = pVal < eVal ? "player" : "enemy";
-          detail = `Weakest ${pVal} vs ${eVal}`;
-          break;
-        case "ReserveSum":
-          if (pReserve === eReserve) tie = true;
-          else winner = pReserve > eReserve ? "player" : "enemy";
-          detail = `Reserve ${pReserve} vs ${eReserve}`;
-          break;
-        case "ClosestToTarget": {
-          const t = targetSlice === 0 ? section.target ?? 0 : targetSlice;
-          const pd = Math.abs(pVal - t);
-          const ed = Math.abs(eVal - t);
-          if (pd === ed) tie = true;
-          else winner = pd < ed ? "player" : "enemy";
-          detail = `Closest to ${t}: ${pVal} vs ${eVal}`;
-          break;
-        }
-        case "Initiative":
-          winner = initiative;
-          detail = `Initiative -> ${winner}`;
-          break;
-        default:
-          tie = true;
-          detail = `Slice 0: no section`;
-          break;
-      }
-      outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail });
+    if (options?.skipAnimation) {
+      return;
     }
 
     const animateSpins = async () => {
-      const finalTokens: [number, number, number] = [...tokens] as [number, number, number];
+      let finalTokens = [...(tokensRef.current ?? tokens)] as [number, number, number];
 
-      for (const o of outcomes) {
-        const start = finalTokens[o.wheel];
-        const steps = o.steps;
+      for (let w = 0; w < 3; w++) {
+        const latestAnalysis = roundAnalysisRef.current ?? analysis;
+        const outcome = latestAnalysis.outcomes.find((entry) => entry.wheel === w);
+        if (!outcome) continue;
+        const start = finalTokens[w];
+        const steps = outcome.steps;
         if (steps <= 0) continue;
         const total = Math.max(220, Math.min(1000, 110 + 70 * steps));
         const t0 = performance.now();
@@ -1009,20 +1053,25 @@ export function useThreeWheelGame({
             if (!mountedRef.current) return resolve();
             const tt = Math.max(0, Math.min(1, (now - t0) / total));
             const progressed = Math.floor(easeInOutCubic(tt) * steps);
-            wheelRefs[o.wheel].current?.setVisualToken((start + progressed) % SLICES);
+            wheelRefs[w].current?.setVisualToken((start + progressed) % SLICES);
             if (tt < 1) requestAnimationFrame(frame);
             else {
-              wheelRefs[o.wheel].current?.setVisualToken((start + steps) % SLICES);
+              wheelRefs[w].current?.setVisualToken((start + steps) % SLICES);
               resolve();
             }
           };
           requestAnimationFrame(frame);
         });
-        finalTokens[o.wheel] = (start + steps) % SLICES;
+        finalTokens[w] = (start + steps) % SLICES;
         await new Promise((r) => setTimeout(r, 90));
       }
 
       setTokens(finalTokens);
+
+      if (!mountedRef.current) return;
+
+      const finalAnalysis = roundAnalysisRef.current ?? analysis;
+      const { outcomes, pReserve, eReserve } = finalAnalysis;
 
       let pWins = wins.player;
       let eWins = wins.enemy;
@@ -1040,8 +1089,6 @@ export function useThreeWheelGame({
         }
       });
 
-      if (!mountedRef.current) return;
-
       const prevInitiative = initiative;
       const playerRoundWins = roundWinsCount.player;
       const enemyRoundWins = roundWinsCount.enemy;
@@ -1049,8 +1096,8 @@ export function useThreeWheelGame({
         playerRoundWins === enemyRoundWins
           ? null
           : playerRoundWins > enemyRoundWins
-            ? "player"
-            : "enemy";
+              ? "player"
+              : "enemy";
 
       if (isAnteMode && anteStateRef.current.round === round) {
         const bets = anteStateRef.current.bets;
@@ -1129,6 +1176,7 @@ export function useThreeWheelGame({
 
     void animateSpins();
   }
+
 
   const nextRoundCore = useCallback(
     (opts?: { force?: boolean }) => {
