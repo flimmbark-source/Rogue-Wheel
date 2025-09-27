@@ -3,6 +3,7 @@
 
 import { shuffle } from "../game/math";
 import type { Card, Fighter } from "../game/types";
+import { uid } from "../utils/uid";
 
 // ===== Local persistence types (module-scoped) =====
 type CardId = string;
@@ -41,15 +42,6 @@ function resolveStorage(): SafeStorage {
 
 const storage: SafeStorage = resolveStorage();
 let memoryState: LocalState | null = null;
-
-// Node/browser-safe UID (no imports)
-function uid(prefix = "id") {
-  if (typeof globalThis.crypto !== "undefined" && "randomUUID" in globalThis.crypto) {
-    // @ts-ignore
-    return `${prefix}_${globalThis.crypto.randomUUID()}`;
-  }
-  return `${prefix}_${Math.random().toString(36).slice(2, 8)}${Date.now().toString(36).slice(-4)}`;
-}
 
 // ===== Seed data (keep numbers only to match Card { type:'normal', number:n }) =====
 const SEED_INVENTORY: InventoryItem[] = [];

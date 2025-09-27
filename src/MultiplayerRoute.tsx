@@ -13,6 +13,7 @@ import {
   type GameModeOption,
 } from "./gameModes";
 import LoadingScreen from "./components/LoadingScreen";
+import { uidShort } from "./utils/uid";
 
 // ----- Start payload now includes targetWins (wins goal) -----
 type StartMessagePayload = {
@@ -71,7 +72,7 @@ export default function MultiplayerRoute({
   const [members, setMembers] = useState<
     { clientId: string; name: string; targetWins?: number; gameMode?: GameMode }[]
   >([]);
-  const clientId = useMemo(() => uid4(), []);
+  const clientId = useMemo(() => uidShort(), []);
 
   type MemberEntry = {
     clientId: string;
@@ -774,11 +775,6 @@ function makeRoomCode() {
     s += alphabet[Math.floor(Math.random() * alphabet.length)];
   }
   return s;
-}
-
-function uid4() {
-  // short client id
-  return Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6);
 }
 
 function defaultName() {
