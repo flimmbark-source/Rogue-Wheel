@@ -1105,7 +1105,7 @@ const renderWheelPanel = (i: number) => {
                   <ul className="list-disc pl-5 space-y-1">
                     <li>💥 Strongest — higher value wins</li>
                     <li>🦊 Weakest — lower value wins</li>
-                    <li>🗃️ Reserve — compare the two cards left in hand</li>
+                    <li>🗃️ Reserve — highest sum of cards left in hand</li>
                     <li>🎯 Closest — value closest to target wins</li>
                     <li>⚑ Initiative — initiative holder wins</li>
                     <li><span className="font-semibold">0 Start</span> — no one wins</li>

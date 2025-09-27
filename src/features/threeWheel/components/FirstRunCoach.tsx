@@ -138,15 +138,15 @@ const FirstRunCoach: React.FC<FirstRunCoachProps> = ({
     }
     if (stage === 1) {
       return {
-        title: " Each wheel uses the sum of both cards placed beside it to determine its Victory Condition. Fill each slot beside a wheel with a card",
-        body: `You still need to cover every wheel before resolving. Slots filled: ${assignedCount}/${totalSlots}.`,
+        title: "Both players must fill each slot beside a wheel with a card.",
+        body: `Each wheel uses the sum of both cards placed beside it to determine its winning Victory Condition for the round. Wheels generate randomized Victory Conditons each round. Slots filled: ${assignedCount}/${totalSlots}.`,
       };
     }
     if (stage === 2) {
       return {
         title: "Resolve the round",
         body: readyToResolve
-          ? "Press Resolve to spin the wheels and find out which rule decides the winner for each wheel."
+          ? "Once you place 3 cards, press Resolve to spin each wheel and determine its winning condition. Check the Reference tab to see all Victory Conditons."
           : "Resolve becomes available once both sides finish assigning cards.",
       };
     }
