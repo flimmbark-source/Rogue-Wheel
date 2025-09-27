@@ -54,8 +54,12 @@ import {
   drawOne,
   freshFive,
   recordMatchResult,
+  getOnboardingState,
+  setOnboardingStage as persistOnboardingStage,
+  dismissOnboardingHint,
   type MatchResultSummary,
   type LevelProgress,
+  type OnboardingState,
 } from "./player/profileStore";
 import { isSplit, isNormal, effectiveValue, fmtNum } from "./game/values";
 import {
@@ -73,6 +77,7 @@ import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
 import WheelPanel, { getWheelPanelLayout } from "./features/threeWheel/components/WheelPanel";
 
 import HandDock from "./features/threeWheel/components/HandDock";
+import FirstRunCoach from "./features/threeWheel/components/FirstRunCoach";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
 import { getSpellDefinitions, type SpellDefinition, type SpellRuntimeState } from "./game/spells";
@@ -286,6 +291,17 @@ export default function ThreeWheel_WinsOnly({
   const effectiveGameMode = activeGameModes.length > 0 ? activeGameModes.join("+") : "classic";
   const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
 
+  const onboardingBootstrapRef = useRef<OnboardingState | null>(null);
+  if (onboardingBootstrapRef.current === null) {
+    onboardingBootstrapRef.current = getOnboardingState();
+  }
+  const [onboardingStage, setOnboardingStageState] = useState(
+    onboardingBootstrapRef.current.stage,
+  );
+  const [onboardingDismissed, setOnboardingDismissed] = useState<string[]>(
+    onboardingBootstrapRef.current.dismissed,
+  );
+
   const [manaPools, setManaPools] = useState<SideState<number>>({ player: 0, enemy: 0 });
   const localMana = manaPools[localLegacySide];
   const lastManaAwardedRoundRef = useRef<number | null>(null);
@@ -418,6 +434,7 @@ export default function ThreeWheel_WinsOnly({
     [wheelPanelLayout.panelWidth],
   );
   const wheelPanelContainerRef = useRef<HTMLDivElement | null>(null);
+  const handDockRef = useRef<HTMLDivElement | null>(null);
   const [wheelPanelBounds, setWheelPanelBounds] = useState<
     { left: number; width: number } | null
   >(null);
@@ -468,6 +485,7 @@ export default function ThreeWheel_WinsOnly({
   const initiativeOverride: LegacySide | null = null;
 
   const playerManaButtonRef = useRef<HTMLButtonElement | null>(null);
+  const resolveButtonRef = useRef<HTMLButtonElement | null>(null);
   const grimoireDesktopRef = useRef<HTMLDivElement | null>(null);
 
   const updateGrimoirePosition = useCallback(() => {
@@ -487,6 +505,20 @@ export default function ThreeWheel_WinsOnly({
   const infoPopoverRootRef = useRef<HTMLDivElement | null>(null);
   const [showRef, setShowRef] = useState(false);
   const [showAnte, setShowAnte] = useState(false);
+  const persistStage = useCallback(
+    (nextStage: number) => {
+      const normalized = Number.isFinite(nextStage) ? Math.max(0, Math.floor(nextStage)) : 0;
+      const targetStage = Math.max(onboardingStage, normalized);
+      if (targetStage === onboardingStage) {
+        return { stage: onboardingStage, dismissed: onboardingDismissed };
+      }
+      const updated = persistOnboardingStage(targetStage);
+      setOnboardingStageState(updated.stage);
+      setOnboardingDismissed(updated.dismissed);
+      return updated;
+    },
+    [onboardingStage, onboardingDismissed, persistOnboardingStage],
+  );
 
   const handlePlayerManaToggle = useCallback(() => {
     if (!isGrimoireMode) return;
@@ -551,6 +583,56 @@ export default function ThreeWheel_WinsOnly({
       setShowAnte(false);
     }
   }, [isAnteMode, phase]);
+
+  const totalWheelSlots = assign.player.length;
+  const playerAssignedCount = useMemo(
+    () => assign.player.reduce((count, card) => (card ? count + 1 : count), 0),
+    [assign.player],
+  );
+
+  useEffect(() => {
+    if (onboardingStage === 0 && playerAssignedCount > 0) {
+      persistStage(1);
+    }
+  }, [onboardingStage, playerAssignedCount, persistStage]);
+
+  useEffect(() => {
+    if (
+      onboardingStage === 1 &&
+      totalWheelSlots > 0 &&
+      playerAssignedCount === totalWheelSlots
+    ) {
+      persistStage(2);
+    }
+  }, [onboardingStage, playerAssignedCount, persistStage, totalWheelSlots]);
+
+  useEffect(() => {
+    if (onboardingStage === 2 && phaseForLogic === "roundEnd") {
+      persistStage(3);
+    }
+  }, [onboardingStage, phaseForLogic, persistStage]);
+
+  const hasDismissedCoach = useMemo(
+    () => onboardingDismissed.includes("firstRunCoach"),
+    [onboardingDismissed],
+  );
+  const showCoachOverlay =
+    onboardingStage < 3 &&
+    !hasDismissedCoach &&
+    !showGrimoire &&
+    !showAnte &&
+    !showRef &&
+    phase !== "ended" &&
+    phase !== "spellTargeting";
+
+  const handleCoachDismiss = useCallback(() => {
+    const staged = persistStage(3);
+    const updated = dismissOnboardingHint("firstRunCoach");
+    setOnboardingDismissed(updated.dismissed);
+    if (updated.stage !== staged.stage) {
+      setOnboardingStageState(updated.stage);
+    }
+  }, [dismissOnboardingHint, persistStage]);
 
   // --- render helpers ---
 type SlotView = { side: LegacySide; card: Card | null; name: string };
@@ -1047,6 +1129,7 @@ const renderWheelPanel = (i: number) => {
           {phase === "choose" && (
             <div className="flex flex-col items-end gap-1">
               <button
+                ref={resolveButtonRef}
                 disabled={resolveButtonDisabled}
                 onClick={handleRevealClick}
                 className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold disabled:opacity-50"
@@ -1312,6 +1395,7 @@ const renderWheelPanel = (i: number) => {
 
       {/* Docked hand overlay */}
       <HandDock
+        ref={handDockRef}
         localLegacySide={localLegacySide}
         player={player}
         enemy={enemy}
@@ -1330,6 +1414,19 @@ const renderWheelPanel = (i: number) => {
         pendingSpell={pendingSpell}
         isAwaitingSpellTarget={isAwaitingSpellTarget}
         onSpellTargetSelect={handleSpellTargetSelect}
+      />
+
+      <FirstRunCoach
+        stage={onboardingStage}
+        show={showCoachOverlay}
+        infoPopoverRef={infoPopoverRootRef}
+        handRef={handDockRef}
+        wheelRef={wheelPanelContainerRef}
+        resolveButtonRef={resolveButtonRef}
+        assigned={assign.player}
+        handCount={player.hand.length}
+        phase={phaseForLogic}
+        onDismiss={handleCoachDismiss}
       />
 
       {/* Ended overlay (banner + modal) */}

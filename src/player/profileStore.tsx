@@ -19,11 +19,18 @@ export type Profile = {
   exp: number;
   winStreak: number;
 };
-type LocalState = { version: number; profile: Profile; inventory: InventoryItem[]; decks: Deck[] };
+export type OnboardingState = { stage: number; dismissed: string[] };
+type LocalState = {
+  version: number;
+  profile: Profile;
+  inventory: InventoryItem[];
+  decks: Deck[];
+  onboarding: OnboardingState;
+};
 
 // ===== Storage/config =====
 const KEY = "rw:single:state";
-const VERSION = 2;
+const VERSION = 3;
 const MAX_DECK_SIZE = 10;
 const MAX_COPIES_PER_DECK = 2;
 const MAX_PROFILE_NAME_LENGTH = 24;
@@ -45,6 +52,7 @@ let memoryState: LocalState | null = null;
 
 // ===== Seed data (keep numbers only to match Card { type:'normal', number:n }) =====
 const SEED_INVENTORY: InventoryItem[] = [];
+const SEED_ONBOARDING: OnboardingState = { stage: 0, dismissed: [] };
 
 const SEED_DECK: Deck = {
   id: uid("deck"),
@@ -67,7 +75,28 @@ function seed(): LocalState {
     },
     inventory: SEED_INVENTORY,
     decks: [SEED_DECK],
+    onboarding: { ...SEED_ONBOARDING },
   };
+}
+
+function ensureOnboarding(state: LocalState): OnboardingState {
+  const incoming = state.onboarding;
+  const normalized: OnboardingState = {
+    stage:
+      incoming &&
+      typeof incoming === "object" &&
+      typeof incoming.stage === "number" &&
+      Number.isFinite(incoming.stage)
+        ? Math.max(0, Math.floor(incoming.stage))
+        : 0,
+    dismissed:
+      incoming && typeof incoming === "object" && Array.isArray(incoming.dismissed)
+        ? incoming.dismissed.filter((id): id is string => typeof id === "string")
+        : [],
+  };
+  const uniqueDismissed = Array.from(new Set(normalized.dismissed));
+  state.onboarding = { stage: normalized.stage, dismissed: uniqueDismissed };
+  return state.onboarding;
 }
 
 function normalizeDisplayName(name: string): string {
@@ -102,9 +131,12 @@ function loadStateRaw(): LocalState {
   }
   try {
     const s = JSON.parse(raw) as LocalState;
-    if (!(s as any).version) (s as any).version = VERSION;
+    let didUpgrade = false;
+    if (!(s as any).version) {
+      (s as any).version = VERSION;
+      didUpgrade = true;
+    }
     if (s.version < 2) {
-      s.version = 2;
       if (!s.profile) {
         s.profile = seed().profile;
       } else {
@@ -112,6 +144,24 @@ function loadStateRaw(): LocalState {
         if (typeof s.profile.exp !== "number") s.profile.exp = 0;
         if (typeof s.profile.winStreak !== "number") s.profile.winStreak = 0;
       }
+      s.version = 2;
+      didUpgrade = true;
+    }
+    const onboardingBefore = JSON.stringify(s.onboarding ?? null);
+    if (!s.onboarding) {
+      s.onboarding = { ...SEED_ONBOARDING };
+      didUpgrade = true;
+    }
+    ensureOnboarding(s);
+    const onboardingAfter = JSON.stringify(s.onboarding);
+    if (onboardingBefore !== onboardingAfter) {
+      didUpgrade = true;
+    }
+    if (s.version < 3) {
+      s.version = 3;
+      didUpgrade = true;
+    }
+    if (didUpgrade) {
       saveState(s);
     }
     return s;
@@ -135,6 +185,44 @@ function saveState(state: LocalState) {
   } catch {
     memoryState = state;
   }
+}
+
+export function getOnboardingState(): OnboardingState {
+  const state = loadStateRaw();
+  const onboarding = ensureOnboarding(state);
+  return { stage: onboarding.stage, dismissed: [...onboarding.dismissed] };
+}
+
+export function setOnboardingStage(stage: number): OnboardingState {
+  const normalized = Number.isFinite(stage) ? Math.max(0, Math.floor(stage)) : 0;
+  const state = loadStateRaw();
+  const onboarding = ensureOnboarding(state);
+  let changed = false;
+  if (onboarding.stage !== normalized) {
+    onboarding.stage = normalized;
+    state.onboarding = { stage: onboarding.stage, dismissed: [...onboarding.dismissed] };
+    changed = true;
+  }
+  if (changed) {
+    saveState(state);
+  }
+  return { stage: onboarding.stage, dismissed: [...onboarding.dismissed] };
+}
+
+export function dismissOnboardingHint(id: string): OnboardingState {
+  const safeId = typeof id === "string" ? id.trim() : "";
+  if (!safeId) {
+    return getOnboardingState();
+  }
+  const state = loadStateRaw();
+  const onboarding = ensureOnboarding(state);
+  const nextDismissed = Array.from(new Set([...onboarding.dismissed, safeId]));
+  if (nextDismissed.length !== onboarding.dismissed.length) {
+    onboarding.dismissed = nextDismissed;
+    state.onboarding = { stage: onboarding.stage, dismissed: [...onboarding.dismissed] };
+    saveState(state);
+  }
+  return { stage: onboarding.stage, dismissed: [...onboarding.dismissed] };
 }
 
 // ===== Helpers =====

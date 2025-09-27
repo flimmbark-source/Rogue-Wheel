@@ -1,4 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  forwardRef,
+  type MutableRefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { motion } from "framer-motion";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter } from "../../../game/types";
@@ -34,27 +42,39 @@ interface HandDockProps {
   onSpellTargetSelect?: (selection: { side: LegacySide; lane: number | null; cardId: string }) => void;
 }
 
-const HandDock: React.FC<HandDockProps> = ({
-  localLegacySide,
-  player,
-  enemy,
-  wheelPanelWidth,
-  wheelPanelBounds,
-  selectedCardId,
-  setSelectedCardId,
-  assign,
-  assignToWheelLocal,
-  setDragCardId,
-  startPointerDrag,
-  isPtrDragging,
-  ptrDragCard,
-  ptrPos,
-  onMeasure,
-  pendingSpell,
-  isAwaitingSpellTarget,
-  onSpellTargetSelect,
-}) => {
-  const dockRef = useRef<HTMLDivElement | null>(null);
+const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
+  ({
+    localLegacySide,
+    player,
+    enemy,
+    wheelPanelWidth,
+    wheelPanelBounds,
+    selectedCardId,
+    setSelectedCardId,
+    assign,
+    assignToWheelLocal,
+    setDragCardId,
+    startPointerDrag,
+    isPtrDragging,
+    ptrDragCard,
+    ptrPos,
+    onMeasure,
+    pendingSpell,
+    isAwaitingSpellTarget,
+    onSpellTargetSelect,
+  }, forwardedRef) => {
+    const dockRef = useRef<HTMLDivElement | null>(null);
+    const handleDockRef = useCallback(
+      (node: HTMLDivElement | null) => {
+        dockRef.current = node;
+        if (typeof forwardedRef === "function") {
+          forwardedRef(node);
+        } else if (forwardedRef) {
+          (forwardedRef as MutableRefObject<HTMLDivElement | null>).current = node;
+        }
+      },
+      [forwardedRef],
+    );
   const [liftPx, setLiftPx] = useState<number>(18);
 
   useEffect(() => {
@@ -115,7 +135,7 @@ const HandDock: React.FC<HandDockProps> = ({
 
   return (
     <div
-      ref={dockRef}
+      ref={handleDockRef}
       className="fixed bottom-0 z-40 pointer-events-none select-none"
       style={overlayStyle}
       data-awaiting-spell-target={awaitingCardTarget ? "true" : "false"}
@@ -217,6 +237,8 @@ const HandDock: React.FC<HandDockProps> = ({
       )}
     </div>
   );
-};
+});
+
+HandDock.displayName = "HandDock";
 
 export default HandDock;
