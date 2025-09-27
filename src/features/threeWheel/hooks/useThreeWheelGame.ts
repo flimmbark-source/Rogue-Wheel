@@ -526,6 +526,26 @@ export function useThreeWheelGame({
     enemy: null,
   });
 
+  const reservePenaltiesRef = useRef<Record<LegacySide, number>>({
+    player: 0,
+    enemy: 0,
+  });
+
+  const applyReservePenalty = useCallback((side: LegacySide, amount: number) => {
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) return;
+    const currentPenalty = reservePenaltiesRef.current[side] ?? 0;
+    const updatedPenalty = Math.max(0, currentPenalty + amount);
+    reservePenaltiesRef.current[side] = updatedPenalty;
+
+    const report = reserveReportsRef.current[side];
+    if (report) {
+      const reduced = Math.max(0, report.reserve - amount);
+      if (reduced !== report.reserve) {
+        reserveReportsRef.current[side] = { reserve: reduced, round: report.round };
+      }
+    }
+  }, []);
+
   const storeReserveReport = useCallback(
     (side: LegacySide, reserve: number, roundValue: number) => {
       const prev = reserveReportsRef.current[side];
@@ -725,7 +745,9 @@ export function useThreeWheelGame({
     const handCards = who === "player" ? player.hand : enemy.hand;
     const usedIds = new Set((used.filter(Boolean) as Card[]).map((c) => c.id));
     const left = handCards.filter((c) => !usedIds.has(c.id));
-    return left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
+    const base = left.slice(0, 2).reduce((a, c) => a + (isNormal(c) ? c.number : 0), 0);
+    const penalty = reservePenaltiesRef.current[who] ?? 0;
+    return Math.max(0, base - penalty);
   }
 
   const broadcastLocalReserve = useCallback(() => {
@@ -761,6 +783,7 @@ export function useThreeWheelGame({
           updateTokenVisual: (index, value) => {
             wheelRefs[index]?.current?.setVisualToken?.(value);
           },
+          applyReservePenalty,
         },
         options,
       );
@@ -775,6 +798,7 @@ export function useThreeWheelGame({
       setTokens,
       setLaneChillStacks,
       setInitiative,
+      applyReservePenalty,
       wheelRefs,
     ],
   );
@@ -878,7 +902,11 @@ export function useThreeWheelGame({
     const remotePlayed =
       remoteLegacySide === "player" ? played.map((pe) => pe.p) : played.map((pe) => pe.e);
 
-    const localReserve = computeReserveSum(localLegacySide, localPlayed);
+    const localReport = reserveReportsRef.current[localLegacySide];
+    const localReserve =
+      localReport && localReport.round === round
+        ? localReport.reserve
+        : computeReserveSum(localLegacySide, localPlayed);
     let remoteReserve: number;
     let usedRemoteReport = false;
 
@@ -1132,6 +1160,8 @@ export function useThreeWheelGame({
       setTokens([0, 0, 0]);
       setReserveSums(null);
       setWheelHUD([null, null, null]);
+      reservePenaltiesRef.current = { player: 0, enemy: 0 };
+      reserveReportsRef.current = { player: null, enemy: null };
 
       setPhase("choose");
       setRound((r) => r + 1);
@@ -1344,6 +1374,7 @@ export function useThreeWheelGame({
     clearRematchVotes();
 
     reserveReportsRef.current = { player: null, enemy: null };
+    reservePenaltiesRef.current = { player: 0, enemy: 0 };
 
     wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
 

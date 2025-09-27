@@ -251,6 +251,7 @@ export type SpellEffectApplicationContext<CardT> = {
   isMultiplayer: boolean;
   broadcastEffects?: (payload: SpellEffectPayload) => void;
   updateTokenVisual?: (wheelIndex: number, value: number) => void;
+  applyReservePenalty?: (side: LegacySide, amount: number) => void;
 };
 
 type CardLikeWithValues = { number?: number | null; leftValue?: number | null; rightValue?: number | null };
@@ -300,6 +301,7 @@ export function applySpellEffects<CardT extends { id: string }>(
     isMultiplayer,
     broadcastEffects,
     updateTokenVisual,
+    applyReservePenalty,
   } = context;
 
   const {
@@ -443,6 +445,12 @@ export function applySpellEffects<CardT extends { id: string }>(
 
       if (!changed) return prev;
       return next;
+    });
+    reserveDrains.forEach((drain) => {
+      if (!drain) return;
+      const { side, amount } = drain;
+      if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) return;
+      applyReservePenalty?.(side, amount);
     });
   }
 
