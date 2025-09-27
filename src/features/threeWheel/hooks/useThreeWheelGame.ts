@@ -302,8 +302,12 @@ export function useThreeWheelGame({
     });
   }, []);
 
-  const clearResolveVotes = useCallback(() => {
+  const clearResolveVotes = useCallback((side?: LegacySide) => {
     setResolveVotes((prev) => {
+      if (side) {
+        if (!prev[side]) return prev;
+        return { ...prev, [side]: false };
+      }
       if (!prev.player && !prev.enemy) return prev;
       return { player: false, enemy: false };
     });
@@ -639,7 +643,7 @@ export function useThreeWheelGame({
         }
       });
 
-      clearResolveVotes();
+      clearResolveVotes(side);
 
       return true;
     },
@@ -681,7 +685,7 @@ export function useThreeWheelGame({
         }
       });
 
-      clearResolveVotes();
+      clearResolveVotes(side);
 
       return true;
     },
