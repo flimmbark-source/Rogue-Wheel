@@ -234,6 +234,10 @@ export function useThreeWheelGame({
     player: false,
     enemy: false,
   });
+  const resolveVotesRef = useRef(resolveVotes);
+  useEffect(() => {
+    resolveVotesRef.current = resolveVotes;
+  }, [resolveVotes]);
   const [advanceVotes, setAdvanceVotes] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
@@ -848,13 +852,18 @@ export function useThreeWheelGame({
     revealRoundCore();
   }, [revealRoundCore]);
 
-  useEffect(() => {
+  const attemptAutoReveal = useCallback(() => {
     if (!isMultiplayer) return;
     if (phase !== "choose") return;
     if (!canReveal) return;
-    if (!resolveVotes.player || !resolveVotes.enemy) return;
+    const votes = resolveVotesRef.current;
+    if (!votes.player || !votes.enemy) return;
     revealRoundCore();
-  }, [canReveal, isMultiplayer, phase, resolveVotes, revealRoundCore]);
+  }, [canReveal, isMultiplayer, phase, revealRoundCore]);
+
+  useEffect(() => {
+    attemptAutoReveal();
+  }, [attemptAutoReveal, resolveVotes]);
 
   function resolveRound(enemyPicks?: (Card | null)[]) {
     const played = [0, 1, 2].map((i) => ({
@@ -1154,6 +1163,9 @@ export function useThreeWheelGame({
         case "reveal": {
           if (senderId && senderId === localPlayerId) break;
           markResolveVote(msg.side);
+          setTimeout(() => {
+            attemptAutoReveal();
+          }, 0);
           break;
         }
         case "nextRound": {
@@ -1207,6 +1219,7 @@ export function useThreeWheelGame({
       markAdvanceVote,
       markRematchVote,
       markResolveVote,
+      attemptAutoReveal,
       applySpellEffects,
       storeReserveReport,
     ]
@@ -1288,7 +1301,20 @@ export function useThreeWheelGame({
 
     markResolveVote(localLegacySide);
     sendIntent({ type: "reveal", side: localLegacySide });
-  }, [canReveal, isMultiplayer, localLegacySide, markResolveVote, onReveal, phase, resolveVotes, sendIntent]);
+    setTimeout(() => {
+      attemptAutoReveal();
+    }, 0);
+  }, [
+    attemptAutoReveal,
+    canReveal,
+    isMultiplayer,
+    localLegacySide,
+    markResolveVote,
+    onReveal,
+    phase,
+    resolveVotes,
+    sendIntent,
+  ]);
 
   const handleNextClick = useCallback(() => {
     if (phase !== "roundEnd") return;
