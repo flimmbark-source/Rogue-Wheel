@@ -21,18 +21,16 @@ export const GAME_MODE_DETAILS: Record<
 > = {
   grimoire: {
     title: "Grimoire",
-    subtitle: "Experimental systems and power-ups.",
+    subtitle: "Adds spells, which can alter match outcomes.",
     highlights: [
-      "Adds spells, which can alter match outcomes",
-      "Best for advanced players seeking depth",
+      "Use Reserve to gain Mana, spend Mana to cast spells.",
     ],
   },
   ante: {
     title: "Ante",
-    subtitle: "Risk wins each round for boosted payouts.",
+    subtitle: "Wager existing wins at the start of every round.",
     highlights: [
-      "Wager existing wins at the start of every round",
-      "Win the round to multiply your ante by dynamic odds",
+      "Win rounds to multiply your ante by dynamic odds",
     ],
   },
 };
