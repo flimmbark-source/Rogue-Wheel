@@ -39,6 +39,11 @@ import {
   type LegacySide,
   type SpellEffectPayload,
 } from "../../../game/spellEngine";
+import {
+  summarizeRoundOutcome,
+  type RoundAnalysis,
+  type WheelOutcome,
+} from "./roundOutcomeSummary";
 
 export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine";
 
@@ -148,24 +153,6 @@ export type ThreeWheelGameReturn = {
   actions: ThreeWheelGameActions;
 };
 
-type WheelOutcome = {
-  steps: number;
-  targetSlice: number;
-  section: Section;
-  winner: LegacySide | null;
-  tie: boolean;
-  wheel: number;
-  detail: string;
-};
-
-type RoundAnalysis = {
-  outcomes: WheelOutcome[];
-  localReserve: number;
-  remoteReserve: number;
-  pReserve: number;
-  eReserve: number;
-  usedRemoteReport: boolean;
-};
 
 export function useThreeWheelGame({
   localSide,
@@ -1030,9 +1017,64 @@ export function useThreeWheelGame({
       storeReserveReport(remoteLegacySide, analysis.remoteReserve, round);
     }
 
-    setReserveSums({ player: analysis.pReserve, enemy: analysis.eReserve });
+    const applyRoundOutcome = (
+      finalAnalysis: RoundAnalysis,
+      finalTokens: [number, number, number],
+    ) => {
+      tokensRef.current = finalTokens;
+      setTokens(finalTokens);
+      finalTokens.forEach((value, index) => {
+        wheelRefs[index]?.current?.setVisualToken?.(value);
+      });
+
+      const summary = summarizeRoundOutcome({
+        analysis: finalAnalysis,
+        wins,
+        initiative,
+        round,
+        namesByLegacy,
+        HUD_COLORS,
+        isAnteMode,
+        anteState: anteStateRef.current,
+        winGoal,
+        localLegacySide,
+        remoteLegacySide,
+      });
+
+      setInitiative(summary.nextInitiative);
+      summary.logs.forEach((entry) => {
+        appendLog(entry);
+      });
+
+      setWheelHUD(summary.hudColors);
+      setWins(summary.wins);
+      setReserveSums({ player: finalAnalysis.pReserve, enemy: finalAnalysis.eReserve });
+
+      if (summary.shouldResetAnte) {
+        setAnteState((prev) => {
+          if (prev.round !== round) return prev;
+          if (prev.bets.player === 0 && prev.bets.enemy === 0) return prev;
+          return { ...prev, bets: { player: 0, enemy: 0 } };
+        });
+      }
+
+      clearAdvanceVotes();
+      setPhase("roundEnd");
+      if (summary.matchEnded) {
+        clearRematchVotes();
+        setPhase("ended");
+      }
+    };
 
     if (options?.skipAnimation) {
+      const finalAnalysis = roundAnalysisRef.current ?? analysis;
+      const finalTokens = [...(tokensRef.current ?? tokens)] as [number, number, number];
+      finalAnalysis.outcomes.forEach((outcome) => {
+        if (outcome.steps > 0) {
+          finalTokens[outcome.wheel] = (finalTokens[outcome.wheel] + outcome.steps) % SLICES;
+        }
+      });
+      applyRoundOutcome(finalAnalysis, finalTokens);
       return;
     }
 
@@ -1066,112 +1108,10 @@ export function useThreeWheelGame({
         await new Promise((r) => setTimeout(r, 90));
       }
 
-      setTokens(finalTokens);
-
       if (!mountedRef.current) return;
 
       const finalAnalysis = roundAnalysisRef.current ?? analysis;
-      const { outcomes, pReserve, eReserve } = finalAnalysis;
-
-      let pWins = wins.player;
-      let eWins = wins.enemy;
-      const hudColors: [string | null, string | null, string | null] = [null, null, null];
-      const roundWinsCount: Record<LegacySide, number> = { player: 0, enemy: 0 };
-      outcomes.forEach((o) => {
-        if (o.tie) {
-          appendLog(`Wheel ${o.wheel + 1} tie: ${o.detail} — no win.`);
-        } else if (o.winner) {
-          hudColors[o.wheel] = HUD_COLORS[o.winner];
-          roundWinsCount[o.winner] += 1;
-          if (o.winner === "player") pWins++;
-          else eWins++;
-          appendLog(`Wheel ${o.wheel + 1} win -> ${o.winner} (${o.detail}).`);
-        }
-      });
-
-      const prevInitiative = initiative;
-      const playerRoundWins = roundWinsCount.player;
-      const enemyRoundWins = roundWinsCount.enemy;
-      const roundWinner: LegacySide | null =
-        playerRoundWins === enemyRoundWins
-          ? null
-          : playerRoundWins > enemyRoundWins
-              ? "player"
-              : "enemy";
-
-      if (isAnteMode && anteStateRef.current.round === round) {
-        const bets = anteStateRef.current.bets;
-        const odds = anteStateRef.current.odds;
-
-        if (roundWinner === "player") {
-          const profit = Math.round(bets.player * Math.max(0, odds.player - 1));
-          const loss = bets.enemy;
-          if (profit > 0) {
-            pWins += profit;
-            appendLog(`${namesByLegacy.player} wins ante (+${profit}).`);
-          }
-          if (loss > 0) {
-            const nextEnemy = Math.max(0, eWins - loss);
-            if (nextEnemy !== eWins) {
-              eWins = nextEnemy;
-              appendLog(`${namesByLegacy.enemy} loses ante (-${loss}).`);
-            }
-          }
-        } else if (roundWinner === "enemy") {
-          const profit = Math.round(bets.enemy * Math.max(0, odds.enemy - 1));
-          const loss = bets.player;
-          if (profit > 0) {
-            eWins += profit;
-            appendLog(`${namesByLegacy.enemy} wins ante (+${profit}).`);
-          }
-          if (loss > 0) {
-            const nextPlayer = Math.max(0, pWins - loss);
-            if (nextPlayer !== pWins) {
-              pWins = nextPlayer;
-              appendLog(`${namesByLegacy.player} loses ante (-${loss}).`);
-            }
-          }
-        } else if (bets.player > 0 || bets.enemy > 0) {
-          appendLog(`Ante pushes on a tie.`);
-        }
-
-        setAnteState((prev) => {
-          if (prev.round !== round) return prev;
-          if (prev.bets.player === 0 && prev.bets.enemy === 0) return prev;
-          return { ...prev, bets: { player: 0, enemy: 0 } };
-        });
-      }
-
-      const roundScore = `${roundWinsCount.player}-${roundWinsCount.enemy}`;
-      let nextInitiative: LegacySide;
-      let initiativeLog: string;
-      if (roundWinner === null) {
-        nextInitiative = prevInitiative === "player" ? "enemy" : "player";
-        initiativeLog = `Round ${round} tie (${roundScore}) — initiative swaps to ${namesByLegacy[nextInitiative]}.`;
-      } else if (roundWinner === "player") {
-        nextInitiative = "player";
-        initiativeLog = `${namesByLegacy.player} wins the round ${roundScore} and takes initiative next round.`;
-      } else {
-        nextInitiative = "enemy";
-        initiativeLog = `${namesByLegacy.enemy} wins the round ${roundScore} and takes initiative next round.`;
-      }
-
-      setInitiative(nextInitiative);
-      appendLog(initiativeLog);
-
-      setWheelHUD(hudColors);
-      setWins({ player: pWins, enemy: eWins });
-      setReserveSums({ player: pReserve, enemy: eReserve });
-      clearAdvanceVotes();
-      setPhase("roundEnd");
-      if (pWins >= winGoal || eWins >= winGoal) {
-        clearRematchVotes();
-        setPhase("ended");
-        const localWins = localLegacySide === "player" ? pWins : eWins;
-        appendLog(
-          localWins >= winGoal ? "You win the match!" : `${namesByLegacy[remoteLegacySide]} wins the match!`
-        );
-      }
+      applyRoundOutcome(finalAnalysis, finalTokens);
     };
 
     void animateSpins();

@@ -10,7 +10,9 @@
   },
   "include": [
     "tests/**/*.ts",
-    "src/features/threeWheel/utils/slotVisibility.ts"
+    "src/features/threeWheel/utils/slotVisibility.ts",
+    "src/features/threeWheel/hooks/roundOutcomeSummary.ts",
+    "src/vite-env.d.ts"
   ],
   "exclude": []
 }
