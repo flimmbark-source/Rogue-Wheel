@@ -291,12 +291,32 @@ export function useThreeWheelGame({
     });
   }, [initiative, isAnteMode, phase, round, winGoal, wins]);
 
-  const markResolveVote = useCallback((side: LegacySide) => {
-    setResolveVotes((prev) => {
-      if (prev[side]) return prev;
-      return { ...prev, [side]: true };
-    });
-  }, []);
+  const scheduleRevealCheck = useCallback(
+    (nextVotes: { player: boolean; enemy: boolean }) => {
+      if (!isMultiplayer) return;
+      if (phase !== "choose") return;
+      if (!canReveal) return;
+      if (!nextVotes.player || !nextVotes.enemy) return;
+
+      Promise.resolve().then(() => {
+        if (!mountedRef.current) return;
+        revealRoundCore();
+      });
+    },
+    [canReveal, isMultiplayer, phase, revealRoundCore]
+  );
+
+  const markResolveVote = useCallback(
+    (side: LegacySide) => {
+      setResolveVotes((prev) => {
+        if (prev[side]) return prev;
+        const next = { ...prev, [side]: true };
+        scheduleRevealCheck(next);
+        return next;
+      });
+    },
+    [scheduleRevealCheck]
+  );
 
   const clearResolveVotes = useCallback(() => {
     setResolveVotes((prev) => {
