@@ -530,7 +530,7 @@ export function useThreeWheelGame({
     []
   );
 
-  const handleMPIntentRef = useRef<(intent: MPIntent) => void>(() => {});
+  const handleMPIntentRef = useRef<(intent: MPIntent, senderId?: string) => void>(() => {});
 
   const sendIntent = useCallback(
     (intent: MPIntent) => {
@@ -1139,25 +1139,25 @@ export function useThreeWheelGame({
   const nextRound = useCallback(() => nextRoundCore({ force: true }), [nextRoundCore]);
 
   const handleMPIntent = useCallback(
-    (msg: MPIntent) => {
+    (msg: MPIntent, senderId?: string) => {
       switch (msg.type) {
         case "assign": {
-          if (msg.side === localLegacySide) break;
+          if (senderId && senderId === localPlayerId) break;
           assignToWheelFor(msg.side, msg.lane, msg.card);
           break;
         }
         case "clear": {
-          if (msg.side === localLegacySide) break;
+          if (senderId && senderId === localPlayerId) break;
           clearAssignFor(msg.side, msg.lane);
           break;
         }
         case "reveal": {
-          if (msg.side === localLegacySide) break;
+          if (senderId && senderId === localPlayerId) break;
           markResolveVote(msg.side);
           break;
         }
         case "nextRound": {
-          if (msg.side === localLegacySide) break;
+          if (senderId && senderId === localPlayerId) break;
           markAdvanceVote(msg.side);
           break;
         }
@@ -1180,18 +1180,19 @@ export function useThreeWheelGame({
           break;
         }
         case "rematch": {
-          if (msg.side === localLegacySide) break;
+          if (senderId && senderId === localPlayerId) break;
           markRematchVote(msg.side);
           break;
         }
         case "reserve": {
-          if (msg.side === localLegacySide) break;
+          if (senderId && senderId === localPlayerId) break;
           if (typeof msg.reserve === "number" && typeof msg.round === "number") {
             storeReserveReport(msg.side, msg.reserve, msg.round);
           }
           break;
         }
         case "spellEffects": {
+          if (senderId && senderId === localPlayerId) break;
           applySpellEffects(msg.payload, { broadcast: false });
           break;
         }
@@ -1202,7 +1203,7 @@ export function useThreeWheelGame({
     [
       assignToWheelFor,
       clearAssignFor,
-      localLegacySide,
+      localPlayerId,
       markAdvanceVote,
       markRematchVote,
       markResolveVote,
@@ -1249,7 +1250,8 @@ export function useThreeWheelGame({
         channel.subscribe("intent", (msg) => {
           if (!activeSub) return;
           const intent = msg?.data as MPIntent;
-          handleMPIntentRef.current(intent);
+          const sender = typeof msg?.clientId === "string" ? msg.clientId : undefined;
+          handleMPIntentRef.current(intent, sender);
         });
       } catch {}
     })();

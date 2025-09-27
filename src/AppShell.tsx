@@ -46,11 +46,7 @@ export default function AppShell() {
         onStart={(payload) => {
           setGameMode(normalizeGameMode(payload.gameMode));
           setMpPayload(payload);
-          setView({
-            key: "modeSelect",
-            from: "mp",
-            next: { key: "game", mode: "mp", mpPayload: payload },
-          });
+          setView({ key: "game", mode: "mp", mpPayload: payload });
         }}
       />
     );

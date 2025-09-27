@@ -71,7 +71,7 @@ export type Phase =
 
 export type CorePhase = Exclude<Phase, "spellTargeting">;
 
-export type { GameMode, GameModeOption } from "../gameModes";
+export type { GameMode, GameModeOption } from "../gameModes.js";
 
 /** Helpful 2P maps (optional, but convenient) */
 export type HandMap = Record<Side, Card[]>;
