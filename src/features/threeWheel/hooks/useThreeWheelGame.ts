@@ -811,8 +811,6 @@ export function useThreeWheelGame({
     (opts?: { force?: boolean }) => {
       if (!opts?.force && !canReveal) return false;
 
-      clearResolveVotes();
-
       if (isMultiplayer) {
         broadcastLocalReserve();
       }
@@ -845,7 +843,7 @@ export function useThreeWheelGame({
 
       return true;
     },
-    [broadcastLocalReserve, canReveal, clearResolveVotes, isMultiplayer, wheelSize]
+    [broadcastLocalReserve, canReveal, isMultiplayer, wheelSize]
   );
 
   const onReveal = useCallback(() => {
