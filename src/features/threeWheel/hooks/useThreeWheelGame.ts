@@ -797,7 +797,8 @@ export function useThreeWheelGame({
     const eReserve = localLegacySide === "enemy" ? localReserve : remoteReserve;
 
     const outcomes: WheelOutcome[] = [];
-    const tokensSnapshot = tokensRef.current ?? tokens;
+    const tokensSnapshot =
+      roundStartTokensRef.current ?? tokensRef.current ?? tokens;
 
     for (let w = 0; w < 3; w++) {
       const secList = wheelSections[w];
