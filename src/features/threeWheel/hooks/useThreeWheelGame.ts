@@ -35,6 +35,7 @@ import { isNormal } from "../../../game/values";
 import type { WheelHandle } from "../../../components/CanvasWheel";
 import {
   applySpellEffects as runSpellEffects,
+  type AssignmentState,
   type LaneChillStacks,
   type LegacySide,
   type SpellEffectPayload,
@@ -868,13 +869,30 @@ export function useThreeWheelGame({
 
   const applySpellEffects = useCallback(
     (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => {
+      let latestAssignments: AssignmentState<Card> = assignRef.current;
+      let latestTokens: [number, number, number] = tokensRef.current ?? tokens;
+
       runSpellEffects(
         payload,
         {
           assignSnapshot: assignRef.current,
-          updateAssignments: setAssign,
+          updateAssignments: (updater) => {
+            setAssign((prev) => {
+              const next = updater(prev);
+              assignRef.current = next;
+              latestAssignments = next;
+              return next;
+            });
+          },
           updateReserveSums: setReserveSums,
-          updateTokens: setTokens,
+          updateTokens: (updater) => {
+            setTokens((prev) => {
+              const next = updater(prev);
+              tokensRef.current = next;
+              latestTokens = next;
+              return next;
+            });
+          },
           updateLaneChillStacks: setLaneChillStacks,
           setInitiative,
           appendLog,
@@ -892,7 +910,10 @@ export function useThreeWheelGame({
       );
 
       if (phaseRef.current === "anim" || phaseRef.current === "roundEnd") {
-        resolveRound(undefined, { skipAnimation: true });
+        resolveRound(undefined, {
+          skipAnimation: true,
+          snapshot: { assign: latestAssignments, tokens: latestTokens },
+        });
       }
     },
     [
@@ -908,6 +929,7 @@ export function useThreeWheelGame({
       applyReservePenalty,
       resolveRound,
       wheelRefs,
+      tokens,
     ],
   );
 
@@ -1001,9 +1023,13 @@ export function useThreeWheelGame({
 
   function resolveRound(
     enemyPicks?: (Card | null)[],
-    options?: { skipAnimation?: boolean },
+    options?: {
+      skipAnimation?: boolean;
+      snapshot?: { assign: AssignmentState<Card>; tokens: [number, number, number] };
+    },
   ) {
-    const currentAssign = assignRef.current;
+    const currentAssign = options?.snapshot?.assign ?? assignRef.current;
+    const startingTokens = options?.snapshot?.tokens ?? tokensRef.current ?? tokens;
     const played = [0, 1, 2].map((i) => ({
       p: currentAssign.player[i] as Card | null,
       e: (enemyPicks?.[i] ?? currentAssign.enemy[i]) as Card | null,
@@ -1068,7 +1094,7 @@ export function useThreeWheelGame({
 
     if (options?.skipAnimation) {
       const finalAnalysis = roundAnalysisRef.current ?? analysis;
-      const finalTokens = [...(tokensRef.current ?? tokens)] as [number, number, number];
+      const finalTokens = [...startingTokens] as [number, number, number];
       finalAnalysis.outcomes.forEach((outcome) => {
         if (outcome.steps > 0) {
           finalTokens[outcome.wheel] = (finalTokens[outcome.wheel] + outcome.steps) % SLICES;
