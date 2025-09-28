@@ -252,6 +252,8 @@ export type SpellEffectApplicationContext<CardT> = {
   broadcastEffects?: (payload: SpellEffectPayload) => void;
   updateTokenVisual?: (wheelIndex: number, value: number) => void;
   applyReservePenalty?: (side: LegacySide, amount: number) => void;
+  startingTokens?: [number, number, number];
+  updateRoundStartTokens?: (tokens: [number, number, number]) => void;
 };
 
 type CardLikeWithValues = { number?: number | null; leftValue?: number | null; rightValue?: number | null };
@@ -302,6 +304,8 @@ export function applySpellEffects<CardT extends { id: string }>(
     broadcastEffects,
     updateTokenVisual,
     applyReservePenalty,
+    startingTokens,
+    updateRoundStartTokens,
   } = context;
 
   const {
@@ -375,28 +379,26 @@ export function applySpellEffects<CardT extends { id: string }>(
     });
   }
 
-  if (mirrorUpdatedAssignments) {
-    const nextTokens = computeWheelTokenTargets(mirrorUpdatedAssignments);
-    const changedIndices: number[] = [];
-    updateTokens((prev) => {
-      let next = prev;
-      for (let i = 0; i < nextTokens.length; i++) {
-        if (nextTokens[i] !== prev[i]) {
-          if (next === prev) next = [...prev] as [number, number, number];
-          next[i] = nextTokens[i];
-          changedIndices.push(i);
-        }
-      }
-      return next === prev ? prev : next;
-    });
+  const safeStartingTokens = startingTokens ? [...startingTokens] : [0, 0, 0];
+  let previewTokenBase = safeStartingTokens as [number, number, number];
 
-    changedIndices.forEach((index) => {
-      updateTokenVisual?.(index, nextTokens[index]);
-    });
+  const previewTokenTargets = (steps: [number, number, number]) => {
+    for (let i = 0; i < steps.length; i++) {
+      const base = previewTokenBase[i] ?? 0;
+      const step = steps[i] ?? 0;
+      const visual = ((base + step) % SLICES + SLICES) % SLICES;
+      updateTokenVisual?.(i, visual);
+    }
+  };
+
+  if (mirrorUpdatedAssignments) {
+    const nextTokenSteps = computeWheelTokenTargets(mirrorUpdatedAssignments);
+    previewTokenTargets(nextTokenSteps);
   }
 
   if (wheelTokenAdjustments?.length) {
     const tokenUpdates = new Map<number, number>();
+    let persistedTokens: [number, number, number] | null = null;
     updateTokens((prev) => {
       let next = prev;
       let changed = false;
@@ -416,12 +418,18 @@ export function applySpellEffects<CardT extends { id: string }>(
       });
 
       if (!changed) return prev;
+      persistedTokens = next as [number, number, number];
       return next;
     });
 
     tokenUpdates.forEach((value, index) => {
       updateTokenVisual?.(index, value);
     });
+
+    if (persistedTokens) {
+      updateRoundStartTokens?.(persistedTokens);
+      previewTokenBase = persistedTokens;
+    }
   }
 
   if (reserveDrains?.length) {
@@ -466,23 +474,8 @@ export function applySpellEffects<CardT extends { id: string }>(
     });
 
     if (updatedAssignments) {
-      const nextTokens = computeWheelTokenTargets(updatedAssignments);
-      const changedIndices: number[] = [];
-      updateTokens((prev) => {
-        let next = prev;
-        for (let i = 0; i < nextTokens.length; i++) {
-          if (nextTokens[i] !== prev[i]) {
-            if (next === prev) next = [...prev] as [number, number, number];
-            next[i] = nextTokens[i];
-            changedIndices.push(i);
-          }
-        }
-        return next === prev ? prev : next;
-      });
-
-      changedIndices.forEach((index) => {
-        updateTokenVisual?.(index, nextTokens[index]);
-      });
+      const nextTokenSteps = computeWheelTokenTargets(updatedAssignments);
+      previewTokenTargets(nextTokenSteps);
     }
   }
 

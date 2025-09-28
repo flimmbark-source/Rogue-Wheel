@@ -512,6 +512,7 @@ export function useThreeWheelGame({
 
   const [tokens, setTokens] = useState<[number, number, number]>([0, 0, 0]);
   const tokensRef = useRef(tokens);
+  const roundStartTokensRef = useRef<[number, number, number] | null>([0, 0, 0]);
   const [active] = useState<[boolean, boolean, boolean]>([true, true, true]);
   const [wheelHUD, setWheelHUD] = useState<[string | null, string | null, string | null]>([null, null, null]);
   const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>({
@@ -870,7 +871,8 @@ export function useThreeWheelGame({
   const applySpellEffects = useCallback(
     (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => {
       let latestAssignments: AssignmentState<Card> = assignRef.current;
-      let latestTokens: [number, number, number] = tokensRef.current ?? tokens;
+      let snapshotTokens: [number, number, number] =
+        roundStartTokensRef.current ?? (tokensRef.current ?? tokens);
 
       runSpellEffects(
         payload,
@@ -889,7 +891,8 @@ export function useThreeWheelGame({
             setTokens((prev) => {
               const next = updater(prev);
               tokensRef.current = next;
-              latestTokens = next;
+              roundStartTokensRef.current = next;
+              snapshotTokens = next;
               return next;
             });
           },
@@ -905,6 +908,11 @@ export function useThreeWheelGame({
             wheelRefs[index]?.current?.setVisualToken?.(value);
           },
           applyReservePenalty,
+          startingTokens: roundStartTokensRef.current ?? (tokensRef.current ?? tokens),
+          updateRoundStartTokens: (nextTokens) => {
+            roundStartTokensRef.current = nextTokens;
+            snapshotTokens = nextTokens;
+          },
         },
         options,
       );
@@ -912,7 +920,7 @@ export function useThreeWheelGame({
       if (phaseRef.current === "anim" || phaseRef.current === "roundEnd") {
         resolveRound(undefined, {
           skipAnimation: true,
-          snapshot: { assign: latestAssignments, tokens: latestTokens },
+          snapshot: { assign: latestAssignments, tokens: snapshotTokens },
         });
       }
     },
@@ -1029,7 +1037,11 @@ export function useThreeWheelGame({
     },
   ) {
     const currentAssign = options?.snapshot?.assign ?? assignRef.current;
-    const startingTokens = options?.snapshot?.tokens ?? tokensRef.current ?? tokens;
+    const startingTokens =
+      options?.snapshot?.tokens ??
+      roundStartTokensRef.current ??
+      (tokensRef.current ?? tokens);
+    roundStartTokensRef.current = startingTokens;
     const played = [0, 1, 2].map((i) => ({
       p: currentAssign.player[i] as Card | null,
       e: (enemyPicks?.[i] ?? currentAssign.enemy[i]) as Card | null,
@@ -1172,6 +1184,7 @@ export function useThreeWheelGame({
       setDragCardId(null);
       setDragOverWheel(null);
       setTokens([0, 0, 0]);
+      roundStartTokensRef.current = [0, 0, 0];
       setReserveSums(null);
       setWheelHUD([null, null, null]);
       reservePenaltiesRef.current = { player: 0, enemy: 0 };

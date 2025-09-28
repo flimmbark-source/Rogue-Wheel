@@ -26,15 +26,9 @@ const createInitialAssignments = (): AssignmentState<TestCard> => ({
   ],
 });
 
-const computeInitialTokens = (assignments: AssignmentState<TestCard>): [number, number, number] => {
-  const playerValue = assignments.player[0]?.number ?? 0;
-  const enemyValue = assignments.enemy[0]?.number ?? 0;
-  return [((playerValue + enemyValue) % SLICES + SLICES) % SLICES, 0, 0];
-};
-
 {
   let assignments = createInitialAssignments();
-  let tokens = computeInitialTokens(assignments);
+  let tokens: [number, number, number] = [0, 0, 0];
   let reserveState: ReserveState | null = { player: 0, enemy: 0 };
   let laneChillStacks: LaneChillStacks = { player: [0, 0, 0], enemy: [0, 0, 0] };
   let initiative: LegacySide = initialInitiative;
@@ -69,6 +63,7 @@ const computeInitialTokens = (assignments: AssignmentState<TestCard>): [number, 
     updateTokenVisual: (index, value) => {
       tokenVisualUpdates.push({ index, value });
     },
+    startingTokens: [...tokens] as [number, number, number],
   };
 
   applySpellEffects<TestCard>(
@@ -87,10 +82,15 @@ const computeInitialTokens = (assignments: AssignmentState<TestCard>): [number, 
   assert.equal(assignments.player[0]?.number, assignments.enemy[0]?.number);
   assert.equal(assignments.player[0]?.number, 7);
 
-  const expectedTokenValue = (7 + 7) % SLICES;
-  assert.equal(tokens[0], expectedTokenValue);
-  assert.equal(tokenUpdateCallCount, 1);
-  assert.deepEqual(tokenVisualUpdates, [{ index: 0, value: expectedTokenValue }]);
+  const expectedStep = ((assignments.player[0]?.number ?? 0) + (assignments.enemy[0]?.number ?? 0)) % SLICES;
+  const expectedTokenValue = (tokens[0] + expectedStep) % SLICES;
+  assert.equal(tokens[0], 0);
+  assert.equal(tokenUpdateCallCount, 0);
+  assert.deepEqual(tokenVisualUpdates, [
+    { index: 0, value: expectedTokenValue },
+    { index: 1, value: tokens[1] },
+    { index: 2, value: tokens[2] },
+  ]);
 
   assert.equal(reserveState?.player, 0);
   assert.equal(laneChillStacks.player[0], 0);
@@ -101,7 +101,7 @@ const computeInitialTokens = (assignments: AssignmentState<TestCard>): [number, 
 // Hex drains the opponent's reserve before reveal, flipping the ReserveSum outcome.
 {
   let assignments = createInitialAssignments();
-  let tokens: [number, number, number] = computeInitialTokens(assignments);
+  let tokens: [number, number, number] = [0, 0, 0];
   let reserveState: ReserveState | null = null;
   let laneChillStacks: LaneChillStacks = { player: [0, 0, 0], enemy: [0, 0, 0] };
   let initiative: LegacySide = initialInitiative;
@@ -147,6 +147,7 @@ const computeInitialTokens = (assignments: AssignmentState<TestCard>): [number, 
         };
       }
     },
+    startingTokens: [...tokens] as [number, number, number],
   };
 
   applySpellEffects<TestCard>(
