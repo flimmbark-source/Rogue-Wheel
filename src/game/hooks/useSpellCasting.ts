@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { CorePhase, Fighter, Phase } from "../types";
+import type { CorePhase, Fighter } from "../types";
 import {
   computeSpellCost,
   resolvePendingSpell,
@@ -33,7 +33,7 @@ export type UseSpellCastingResult = {
   phaseBeforeSpell: CorePhase | null;
   awaitingSpellTarget: boolean;
   handleSpellActivate: (spell: SpellDefinition) => void;
-  handlePendingSpellCancel: (refundMana: boolean) => void;
+  handlePendingSpellCancel: (shouldRefund: boolean) => void;
   handleSpellTargetSelect: (selection: { side: LegacySide; lane: number | null; cardId: string }) => void;
   handleWheelTargetSelect: (wheelIndex: number) => void;
 };
@@ -44,6 +44,14 @@ const enqueueMicrotask = (task: () => void) => {
   } else {
     Promise.resolve().then(task);
   }
+};
+
+const findCardName = (fighter: Fighter, cardId: string): string | undefined => {
+  for (const pool of [fighter.hand, fighter.deck, fighter.discard]) {
+    const match = pool.find((card) => card.id === cardId);
+    if (match) return match.name;
+  }
+  return undefined;
 };
 
 export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastingResult {
@@ -82,6 +90,37 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
 
   const phaseForLogic = phaseBeforeSpell ?? phase;
 
+  const restoreMana = useCallback(
+    (side: LegacySide, amount?: number | null) => {
+      if (!amount || amount <= 0) return;
+      setManaPools((mana) => ({ ...mana, [side]: mana[side] + amount }));
+    },
+    [setManaPools],
+  );
+
+  const spendMana = useCallback(
+    (side: LegacySide, amount: number) => {
+      if (amount <= 0) return true;
+
+      let spent = false;
+      setManaPools((current) => {
+        const currentMana = current[side];
+        if (currentMana < amount) return current;
+        spent = true;
+        return { ...current, [side]: currentMana - amount };
+      });
+
+      return spent;
+    },
+    [setManaPools],
+  );
+
+  const resetSpellContext = useCallback(() => {
+    clearPendingSpell();
+    closeGrimoire();
+    setPhaseBeforeSpell(null);
+  }, [clearPendingSpell, closeGrimoire, setPhaseBeforeSpell]);
+
   const getSpellCost = useCallback(
     (spell: SpellDefinition): number =>
       computeSpellCost(spell, {
@@ -110,70 +149,43 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
         return;
       }
 
+      restoreMana(descriptor.side, result.manaRefund);
+
       if (result.outcome === "error") {
         console.error("Spell resolution failed", result.error);
-        if (result.manaRefund && result.manaRefund > 0) {
-          setManaPools((mana) => {
-            const next: SideState<number> = { ...mana };
-            next[descriptor.side] = mana[descriptor.side] + result.manaRefund!;
-            return next;
-          });
-        }
-        clearPendingSpell();
-        closeGrimoire();
-        setPhaseBeforeSpell(null);
+        resetSpellContext();
         return;
-      }
-
-      if (result.manaRefund && result.manaRefund > 0) {
-        setManaPools((mana) => {
-          const next: SideState<number> = { ...mana };
-          next[descriptor.side] = mana[descriptor.side] + result.manaRefund!;
-          return next;
-        });
       }
 
       if (result.payload) {
         applySpellEffects(result.payload);
       }
 
-      clearPendingSpell();
-      closeGrimoire();
-      setPhaseBeforeSpell(null);
+      resetSpellContext();
     },
     [
       applySpellEffects,
       beginPendingSpell,
       caster,
-      clearPendingSpell,
-      closeGrimoire,
       opponent,
       phaseForLogic,
+      restoreMana,
+      resetSpellContext,
       runtimeStateRef,
-      setManaPools,
     ],
   );
 
   const handlePendingSpellCancel = useCallback(
-    (refundMana: boolean) => {
-      pendingSpellScheduleIdRef.current++;
+    (shouldRefund: boolean) => {
       setPendingSpell((current) => {
-        if (!current) return current;
-
-        if (refundMana && current.spentMana > 0) {
-          setManaPools((mana) => {
-            const next: SideState<number> = { ...mana };
-            next[current.side] = mana[current.side] + current.spentMana;
-            return next;
-          });
+        if (shouldRefund && current) {
+          restoreMana(current.side, current.spentMana);
         }
-
-        return null;
+        return current;
       });
-      closeGrimoire();
-      setPhaseBeforeSpell(null);
+      resetSpellContext();
     },
-    [closeGrimoire, setManaPools],
+    [restoreMana, resetSpellContext],
   );
 
   const handleSpellActivate = useCallback(
@@ -194,14 +206,8 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
         handlePendingSpellCancel(true);
       }
 
-      setManaPools((current) => {
-        const currentMana = current[localSide];
-        if (currentMana < effectiveCost) return current;
-
-        const next: SideState<number> = { ...current };
-        next[localSide] = currentMana - effectiveCost;
-        return next;
-      });
+      const spent = spendMana(localSide, effectiveCost);
+      if (!spent) return;
 
       setPhaseBeforeSpell((current) => current ?? phaseForLogic);
 
@@ -209,16 +215,12 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
 
       closeGrimoire();
 
-      const initialTarget: SpellTargetInstance | null = (() => {
-        switch (spell.target.type) {
-          case "self":
-            return { type: "self" };
-          case "none":
-            return { type: "none" };
-          default:
-            return requiresManualTarget ? null : null;
-        }
-      })();
+      const initialTarget: SpellTargetInstance | null =
+        spell.target.type === "self"
+          ? { type: "self" }
+          : spell.target.type === "none"
+          ? { type: "none" }
+          : null;
 
       const descriptor: PendingSpellDescriptor = {
         side: localSide,
@@ -244,7 +246,7 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
       localSide,
       pendingSpell,
       phaseForLogic,
-      setManaPools,
+      spendMana,
     ],
   );
 
@@ -270,14 +272,7 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
       }
 
       const sourceFighter = selection.side === localSide ? caster : opponent;
-      const cardName = (() => {
-        const pools = [sourceFighter.hand, sourceFighter.deck, sourceFighter.discard];
-        for (const pool of pools) {
-          const match = pool.find((card) => card.id === selection.cardId);
-          if (match) return match.name;
-        }
-        return undefined;
-      })();
+      const cardName = findCardName(sourceFighter, selection.cardId);
 
       const nextTarget: SpellTargetInstance = {
         type: "card",
