@@ -26,7 +26,31 @@ const initialWins = { player: 0, enemy: 1 };
 const initialTokens: [number, number, number] = [3, 0, 0];
 const hudBefore: [string | null, string | null, string | null] = [ENEMY_COLOR, null, null];
 
-// The spell changes the matchup so the player now wins wheel 1 on Strongest.
+// Before the spell resolves, enemy would win wheel 1 on Strongest.
+const preSpellAnalysis: RoundAnalysis = {
+  outcomes: [
+    {
+      steps: 2,
+      targetSlice: 5,
+      section: strongestSection,
+      winner: "enemy",
+      tie: false,
+      wheel: 0,
+      detail: "Strongest 5 vs 9",
+    },
+  ],
+  localReserve: 0,
+  remoteReserve: 0,
+  pReserve: 5,
+  eReserve: 9,
+  usedRemoteReport: false,
+};
+
+const tokensBeforeSpell = [...initialTokens] as [number, number, number];
+tokensBeforeSpell[0] =
+  (tokensBeforeSpell[0] + preSpellAnalysis.outcomes[0]!.steps) % SLICES;
+
+// The spell swaps the matchup so the player now wins wheel 1 on Strongest.
 const postSpellAnalysis: RoundAnalysis = {
   outcomes: [
     {
@@ -80,6 +104,13 @@ const applyImmediateUpdates = () => {
 
 applyImmediateUpdates();
 
+assert.equal(preSpellAnalysis.outcomes[0]!.winner, "enemy");
+assert.equal(postSpellAnalysis.outcomes[0]!.winner, "player");
+assert.notEqual(
+  tokensBeforeSpell[0],
+  tokensAfterSpell[0],
+  "Spell should retarget the wheel token before animations",
+);
 assert.equal(tokensState[0], tokensAfterSpell[0], "Wheel token should move immediately after spell resolution");
 assert.equal(wheelHUD[0], PLAYER_COLOR, "Player badge updates instantly after spell");
 assert.equal(winsState.player, 1, "Player win total increases right away");
