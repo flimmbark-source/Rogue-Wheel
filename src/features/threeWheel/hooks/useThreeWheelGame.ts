@@ -767,6 +767,16 @@ export function useThreeWheelGame({
     return Math.max(0, base - penalty);
   }
 
+  const modSlice = (value: number) => ((value % SLICES) + SLICES) % SLICES;
+
+  const cardWheelValue = (card: Card | null) => {
+    if (!card) return 0;
+    if (typeof card.number === "number" && Number.isFinite(card.number)) return card.number;
+    if (typeof card.leftValue === "number" && Number.isFinite(card.leftValue)) return card.leftValue;
+    if (typeof card.rightValue === "number" && Number.isFinite(card.rightValue)) return card.rightValue;
+    return 0;
+  };
+
   function analyzeRound(played: { p: Card | null; e: Card | null }[]): RoundAnalysis {
     const localPlayed =
       localLegacySide === "player" ? played.map((pe) => pe.p) : played.map((pe) => pe.e);
@@ -797,13 +807,14 @@ export function useThreeWheelGame({
     const eReserve = localLegacySide === "enemy" ? localReserve : remoteReserve;
 
     const outcomes: WheelOutcome[] = [];
-    const tokensSnapshot = tokensRef.current ?? tokens;
+    const tokensSnapshot =
+      roundStartTokensRef.current ?? tokensRef.current ?? tokens;
 
     for (let w = 0; w < 3; w++) {
       const secList = wheelSections[w];
-      const baseP = played[w].p?.number ?? 0;
-      const baseE = played[w].e?.number ?? 0;
-      const steps = ((baseP % SLICES) + (baseE % SLICES)) % SLICES;
+      const baseP = cardWheelValue(played[w].p ?? null);
+      const baseE = cardWheelValue(played[w].e ?? null);
+      const steps = modSlice(modSlice(baseP) + modSlice(baseE));
       const startToken = tokensSnapshot[w] ?? 0;
       const targetSlice = (startToken + steps) % SLICES;
       const section =
@@ -873,6 +884,8 @@ export function useThreeWheelGame({
       let latestAssignments: AssignmentState<Card> = assignRef.current;
       let snapshotTokens: [number, number, number] =
         roundStartTokensRef.current ?? (tokensRef.current ?? tokens);
+      let assignmentsChanged = false;
+      let tokensAdjusted = false;
 
       runSpellEffects(
         payload,
@@ -881,6 +894,7 @@ export function useThreeWheelGame({
           updateAssignments: (updater) => {
             setAssign((prev) => {
               const next = updater(prev);
+              if (next !== prev) assignmentsChanged = true;
               assignRef.current = next;
               latestAssignments = next;
               return next;
@@ -890,6 +904,7 @@ export function useThreeWheelGame({
           updateTokens: (updater) => {
             setTokens((prev) => {
               const next = updater(prev);
+              if (next !== prev) tokensAdjusted = true;
               tokensRef.current = next;
               roundStartTokensRef.current = next;
               snapshotTokens = next;
@@ -912,10 +927,23 @@ export function useThreeWheelGame({
           updateRoundStartTokens: (nextTokens) => {
             roundStartTokensRef.current = nextTokens;
             snapshotTokens = nextTokens;
+            tokensAdjusted = true;
           },
         },
         options,
       );
+
+      if (assignmentsChanged && !tokensAdjusted) {
+        const baseTokens = roundStartTokensRef.current ?? (tokensRef.current ?? tokens);
+        for (let i = 0; i < 3; i++) {
+          const laneTotal = modSlice(
+            modSlice(cardWheelValue(latestAssignments.player[i] as Card | null)) +
+              modSlice(cardWheelValue(latestAssignments.enemy[i] as Card | null)),
+          );
+          const landing = modSlice((baseTokens[i] ?? 0) + laneTotal);
+          wheelRefs[i]?.current?.setVisualToken?.(landing);
+        }
+      }
 
       if (phaseRef.current === "anim" || phaseRef.current === "roundEnd") {
         resolveRound(undefined, {
