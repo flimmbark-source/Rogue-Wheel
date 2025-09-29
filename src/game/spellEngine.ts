@@ -379,14 +379,10 @@ export function applySpellEffects<CardT extends { id: string }>(
     });
   }
 
-  const safeStartingTokens = startingTokens ? [...startingTokens] : [0, 0, 0];
-  let previewTokenBase = safeStartingTokens as [number, number, number];
-
-  const previewTokenTargets = (steps: [number, number, number]) => {
-    for (let i = 0; i < steps.length; i++) {
-      const base = previewTokenBase[i] ?? 0;
-      const step = steps[i] ?? 0;
-      const visual = ((base + step) % SLICES + SLICES) % SLICES;
+  const previewTokenTargets = (targets: [number, number, number]) => {
+    for (let i = 0; i < targets.length; i++) {
+      const target = targets[i] ?? 0;
+      const visual = ((target % SLICES) + SLICES) % SLICES;
       updateTokenVisual?.(i, visual);
     }
   };
@@ -428,7 +424,6 @@ export function applySpellEffects<CardT extends { id: string }>(
 
     if (persistedTokens) {
       updateRoundStartTokens?.(persistedTokens);
-      previewTokenBase = persistedTokens;
     }
   }
 

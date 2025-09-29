@@ -934,14 +934,12 @@ export function useThreeWheelGame({
       );
 
       if (assignmentsChanged && !tokensAdjusted) {
-        const baseTokens = roundStartTokensRef.current ?? (tokensRef.current ?? tokens);
         for (let i = 0; i < 3; i++) {
           const laneTotal = modSlice(
             modSlice(cardWheelValue(latestAssignments.player[i] as Card | null)) +
               modSlice(cardWheelValue(latestAssignments.enemy[i] as Card | null)),
           );
-          const landing = modSlice((baseTokens[i] ?? 0) + laneTotal);
-          wheelRefs[i]?.current?.setVisualToken?.(landing);
+          wheelRefs[i]?.current?.setVisualToken?.(laneTotal);
         }
       }
 

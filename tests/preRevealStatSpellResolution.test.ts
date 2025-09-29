@@ -82,26 +82,17 @@ const createAssignments = (): AssignmentState<TestCard> => ({
   const updatedPlayer = assignments.player[0]?.number ?? 0;
   const updatedEnemy = assignments.enemy[0]?.number ?? 0;
   const spinSteps = (updatedPlayer + updatedEnemy) % SLICES;
-  const expectedLanding = (tokens[0] + spinSteps) % SLICES;
+  const expectedLanding = spinSteps;
 
   assert.deepEqual(previewUpdates, [
     { index: 0, value: expectedLanding },
-    { index: 1, value: tokens[1] },
-    { index: 2, value: tokens[2] },
+    { index: 1, value: 0 },
+    { index: 2, value: 0 },
   ]);
 
-  const simulatedFinalTokens = [...tokens] as [number, number, number];
-  simulatedFinalTokens[0] = (simulatedFinalTokens[0] + spinSteps) % SLICES;
-  assert.equal(
-    simulatedFinalTokens[0],
-    expectedLanding,
-    "resolveRound should land on the spell-adjusted slice",
-  );
-  assert.equal(
-    simulatedFinalTokens[0],
-    previewUpdates[0]?.value ?? -1,
-    "preview matches resolved landing",
-  );
+  const actualLanding = (updatedPlayer + updatedEnemy) % SLICES;
+  assert.equal(actualLanding, expectedLanding, "landing is based on the adjusted card totals");
+  assert.equal(actualLanding, previewUpdates[0]?.value ?? -1, "preview matches resolved landing");
 }
 
 console.log("preReveal stat spell resolution test passed");
