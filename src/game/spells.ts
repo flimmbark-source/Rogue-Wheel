@@ -232,7 +232,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   fireball: {
     id: "fireball",
     name: "Fireball",
-    description: "Reduce an enemy's flames by 2. Each successive cast costs +1 Mana.",
+    description: "Reduce an enemy card's value 2. Each successive cast costs +1 Mana.",
     targetSummary: "Target: 🔥 enemy card",
     cost: 2,
     variableCost: (context) => {
@@ -264,7 +264,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   iceShard: {
     id: "iceShard",
     name: "Ice Shard",
-    description: "Freeze a blade for the round, preventing buffs and debuffs.",
+    description: "Freeze a card's value for the round.",
     targetSummary: "Target: 🗡️ enemy card",
     cost: 1,
     icon: "🗡️",
@@ -290,7 +290,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   mirrorImage: {
     id: "mirrorImage",
     name: "Mirror Image",
-    description: "Your 👁️ card copies the opposing number.",
+    description: "Your 👁️ card copies the opposing value.",
     targetSummary: "Target: 👁️ ally card",
     cost: 4,
     icon: "👁️",
@@ -327,7 +327,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   arcaneShift: {
     id: "arcaneShift",
     name: "Arcane Shift",
-    description: "Advance the wheel housing a 🌒 card by 1 token.",
+    description: "Advance the wheel housing a 🌒 card by 1 space.",
     targetSummary: "Target: Wheel with 🌒 card",
     cost: 3,
     icon: "🌒",
@@ -357,7 +357,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   hex: {
     id: "hex",
     name: "Hex",
-    description: "Drain 2 reserve from a 🐍 foe if it is present.",
+    description: "Remove 2 reserve from foe if a 🐍 card is present.",
     targetSummary: "Target: 🐍 enemy card",
     cost: 4,
     icon: "🐍",
@@ -414,7 +414,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   kindle: {
     id: "kindle",
     name: "Kindle",
-    description: "Empower a 🔥 card by +2. If it rests in reserve, sear the foe's reserve for 2.",
+    description: "Increase a 🔥 card by +2. If it rests in reserve, remove 2 reserve from foe.",
     targetSummary: "Target: 🔥 ally card",
     cost: 2,
     icon: "🔥",
@@ -452,7 +452,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   suddenStrike: {
     id: "suddenStrike",
     name: "Sudden Strike",
-    description: "Reveal your 🗡️ play; if the opposing card is lower, seize initiative.",
+    description: "Reveal a 🗡️ card, foe must reveal a card. If the opposing card is lower, seize initiative.",
     targetSummary: "Target: Your 🗡️ card",
     cost: 3,
     icon: "🗡️",
@@ -480,7 +480,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   leech: {
     id: "leech",
     name: "Leech",
-    description: "Drain strength from an adjacent card into your 🐍.",
+    description: "Drain value from an adjacent card into your 🐍.",
     targetSummary: "Targets: 🐍 card then adjacent card",
     cost: 4,
     icon: "🐍",
@@ -520,7 +520,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   crosscut: {
     id: "crosscut",
     name: "Crosscut",
-    description: "Compare a revealed reserve blade against a foe; drain reserve by their difference.",
+    description: "RYu and foe both reveal a reserve card, Compare the revealed cards against each other; drain foe's reserve by their difference.",
     targetSummary: "Targets: 🗡️ card in hand, then opposing card",
     cost: 3,
     icon: "🗡️",
@@ -564,7 +564,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   offering: {
     id: "offering",
     name: "Offering",
-    description: "Sacrifice a reserve card to fuel a 🔥 ally with its value.",
+    description: "Sacrifice a reserve card to increase a 🔥 card by its value.",
     targetSummary: "Targets: 🔥 card, then your reserve card",
     cost: 4,
     icon: "🔥",
@@ -603,7 +603,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   phantom: {
     id: "phantom",
     name: "Phantom",
-    description: "Swap a 🌒 card with another of your committed cards.",
+    description: "Swap a 🌒 card with another of your cards.",
     targetSummary: "Targets: 🌒 card and another ally card",
     cost: 3,
     icon: "🌒",
