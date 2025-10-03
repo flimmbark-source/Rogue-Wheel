@@ -128,23 +128,20 @@ export default memo(function StSCard({
     >
       <div className="absolute inset-0 rounded-xl border bg-gradient-to-br from-slate-600 to-slate-800 border-slate-400"></div>
       <div className="absolute inset-px rounded-[10px] bg-slate-900/85 backdrop-blur-[1px] border border-slate-700/70" />
-      <div className="absolute inset-0 flex flex-col items-center">
-        <div className="flex flex-1 items-center justify-center pt-2">
-          {isSplit(card) ? (
-            <div className="text-xl font-extrabold text-white/90 leading-none text-center">
-              <div>
-                {fmtNum(card.leftValue!)}
-                <span className="opacity-60">|</span>
-                {fmtNum(card.rightValue!)}
-              </div>
-            </div>
-          ) : (
-            <div className="text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
-          )}
-        </div>
-        <div className="pointer-events-none pb-2">
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        {isSplit(card) ? (
+          <div className="text-xl font-extrabold text-white/90 leading-none text-center">
+            <div>{fmtNum(card.leftValue!)}<span className="opacity-60">|</span>{fmtNum(card.rightValue!)}</div>
+          </div>
+        ) : (
+          <div className="text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
+        )}
+        <div className="pointer-events-none mt-2 flex h-8 w-12 items-center justify-center rounded-full border border-slate-700/80 bg-slate-900/70 shadow-inner">
           <ArcanaGlyph symbol={symbol} />
         </div>
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center">
+        <ArcanaGlyph symbol={symbol} />
       </div>
     </button>
   );
