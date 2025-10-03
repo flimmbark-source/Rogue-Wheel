@@ -51,6 +51,7 @@ import {
   getOnboardingState,
   setOnboardingStage as persistOnboardingStage,
   dismissOnboardingHint,
+  getProfileBundle,
   type MatchResultSummary,
   type LevelProgress,
   type OnboardingState,
@@ -74,8 +75,8 @@ import HandDock from "./features/threeWheel/components/HandDock";
 import FirstRunCoach from "./features/threeWheel/components/FirstRunCoach";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
-import { getSpellDefinitions, type SpellDefinition, type SpellRuntimeState } from "./game/spells";
-import { countSymbolsFromCards, getSpellsForSymbols } from "./game/grimoire";
+import { getSpellDefinitions, type SpellDefinition, type SpellRuntimeState, type SpellId } from "./game/spells";
+import { countSymbolsFromCards, getVisibleProfileSpellsForHand } from "./game/grimoire";
 import StSCard from "./components/StSCard";
 
 // ---- Local aliases/types/state helpers
@@ -285,6 +286,14 @@ export default function ThreeWheel_WinsOnly({
   const effectiveGameMode = activeGameModes.length > 0 ? activeGameModes.join("+") : "classic";
   const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
 
+  const localGrimoireSpellIds = useMemo<SpellId[]>(() => {
+    try {
+      return getProfileBundle().grimoire?.spellIds ?? [];
+    } catch {
+      return [] as SpellId[];
+    }
+  }, []);
+
   const onboardingBootstrapRef = useRef<OnboardingState | null>(null);
   if (onboardingBootstrapRef.current === null) {
     onboardingBootstrapRef.current = getOnboardingState();
@@ -349,10 +358,10 @@ export default function ThreeWheel_WinsOnly({
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
 
   const localSpellIds = useMemo(() => {
-    if (!isGrimoireMode) return [] as string[];
-    if (phase === "roundEnd" || phase === "ended") return [] as string[];
-    return getSpellsForSymbols(localHandSymbols);
-  }, [isGrimoireMode, phase, localHandSymbols]);
+    if (!isGrimoireMode) return [] as SpellId[];
+    if (phase === "roundEnd" || phase === "ended") return [] as SpellId[];
+    return getVisibleProfileSpellsForHand(localHandSymbols, localGrimoireSpellIds);
+  }, [isGrimoireMode, phase, localHandSymbols, localGrimoireSpellIds]);
 
   const localSpellDefinitions = useMemo<SpellDefinition[]>(
     () => getSpellDefinitions(localSpellIds),
@@ -1058,7 +1067,9 @@ const renderWheelPanel = (i: number) => {
                       </div>
                       <div>
                         Each round your hand grants <span className="font-semibold">Arcana symbols</span> based on the loadout
-                        set on your profile. Spells appear in the Grimoire when their symbol requirements are met.
+                        set on your profile. Only the spells learned in your profile Grimoire can appear, and they show up when
+                        your hand reveals at least two of their required symbols (single-symbol spells only need that matching
+                        symbol).
                       </div>
                       <div>
                         Spend <span className="font-semibold">Mana</span> to cast those spells during the phases shown in the
