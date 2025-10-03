@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type SVGProps,
+} from "react";
 import {
   getProfileBundle,
   expRequiredForLevel,
@@ -13,7 +21,7 @@ import LoadingScreen from "./components/LoadingScreen";
 import { ARCANA_EMOJI } from "./game/arcana";
 import { GRIMOIRE_SYMBOL_ORDER, MAX_GRIMOIRE_SYMBOLS, symbolsTotal, GRIMOIRE_SPELL_REQUIREMENTS } from "./game/grimoire";
 import type { Arcana } from "./game/types";
-import { getSpellDefinitions } from "./game/spells";
+import { getSpellDefinitions, listSpellIds, type SpellDefinition } from "./game/spells";
 
 export default function ProfilePage() {
   // Initialize immediately so we can render without waiting for an effect
@@ -129,6 +137,40 @@ export default function ProfilePage() {
     () => getSpellDefinitions(bundle.grimoire.spellIds),
     [bundle.grimoire.spellIds],
   );
+  const allSpells = useMemo<SpellDefinition[]>(() => {
+    const definitions = getSpellDefinitions(listSpellIds());
+    return [...definitions].sort((a, b) => a.name.localeCompare(b.name));
+  }, []);
+  const [showSpellbook, setShowSpellbook] = useState(false);
+  const spellbookButtonRef = useRef<HTMLButtonElement | null>(null);
+  const spellbookDialogRef = useRef<HTMLDivElement | null>(null);
+
+  const openSpellbook = useCallback(() => {
+    setShowSpellbook(true);
+  }, []);
+
+  const closeSpellbook = useCallback(() => {
+    setShowSpellbook(false);
+    spellbookButtonRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!showSpellbook) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeSpellbook();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    const id = requestAnimationFrame(() => {
+      spellbookDialogRef.current?.focus();
+    });
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      cancelAnimationFrame(id);
+    };
+  }, [showSpellbook, closeSpellbook]);
 
   const handleSymbolAdjust = useCallback(
     (arcana: Arcana, delta: number) => {
@@ -261,6 +303,18 @@ export default function ProfilePage() {
             })}
           </div>
 
+          <div className="mt-3 flex justify-center">
+            <button
+              type="button"
+              ref={spellbookButtonRef}
+              onClick={openSpellbook}
+              className="group flex flex-col items-center gap-2 rounded-xl border border-amber-400/60 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-400/20 focus:outline-none focus:ring-2 focus:ring-amber-300/60"
+            >
+              <SpellbookIcon className="h-12 w-12 drop-shadow-[0_0_4px_rgba(252,211,77,0.35)] transition group-hover:drop-shadow-[0_0_10px_rgba(252,211,77,0.55)]" />
+              <span>View full spellbook</span>
+            </button>
+          </div>
+
           <div className="mt-4">
             <div className="text-sm font-medium text-white">Spells</div>
             <div className="text-xs text-white/60">
@@ -272,43 +326,146 @@ export default function ProfilePage() {
               </div>
             ) : (
               <ul className="mt-2 space-y-2">
-                {grimoireSpells.map((spell) => {
-                  const requirement = GRIMOIRE_SPELL_REQUIREMENTS[spell.id as keyof typeof GRIMOIRE_SPELL_REQUIREMENTS];
-                  const requirementEntries = requirement
-                    ? GRIMOIRE_SYMBOL_ORDER.filter((arcana) => (requirement?.[arcana] ?? 0) > 0).map((arcana) => [arcana, requirement?.[arcana] ?? 0] as [Arcana, number])
-                    : [];
-                  return (
-                    <li key={spell.id} className="rounded-xl border border-white/10 bg-slate-900/80 p-3">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                          {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
-                          <span>{spell.name}</span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1 text-xs text-amber-200/90">
-                          {requirementEntries.length === 0 ? (
-                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-white/70">No requirement</span>
-                          ) : (
-                            requirementEntries.map(([arc, amount]) => (
-                              <span
-                                key={arc}
-                                className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5"
-                              >
-                                <span aria-hidden>{ARCANA_EMOJI[arc]}</span>
-                                <span>×{amount}</span>
-                              </span>
-                            ))
-                          )}
-                        </div>
-                      </div>
-                      <div className="mt-2 text-xs leading-relaxed text-white/70">{spell.description}</div>
-                    </li>
-                  );
-                })}
+                {grimoireSpells.map(renderSpellListItem)}
               </ul>
             )}
           </div>
         </div>
       </section>
+
+      {showSpellbook ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="profile-spellbook-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur"
+          onClick={closeSpellbook}
+        >
+          <div
+            ref={spellbookDialogRef}
+            tabIndex={-1}
+            onClick={(event) => event.stopPropagation()}
+            className="relative flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/20 bg-slate-900/95 shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 bg-slate-900/80 px-4 py-3 sm:px-6">
+              <div>
+                <h3 id="profile-spellbook-title" className="text-lg font-semibold text-white">
+                  Spellbook compendium
+                </h3>
+                <p className="text-xs text-white/60">
+                  Browse every spell available in Grimoire mode, including their symbol requirements and effects.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeSpellbook}
+                className="rounded-full border border-white/20 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/70 transition hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-emerald-300/60"
+              >
+                Close
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+              <ul className="space-y-3">
+                {allSpells.map(renderSpellListItem)}
+              </ul>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function renderSpellListItem(spell: SpellDefinition) {
+  const requirementEntries = getRequirementEntriesForSpell(spell.id);
+  return (
+    <li key={spell.id} className="rounded-xl border border-white/10 bg-slate-900/80 p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
+          <span>{spell.name}</span>
+          <span className="rounded-full border border-amber-300/50 bg-amber-400/10 px-2 py-0.5 text-xs font-medium text-amber-100">
+            {spell.cost} Mana
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1 text-xs text-amber-200/90">
+          {requirementEntries.length === 0 ? (
+            <span className="rounded-full bg-white/10 px-2 py-0.5 text-white/70">No requirement</span>
+          ) : (
+            requirementEntries.map(([arc, amount]) => (
+              <span key={arc} className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5">
+                <span aria-hidden>{ARCANA_EMOJI[arc]}</span>
+                <span>×{amount}</span>
+              </span>
+            ))
+          )}
+        </div>
+      </div>
+      {spell.targetSummary ? (
+        <div className="mt-1 text-[0.7rem] uppercase tracking-wide text-emerald-200/70">
+          {spell.targetSummary}
+        </div>
+      ) : null}
+      <div className="mt-2 text-xs leading-relaxed text-white/70">{spell.description}</div>
+    </li>
+  );
+}
+
+function getRequirementEntriesForSpell(spellId: string): [Arcana, number][] {
+  const requirement = GRIMOIRE_SPELL_REQUIREMENTS[spellId as keyof typeof GRIMOIRE_SPELL_REQUIREMENTS];
+  if (!requirement) return [];
+  return GRIMOIRE_SYMBOL_ORDER.filter((arcana) => (requirement?.[arcana] ?? 0) > 0).map(
+    (arcana) => [arcana, requirement?.[arcana] ?? 0] as [Arcana, number],
+  );
+}
+
+function SpellbookIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 64 64"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+      focusable="false"
+      {...props}
+    >
+      <path
+        d="M20 12h20c6.627 0 12 5.373 12 12v26c0 6.627-5.373 12-12 12H20"
+        fill="#0f172a"
+        stroke="#facc15"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M20 12c-6.627 0-12 5.373-12 12v26c0 6.627 5.373 12 12 12h20"
+        fill="#1f2937"
+        stroke="#facc15"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+      <path d="M20 22h20" stroke="#facc15" strokeWidth="2" strokeLinecap="round" />
+      <path d="M20 32h20" stroke="#facc15" strokeOpacity="0.5" strokeWidth="1.5" strokeLinecap="round" />
+      <path
+        d="M32 18v30"
+        stroke="#fcd34d"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M32 21l2 4 4.6.4-3.6 3 1.2 4.8L32 31.4l-4.2 1.8 1.2-4.8-3.6-3 4.6-.4z"
+        fill="#fde68a"
+        stroke="#fbbf24"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M26 40h12"
+        stroke="#facc15"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeOpacity="0.7"
+      />
+    </svg>
   );
 }
