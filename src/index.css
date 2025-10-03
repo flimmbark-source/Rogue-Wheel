@@ -99,6 +99,10 @@ button[aria-label^="Card"] .text-3xl {
   color: #f5e7c4;
 }
 
+[data-spells-enabled="false"] .card-arcana {
+  display: none;
+}
+
 /* Add margin below the last wheel to prevent overlap with the player's hand */
 div.relative[aria-label^="Wheel"]:last-of-type {
   margin-bottom: 1rem;
