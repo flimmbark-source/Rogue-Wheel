@@ -1,6 +1,6 @@
-import { getCardArcana } from "./arcana";
-import type { Card, Arcana } from "./types";
-import type { SpellId } from "./spells";
+import { getCardArcana } from "./arcana.js";
+import type { Card, Arcana } from "./types.js";
+import type { SpellId } from "./spells.js";
 
 export const GRIMOIRE_SYMBOL_ORDER: Arcana[] = [
   "fire",
@@ -122,6 +122,57 @@ export function getSpellsForSymbols(symbols: GrimoireSymbols): SpellId[] {
     }
   }
   return available;
+}
+
+export function handMeetsVisibilityRequirement(
+  handSymbols: GrimoireSymbols,
+  requirement: GrimoireRequirement | undefined,
+): boolean {
+  if (!requirement) return true;
+  const entries = Object.entries(requirement).filter(([, needed]) => typeof needed === "number" && needed > 0);
+  if (entries.length === 0) return true;
+
+  if (entries.length === 1) {
+    const [arcana] = entries[0];
+    const key = arcana as Arcana;
+    return (handSymbols[key] ?? 0) > 0;
+  }
+
+  let typesPresent = 0;
+  for (const [arcana] of entries) {
+    const key = arcana as Arcana;
+    if ((handSymbols[key] ?? 0) > 0) {
+      typesPresent += 1;
+      if (typesPresent >= 2) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+export function getVisibleSpellsForHand(handSymbols: GrimoireSymbols): SpellId[] {
+  const visible: SpellId[] = [];
+  for (const id of SPELL_PRIORITY) {
+    if (handMeetsVisibilityRequirement(handSymbols, GRIMOIRE_SPELL_REQUIREMENTS[id])) {
+      visible.push(id);
+    }
+  }
+  return visible;
+}
+
+export function limitSpellsToProfile(
+  spells: SpellId[],
+  allowed: Iterable<SpellId> | null | undefined,
+): SpellId[] {
+  if (!allowed) return [];
+  const allowedSet = new Set<SpellId>();
+  for (const id of allowed) {
+    allowedSet.add(id);
+  }
+  if (allowedSet.size === 0) return [];
+  return spells.filter((spellId) => allowedSet.has(spellId));
 }
 
 export function symbolsTotal(symbols: GrimoireSymbols): number {
