@@ -45,7 +45,6 @@ export interface WheelPanelProps {
   setSelectedCardId: (value: string | null) => void;
   localLegacySide: LegacySide;
   phase: Phase;
-  archetypeGateOpen: boolean;
   setDragCardId: (value: string | null) => void;
   dragCardId: string | null;
   setDragOverWheel: (value: number | null) => void;
@@ -107,7 +106,6 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   setSelectedCardId,
   localLegacySide,
   phase,
-  archetypeGateOpen,
   setDragCardId,
   dragCardId,
   setDragOverWheel,
@@ -258,11 +256,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       (pendingOwnership === "any" || pendingOwnership === slotOwnership);
 
     const canInteractNormally =
-      !awaitingSpellTarget &&
-      slot.side === localLegacySide &&
-      phase === "choose" &&
-      archetypeGateOpen &&
-      isWheelActive;
+      !awaitingSpellTarget && slot.side === localLegacySide && phase === "choose" && isWheelActive;
 
     const cardInteractable = canInteractNormally || isSlotTargetable;
 
