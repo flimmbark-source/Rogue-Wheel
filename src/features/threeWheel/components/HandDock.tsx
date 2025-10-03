@@ -178,12 +178,13 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                 transition={{ type: "spring", stiffness: 320, damping: 22 }}
                 className={`drop-shadow-xl ${isSelected ? "ring-2 ring-amber-300" : ""}`}
               >
-                <button
+                <StSCard
                   data-hand-card
                   className="pointer-events-auto"
+                  card={card}
+                  selected={isSelected}
                   disabled={awaitingManualTarget && !cardSelectable}
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onPick={() => {
                     if (cardSelectable) {
                       const side = localLegacySide;
                       onSpellTargetSelect?.({ side, lane: null, card, location: "hand" });
@@ -225,9 +226,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                   }}
                   aria-pressed={isSelected}
                   aria-label={`Select ${card.name}`}
-                >
-                  <StSCard card={card} />
-                </button>
+                />
               </motion.div>
             </div>
           );
