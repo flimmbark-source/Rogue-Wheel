@@ -64,6 +64,7 @@ const createInitialAssignments = (): AssignmentState<TestCard> => ({
       tokenVisualUpdates.push({ index, value });
     },
     startingTokens: [...tokens] as [number, number, number],
+    updateFighter: () => {},
   };
 
   applySpellEffects<TestCard>(
@@ -148,6 +149,7 @@ const createInitialAssignments = (): AssignmentState<TestCard> => ({
       }
     },
     startingTokens: [...tokens] as [number, number, number],
+    updateFighter: () => {},
   };
 
   applySpellEffects<TestCard>(

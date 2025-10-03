@@ -11,11 +11,13 @@ import { motion } from "framer-motion";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter } from "../../../game/types";
 import type { LegacySide } from "./WheelPanel";
+import { type SpellDefinition, type SpellTargetInstance } from "../../../game/spellEngine";
 import {
-  spellTargetRequiresManualSelection,
-  type SpellDefinition,
-  type SpellTargetInstance,
-} from "../../../game/spellEngine";
+  getSpellTargetStage,
+  spellTargetStageRequiresManualSelection,
+  type SpellTargetLocation,
+} from "../../../game/spells";
+import { getCardArcana, matchesArcana } from "../../../game/arcana";
 
 interface HandDockProps {
   localLegacySide: LegacySide;
@@ -36,10 +38,16 @@ interface HandDockProps {
   pendingSpell: {
     side: LegacySide;
     spell: SpellDefinition;
-    target: SpellTargetInstance | null;
+    targets: SpellTargetInstance[];
+    currentStage: number;
   } | null;
   isAwaitingSpellTarget: boolean;
-  onSpellTargetSelect?: (selection: { side: LegacySide; lane: number | null; cardId: string }) => void;
+  onSpellTargetSelect?: (selection: {
+    side: LegacySide;
+    lane: number | null;
+    card: Card;
+    location: SpellTargetLocation;
+  }) => void;
 }
 
 const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
@@ -102,14 +110,13 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
 
   const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
-  const awaitingManualTarget =
-    isAwaitingSpellTarget &&
-    pendingSpell &&
-    spellTargetRequiresManualSelection(pendingSpell.spell.target) &&
-    !pendingSpell.target;
+  const activeStage = pendingSpell ? getSpellTargetStage(pendingSpell.spell.target, pendingSpell.currentStage) : null;
 
-  const awaitingCardTarget =
-    awaitingManualTarget && pendingSpell?.spell.target.type === "card";
+  const awaitingManualTarget = Boolean(
+    isAwaitingSpellTarget && pendingSpell && activeStage && spellTargetStageRequiresManualSelection(activeStage),
+  );
+
+  const awaitingCardTarget = awaitingManualTarget && activeStage?.type === "card";
 
   const overlayStyle = useMemo<React.CSSProperties>(() => {
     const bottom = "calc(env(safe-area-inset-bottom, 0px) + -30px)";
@@ -133,6 +140,9 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     return style;
   }, [wheelPanelBounds, wheelPanelWidth]);
 
+  const stageLocation = activeStage?.type === "card" ? activeStage.location ?? "board" : null;
+  const stageArcana = activeStage?.type === "card" ? activeStage.arcana : undefined;
+
   return (
     <div
       ref={handleDockRef}
@@ -149,6 +159,11 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
       >
         {localFighter.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
+          const cardArcana = getCardArcana(card);
+          const cardSelectable =
+            awaitingCardTarget &&
+            (stageLocation === "any" || stageLocation === "hand") &&
+            matchesArcana(cardArcana, stageArcana);
           return (
             <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
               <motion.div
@@ -166,12 +181,12 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                 <button
                   data-hand-card
                   className="pointer-events-auto"
-                  disabled={awaitingManualTarget && !awaitingCardTarget}
+                  disabled={awaitingManualTarget && !cardSelectable}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (awaitingCardTarget && pendingSpell?.spell.target.type === "card") {
+                    if (cardSelectable) {
                       const side = localLegacySide;
-                      onSpellTargetSelect?.({ side, lane: null, cardId: card.id });
+                      onSpellTargetSelect?.({ side, lane: null, card, location: "hand" });
                       return;
                     }
                     if (awaitingManualTarget) return;

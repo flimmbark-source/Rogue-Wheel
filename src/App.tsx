@@ -1233,8 +1233,11 @@ const renderWheelPanel = (i: number) => {
       </div>
     </div>
 
-    <div className="mt-1 text-[11px] leading-snug text-slate-300">
-      {spell.description}
+    <div className="mt-1 space-y-0.5 text-[11px] leading-snug text-slate-300">
+      {spell.targetSummary ? (
+        <div className="font-semibold text-slate-200">{spell.targetSummary}</div>
+      ) : null}
+      <div>{spell.description}</div>
     </div>
 
   </button>
@@ -1302,8 +1305,11 @@ const renderWheelPanel = (i: number) => {
       </div>
     </div>
 
-    <div className="mt-1 text-[11px] leading-snug text-slate-300">
-      {spell.description}
+    <div className="mt-1 space-y-0.5 text-[11px] leading-snug text-slate-300">
+      {spell.targetSummary ? (
+        <div className="font-semibold text-slate-200">{spell.targetSummary}</div>
+      ) : null}
+      <div>{spell.description}</div>
     </div>
 
   </button>

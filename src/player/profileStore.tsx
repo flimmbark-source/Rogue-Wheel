@@ -2,6 +2,7 @@
 // to match your existing game types/functions.
 
 import { shuffle } from "../game/math";
+import { deriveArcanaForCard } from "../game/arcana";
 import type { Card, Fighter } from "../game/types";
 import { uid } from "../utils/uid";
 
@@ -442,13 +443,16 @@ function cardFromId(cardId: string): Card {
   else if (mNeg) num = parseInt(mNeg[1], 10);
   else if (mNum) num = parseInt(mNum[1], 10);
 
-  return {
+  const card: Card = {
     id: nextCardId(),
     name: `${num}`,
     type: "normal",
     number: num,
     tags: [],
   };
+
+  card.arcana = deriveArcanaForCard(card);
+  return card;
 }
 
 // ====== Build a runtime deck (Card[]) from the ACTIVE profile deck ======
@@ -471,7 +475,7 @@ export function starterDeck(): Card[] {
     type: "normal",
     number: n,
     tags: [],
-  }));
+  })).map((card) => ({ ...card, arcana: deriveArcanaForCard(card) }));
   return shuffle(base);
 }
 

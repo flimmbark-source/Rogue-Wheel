@@ -58,6 +58,7 @@ const createAssignments = (): AssignmentState<TestCard> => ({
       previewUpdates.push({ index, value });
     },
     startingTokens: [...tokens] as [number, number, number],
+    updateFighter: () => {},
   };
 
   applySpellEffects<TestCard>(
