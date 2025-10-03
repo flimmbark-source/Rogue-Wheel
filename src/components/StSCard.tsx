@@ -136,7 +136,7 @@ export default memo(function StSCard({
         ) : (
           <div className="mt-1 text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
         )}
-        <div className="pointer-events-none mt-2 flex h-8 w-12 items-center justify-center rounded-full border border-slate-700/80 bg-transparent shadow-inner">
+        <div className="pointer-events-none mt-2 flex items-center justify-center">
           <ArcanaGlyph symbol={symbol} />
         </div>
       </div>
