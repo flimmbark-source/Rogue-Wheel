@@ -226,7 +226,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                   aria-pressed={isSelected}
                   aria-label={`Select ${card.name}`}
                 >
-                  <StSCard as="div" card={card} />
+                  <StSCard card={card} />
                 </button>
               </motion.div>
             </div>
@@ -246,7 +246,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
           aria-hidden
         >
           <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
-            <StSCard as="div" card={ptrDragCard} />
+            <StSCard card={ptrDragCard} />
           </div>
         </div>
       )}
