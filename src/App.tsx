@@ -51,6 +51,7 @@ import {
   getOnboardingState,
   setOnboardingStage as persistOnboardingStage,
   dismissOnboardingHint,
+  getProfileBundle,
   type MatchResultSummary,
   type LevelProgress,
   type OnboardingState,
@@ -284,6 +285,14 @@ export default function ThreeWheel_WinsOnly({
   const isAnteMode = activeGameModes.includes("ante");
   const effectiveGameMode = activeGameModes.length > 0 ? activeGameModes.join("+") : "classic";
   const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
+
+  const localGrimoireSpellIds = useMemo<SpellId[]>(() => {
+    try {
+      return getProfileBundle().grimoire?.spellIds ?? [];
+    } catch {
+      return [] as SpellId[];
+    }
+  }, []);
 
   const onboardingBootstrapRef = useRef<OnboardingState | null>(null);
   if (onboardingBootstrapRef.current === null) {
