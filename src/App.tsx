@@ -356,6 +356,7 @@ export default function ThreeWheel_WinsOnly({
   const closeGrimoire = useCallback(() => setShowGrimoire(false), [setShowGrimoire]);
 
   const localHandCards = localLegacySide === "player" ? player.hand : enemy.hand;
+  const localHandCount = localHandCards.length;
   const localHandSymbols = useMemo(() => countSymbolsFromCards(localHandCards), [localHandCards]);
   const lastChooseVisibleSpellIdsRef = useRef<SpellId[]>([]);
 
@@ -400,6 +401,7 @@ export default function ThreeWheel_WinsOnly({
 
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
+  const lastCorePhaseRef = useRef<CorePhase>(phaseForLogic);
 
   const castCpuSpell = useCallback(
     (decision: CpuSpellDecision) => {
@@ -581,6 +583,9 @@ export default function ThreeWheel_WinsOnly({
   }, [isGrimoireMode, phaseForLogic, localHandSymbols, localGrimoireSpellIds]);
 
   useEffect(() => {
+    const previousCorePhase = lastCorePhaseRef.current;
+    lastCorePhaseRef.current = phaseForLogic;
+
     if (!isGrimoireMode) {
       lastChooseVisibleSpellIdsRef.current = [];
       return;
@@ -592,9 +597,19 @@ export default function ThreeWheel_WinsOnly({
     }
 
     if (liveVisibleSpellIds !== null) {
-      lastChooseVisibleSpellIdsRef.current = liveVisibleSpellIds;
+      const hasCardsInHand = localHandCount > 0;
+      const enteringChoosePhase = phaseForLogic === "choose" && previousCorePhase !== "choose";
+
+      if (hasCardsInHand || enteringChoosePhase) {
+        lastChooseVisibleSpellIdsRef.current = liveVisibleSpellIds;
+      }
     }
-  }, [isGrimoireMode, phaseForLogic, liveVisibleSpellIds]);
+  }, [
+    isGrimoireMode,
+    phaseForLogic,
+    liveVisibleSpellIds,
+    localHandCount,
+  ]);
 
   const localSpellIds = useMemo(() => {
     if (!isGrimoireMode) return [] as SpellId[];
