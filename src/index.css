@@ -82,18 +82,16 @@ div.relative[aria-label^="Wheel"] {
  * and set the number color to a light parchment tone.
  */
 button[aria-label^="Card"] {
-  background-image: url("/assets/card-frame.png");
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
+  background-image: none;
+  background-color: transparent;
   border: none;
 }
 button[aria-label^="Card"] > div:first-child {
-  opacity: 0;
+  opacity: unset;
 }
 button[aria-label^="Card"] > div:nth-child(2) {
-  background-color: transparent;
-  border: none;
+  background-color: unset;
+  border: unset;
 }
 button[aria-label^="Card"] .text-3xl {
   color: #f5e7c4;
