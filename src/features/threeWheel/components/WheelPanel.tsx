@@ -12,7 +12,6 @@ import {
   spellTargetStageRequiresManualSelection,
   type SpellTargetLocation,
 } from "../../../game/spells";
-import { getCardArcana, matchesArcana } from "../../../game/arcana";
 import {
   isChooseLikePhase,
   shouldShowSlotCard,
@@ -175,7 +174,6 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     : null;
 
   const stageLocation = activeStage?.type === "card" ? activeStage.location ?? "board" : null;
-  const stageArcana = activeStage?.type === "card" ? activeStage.arcana : undefined;
   const previousTarget = pendingSpell?.targets[pendingSpell.targets.length - 1];
 
   const adjacencyAllows = (slotOwnership: SpellTargetOwnership | null, laneIndex: number): boolean => {
@@ -193,7 +191,6 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     !!leftSlot.card &&
     (pendingOwnership === "any" || pendingOwnership === leftSlotOwnership) &&
     (stageLocation === "any" || stageLocation === "board") &&
-    matchesArcana(getCardArcana(leftSlot.card), stageArcana) &&
     adjacencyAllows(leftSlotOwnership, index);
 
   const rightSlotTargetable =
@@ -201,7 +198,6 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     !!rightSlot.card &&
     (pendingOwnership === "any" || pendingOwnership === rightSlotOwnership) &&
     (stageLocation === "any" || stageLocation === "board") &&
-    matchesArcana(getCardArcana(rightSlot.card), stageArcana) &&
     adjacencyAllows(rightSlotOwnership, index);
 
   const isPhaseChooseLike = isChooseLikePhase(phase);
@@ -229,12 +225,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     }) || (revealOpposingCardDuringMirror && rightSlot.side !== localLegacySide);
 
   const wheelScope = activeStage?.type === "wheel" ? activeStage.scope : null;
-  const wheelRequiresArcana = activeStage?.type === "wheel" ? activeStage.requiresArcana : undefined;
-  const wheelHasRequiredArcana = (): boolean => {
-    if (!wheelRequiresArcana) return true;
-    const cards = [assign.player[index], assign.enemy[index]].filter(Boolean) as Card[];
-    return cards.some((card) => matchesArcana(getCardArcana(card), wheelRequiresArcana));
-  };
+  const wheelHasRequiredArcana = (): boolean => true;
   const wheelTargetable =
     awaitingWheelTarget &&
     pendingSpell?.side === localLegacySide &&

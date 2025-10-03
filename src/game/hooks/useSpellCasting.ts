@@ -12,7 +12,7 @@ import {
 } from "../spellEngine";
 import { getSpellTargetStage, spellTargetStageRequiresManualSelection } from "../spells";
 import type { SpellTargetLocation } from "../spells";
-import { getCardArcana, matchesArcana } from "../arcana";
+import { getCardArcana } from "../arcana";
 import type { LegacySide } from "../../features/threeWheel/utils/spellEffectTransforms";
 
 type SideState<T> = Record<LegacySide, T>;
@@ -267,9 +267,6 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
       }
 
       const cardArcana = getCardArcana(selection.card);
-      if (!matchesArcana(cardArcana, stage.arcana)) {
-        return;
-      }
 
       if (stage.adjacentToPrevious) {
         const previous = pendingSpell.targets[pendingSpell.targets.length - 1];

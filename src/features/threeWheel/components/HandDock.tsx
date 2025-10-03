@@ -17,7 +17,6 @@ import {
   spellTargetStageRequiresManualSelection,
   type SpellTargetLocation,
 } from "../../../game/spells";
-import { getCardArcana, matchesArcana } from "../../../game/arcana";
 
 interface HandDockProps {
   localLegacySide: LegacySide;
@@ -141,7 +140,6 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
   }, [wheelPanelBounds, wheelPanelWidth]);
 
   const stageLocation = activeStage?.type === "card" ? activeStage.location ?? "board" : null;
-  const stageArcana = activeStage?.type === "card" ? activeStage.arcana : undefined;
 
   return (
     <div
@@ -159,11 +157,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
       >
         {localFighter.hand.map((card, idx) => {
           const isSelected = selectedCardId === card.id;
-          const cardArcana = getCardArcana(card);
-          const cardSelectable =
-            awaitingCardTarget &&
-            (stageLocation === "any" || stageLocation === "hand") &&
-            matchesArcana(cardArcana, stageArcana);
+          const cardSelectable = awaitingCardTarget && (stageLocation === "any" || stageLocation === "hand");
           return (
             <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
               <motion.div
