@@ -95,4 +95,15 @@ const makeHand = (values: Partial<GrimoireSymbols>): GrimoireSymbols => {
   );
 }
 
+// When a profile only knows certain spells, only those spells should populate the Grimoire.
+{
+  const unlocked = ["fireball", "hex"] as const;
+  const fullHand = makeHand({ fire: 3, serpent: 3, moon: 2 });
+  assert.deepEqual(
+    getVisibleSpellsForHand(fullHand, [...unlocked]),
+    ["fireball", "hex"],
+    "grimoire should only show spells unlocked by the profile even if others meet visibility rules",
+  );
+}
+
 console.log("grimoire visibility tests passed");
