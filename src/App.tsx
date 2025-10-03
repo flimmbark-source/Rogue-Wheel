@@ -75,7 +75,7 @@ import FirstRunCoach from "./features/threeWheel/components/FirstRunCoach";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
 import { getSpellDefinitions, type SpellDefinition, type SpellRuntimeState } from "./game/spells";
-import { countSymbolsFromCards, getSpellsForSymbols } from "./game/grimoire";
+import { countSymbolsFromCards, getVisibleSpellsForHand } from "./game/grimoire";
 import StSCard from "./components/StSCard";
 
 // ---- Local aliases/types/state helpers
@@ -351,7 +351,7 @@ export default function ThreeWheel_WinsOnly({
   const localSpellIds = useMemo(() => {
     if (!isGrimoireMode) return [] as string[];
     if (phase === "roundEnd" || phase === "ended") return [] as string[];
-    return getSpellsForSymbols(localHandSymbols);
+    return getVisibleSpellsForHand(localHandSymbols);
   }, [isGrimoireMode, phase, localHandSymbols]);
 
   const localSpellDefinitions = useMemo<SpellDefinition[]>(
@@ -1058,7 +1058,8 @@ const renderWheelPanel = (i: number) => {
                       </div>
                       <div>
                         Each round your hand grants <span className="font-semibold">Arcana symbols</span> based on the loadout
-                        set on your profile. Spells appear in the Grimoire when their symbol requirements are met.
+                        set on your profile. Spells appear in the Grimoire when your hand shows at least two of their required
+                        symbols (single-symbol spells only need that matching symbol).
                       </div>
                       <div>
                         Spend <span className="font-semibold">Mana</span> to cast those spells during the phases shown in the
