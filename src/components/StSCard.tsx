@@ -134,14 +134,11 @@ export default memo(function StSCard({
             <div>{fmtNum(card.leftValue!)}<span className="opacity-60">|</span>{fmtNum(card.rightValue!)}</div>
           </div>
         ) : (
-          <div className="mt-1 text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
+          <div className="mt+8 text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
         )}
-        <div className="pointer-events-none mt-2 flex items-center justify-center">
+        <div className="pointer-events-none mt-0 flex items-center justify-center">
           <ArcanaGlyph symbol={symbol} />
         </div>
-      </div>
-      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
-        <ArcanaGlyph symbol={symbol} />
       </div>
     </button>
   );
