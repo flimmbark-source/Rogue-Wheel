@@ -356,6 +356,7 @@ export default function ThreeWheel_WinsOnly({
   const closeGrimoire = useCallback(() => setShowGrimoire(false), [setShowGrimoire]);
 
   const localHandCards = localLegacySide === "player" ? player.hand : enemy.hand;
+  const localHandCount = localHandCards.length;
   const localHandSymbols = useMemo(() => countSymbolsFromCards(localHandCards), [localHandCards]);
   const [spellLock, setSpellLock] = useState<{ round: number | null; ids: SpellId[] }>({
     round: null,
@@ -411,6 +412,7 @@ export default function ThreeWheel_WinsOnly({
 
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
+  const lastCorePhaseRef = useRef<CorePhase>(phaseForLogic);
 
   const castCpuSpell = useCallback(
     (decision: CpuSpellDecision) => {
@@ -592,6 +594,9 @@ export default function ThreeWheel_WinsOnly({
   }, [isGrimoireMode, phaseForLogic, localHandSymbols, localGrimoireSpellIds]);
 
   useEffect(() => {
+    const previousCorePhase = lastCorePhaseRef.current;
+    lastCorePhaseRef.current = phaseForLogic;
+
     if (!isGrimoireMode) {
       clearSpellLock();
       return;
@@ -602,24 +607,19 @@ export default function ThreeWheel_WinsOnly({
       return;
     }
 
-    if (phaseForLogic !== "choose") {
-      return;
-    }
+    if (liveVisibleSpellIds !== null) {
+      const hasCardsInHand = localHandCount > 0;
+      const enteringChoosePhase = phaseForLogic === "choose" && previousCorePhase !== "choose";
 
-    setSpellLock((prev) => {
-      if (prev.round === round) {
-        return prev;
+      if (hasCardsInHand || enteringChoosePhase) {
+        lastChooseVisibleSpellIdsRef.current = liveVisibleSpellIds;
       }
-      const nextIds = getVisibleSpellsForHand(localHandSymbols, localGrimoireSpellIds);
-      return { round, ids: nextIds };
-    });
+    }
   }, [
-    clearSpellLock,
     isGrimoireMode,
     phaseForLogic,
-    round,
-    localHandSymbols,
-    localGrimoireSpellIds,
+    liveVisibleSpellIds,
+    localHandCount,
   ]);
 
   const localSpellIds = useMemo(() => {
