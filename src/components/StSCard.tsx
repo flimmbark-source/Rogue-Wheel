@@ -22,45 +22,52 @@ function ArcanaGlyph({ arcana }: { arcana: Arcana }) {
   );
 }
 
+type StSCardProps = {
+  card: Card;
+  disabled?: boolean;
+  size?: "sm" | "md" | "lg";
+  selected?: boolean;
+  onPick?: () => void;
+  className?: string;
+  spellTargetable?: boolean;
+  ariaLabel?: string;
+  ariaPressed?: React.AriaAttributes["aria-pressed"];
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
+} & Omit<
+  React.ButtonHTMLAttributes<HTMLButtonElement>,
+  "onClick" | "children" | "className" | "disabled" | "aria-label" | "aria-pressed"
+>;
+
 export default memo(function StSCard({
   card,
   disabled,
   size = "sm",
   selected,
   onPick,
-  draggable,
-  onDragStart,
-  onDragEnd,
-  onPointerDown,
   className,
   spellTargetable,
-}: {
-  card: Card;
-  disabled?: boolean;
-  size?: "sm" | "md" | "lg";
-  selected?: boolean;
-  onPick?: () => void;
-  draggable?: boolean;
-  onDragStart?: React.DragEventHandler<HTMLButtonElement>;
-  onDragEnd?: React.DragEventHandler<HTMLButtonElement>;
-  onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
-  className?: string;
-  spellTargetable?: boolean;
-}) {
+  ariaLabel,
+  ariaPressed,
+  onClick,
+  style,
+  ...buttonProps
+}: StSCardProps) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
   const arcana = useMemo(() => getCardArcana(card), [card]);
 
   return (
     <button
-      onClick={(e) => { e.stopPropagation(); onPick?.(); }}
+      {...buttonProps}
+      onClick={(e) => {
+        e.stopPropagation();
+        onPick?.();
+        onClick?.(e);
+      }}
       disabled={disabled}
       className={`relative select-none ${disabled ? 'opacity-60' : 'hover:scale-[1.02]'} transition will-change-transform ${selected ? 'ring-2 ring-amber-400' : ''} ${className ?? ''}`.trim()}
-      style={{ width: dims.w, height: dims.h }}
-      aria-label={`Card`}
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onPointerDown={onPointerDown}
+      style={{ ...(style ?? {}), width: dims.w, height: dims.h }}
+      aria-label={ariaLabel ?? `Card`}
+      aria-pressed={ariaPressed}
       data-spell-targetable={spellTargetable ? "true" : undefined}
     >
       <div className="absolute inset-0 rounded-xl border bg-gradient-to-br from-slate-600 to-slate-800 border-slate-400"></div>
