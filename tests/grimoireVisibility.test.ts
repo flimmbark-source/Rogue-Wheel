@@ -5,8 +5,6 @@ import {
   createEmptySymbolMap,
   getVisibleSpellsForHand,
   handMeetsVisibilityRequirement,
-  limitSpellsToProfile,
-  getVisibleProfileSpellsForHand,
 } from "../src/game/grimoire.js";
 import type { GrimoireSymbols } from "../src/game/grimoire.js";
 
@@ -94,38 +92,6 @@ const makeHand = (values: Partial<GrimoireSymbols>): GrimoireSymbols => {
     getVisibleSpellsForHand(eyeOnly),
     ["arcaneShift"],
     "single eye symbol should only reveal arcaneShift",
-  );
-}
-
-// limitSpellsToProfile should keep ordering while filtering to allowed spells only.
-{
-  const visible = ["fireball", "kindle", "iceShard"] as const;
-  assert.deepEqual(
-    limitSpellsToProfile(visible.slice(), new Set(["kindle", "phantom"])),
-    ["kindle"],
-    "only kindle should remain when phantom is not visible",
-  );
-
-  assert.deepEqual(
-    limitSpellsToProfile(visible.slice(), ["hex", "leech"]),
-    [],
-    "no spells should remain when none are in the allowed list",
-  );
-}
-
-// getVisibleProfileSpellsForHand should only expose spells present in the profile list while following hand rules.
-{
-  const hand = makeHand({ fire: 1, moon: 1 });
-  assert.deepEqual(
-    getVisibleProfileSpellsForHand(hand, ["kindle", "hex"]),
-    ["kindle"],
-    "only kindle should appear because it's both learned and visible",
-  );
-
-  assert.deepEqual(
-    getVisibleProfileSpellsForHand(hand, new Set(["hex", "phantom"])),
-    [],
-    "no profile spells should appear when none meet the hand requirement",
   );
 }
 

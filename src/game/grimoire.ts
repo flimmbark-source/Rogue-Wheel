@@ -28,15 +28,15 @@ export const GRIMOIRE_SPELL_REQUIREMENTS: Record<SpellId, GrimoireRequirement> =
   fireball: { fire: 3 },
   kindle: { fire: 2, moon: 2 },
   hex: { serpent: 3 },
-  mirrorImage: { eye: 3, moon: 1 },
+  mirrorImage: { eye: 3, moon: 2 },
   iceShard: { moon: 3 },
   suddenStrike: { blade: 3 },
-  crosscut: { blade: 2, fire: 1 },
-  leech: { serpent: 2, eye: 1 },
+  crosscut: { blade: 2, fire: 2 },
+  leech: { serpent: 3, eye: 1 },
   arcaneShift: { eye: 4 },
-  timeTwist: { moon: 1, eye: 2, serpent: 1 },
-  offering: { fire: 2, serpent: 2 },
-  phantom: { moon: 2, blade: 1, eye: 1 },
+  timeTwist: { moon: 2, eye: 2, serpent: 1 },
+  offering: { fire: 2, serpent: 3 },
+  phantom: { moon: 2, blade: 1, eye: 2 },
 };
 
 const SPELL_PRIORITY: SpellId[] = [
@@ -155,42 +155,6 @@ export function handMeetsVisibilityRequirement(
 export function getVisibleSpellsForHand(handSymbols: GrimoireSymbols): SpellId[] {
   const visible: SpellId[] = [];
   for (const id of SPELL_PRIORITY) {
-    if (handMeetsVisibilityRequirement(handSymbols, GRIMOIRE_SPELL_REQUIREMENTS[id])) {
-      visible.push(id);
-    }
-  }
-  return visible;
-}
-
-export function limitSpellsToProfile(
-  spells: SpellId[],
-  allowed: Iterable<SpellId> | null | undefined,
-): SpellId[] {
-  if (!allowed) return [];
-  const allowedSet = new Set<SpellId>();
-  for (const id of allowed) {
-    allowedSet.add(id);
-  }
-  if (allowedSet.size === 0) return [];
-  return spells.filter((spellId) => allowedSet.has(spellId));
-}
-
-export function getVisibleProfileSpellsForHand(
-  handSymbols: GrimoireSymbols,
-  allowed: Iterable<SpellId> | null | undefined,
-): SpellId[] {
-  if (!allowed) return [];
-  const allowedSet = new Set<SpellId>();
-  for (const id of allowed) {
-    if (id && id in GRIMOIRE_SPELL_REQUIREMENTS) {
-      allowedSet.add(id);
-    }
-  }
-  if (allowedSet.size === 0) return [];
-
-  const visible: SpellId[] = [];
-  for (const id of SPELL_PRIORITY) {
-    if (!allowedSet.has(id)) continue;
     if (handMeetsVisibilityRequirement(handSymbols, GRIMOIRE_SPELL_REQUIREMENTS[id])) {
       visible.push(id);
     }
