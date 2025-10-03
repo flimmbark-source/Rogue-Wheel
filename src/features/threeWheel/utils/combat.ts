@@ -46,11 +46,12 @@ export function computeReserveSum(
 
 export function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
   const playedIds = new Set(played.map((c) => c.id));
+  const leftovers = f.hand.filter((c) => !playedIds.has(c.id));
   const next: Fighter = {
     name: f.name,
     deck: [...f.deck],
-    hand: f.hand.filter((c) => !playedIds.has(c.id)),
-    discard: [...f.discard, ...played],
+    hand: [],
+    discard: [...f.discard, ...played, ...leftovers],
   };
 
   const refilled = refillTo(next, 5);
