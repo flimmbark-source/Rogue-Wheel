@@ -16,7 +16,7 @@ function ArcanaGlyph({ arcana }: { arcana: Arcana }) {
   const icon = getArcanaIcon(arcana);
   const color = ARCANA_COLOR_CLASS[arcana] ?? "text-slate-200";
   return (
-    <span aria-hidden className={`text-2xl leading-none ${color}`}>
+    <span aria-hidden className={`text-1x2 leading-none ${color}`}>
       {icon}
     </span>
   );
@@ -71,9 +71,9 @@ export default memo(function StSCard({
             <div>{fmtNum(card.leftValue!)}<span className="opacity-60">|</span>{fmtNum(card.rightValue!)}</div>
           </div>
         ) : (
-          <div className="mt+8 text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
+          <div className="mt+10 text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
         )}
-        <div className="pointer-events-none mt-0 flex items-center justify-center">
+        <div className="pointer-events-none mt-1 flex items-center justify-center">
           <ArcanaGlyph arcana={arcana} />
         </div>
       </div>
