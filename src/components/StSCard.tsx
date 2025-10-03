@@ -73,7 +73,7 @@ export default memo(function StSCard({
         ) : (
           <div className="mt+10 text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
         )}
-        <div className="pointer-events-none mt-1 flex items-center justify-center">
+        <div className="pointer-events-none mt-1 flex items-center justify-center card-arcana">
           <ArcanaGlyph arcana={arcana} />
         </div>
       </div>
