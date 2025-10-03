@@ -3,11 +3,16 @@ import CanvasWheel, { WheelHandle } from "../../../components/CanvasWheel";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter, Phase, Section } from "../../../game/types";
 import {
-  spellTargetRequiresManualSelection,
   type SpellDefinition,
   type SpellTargetInstance,
   type SpellTargetOwnership,
 } from "../../../game/spellEngine";
+import {
+  getSpellTargetStage,
+  spellTargetStageRequiresManualSelection,
+  type SpellTargetLocation,
+} from "../../../game/spells";
+import { getCardArcana, matchesArcana } from "../../../game/arcana";
 import {
   isChooseLikePhase,
   shouldShowSlotCard,
@@ -40,7 +45,6 @@ export interface WheelPanelProps {
   setSelectedCardId: (value: string | null) => void;
   localLegacySide: LegacySide;
   phase: Phase;
-  archetypeGateOpen: boolean;
   setDragCardId: (value: string | null) => void;
   dragCardId: string | null;
   setDragOverWheel: (value: number | null) => void;
@@ -59,9 +63,15 @@ export interface WheelPanelProps {
   pendingSpell: {
     side: LegacySide;
     spell: SpellDefinition;
-    target: SpellTargetInstance | null;
+    targets: SpellTargetInstance[];
+    currentStage: number;
   } | null;
-  onSpellTargetSelect?: (selection: { side: LegacySide; lane: number | null; cardId: string }) => void;
+  onSpellTargetSelect?: (selection: {
+    side: LegacySide;
+    lane: number | null;
+    card: Card;
+    location: SpellTargetLocation;
+  }) => void;
   onWheelTargetSelect?: (wheelIndex: number) => void;
   isAwaitingSpellTarget: boolean;
   variant?: "standalone" | "grouped";
@@ -96,7 +106,6 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   setSelectedCardId,
   localLegacySide,
   phase,
-  archetypeGateOpen,
   setDragCardId,
   dragCardId,
   setDragOverWheel,
@@ -127,22 +136,20 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const playerPenalty = reservePenalties.player;
   const enemyPenalty = reservePenalties.enemy;
 
-  const awaitingManualTarget =
-    isAwaitingSpellTarget &&
-    pendingSpell &&
-    spellTargetRequiresManualSelection(pendingSpell.spell.target) &&
-    !pendingSpell.target;
+  const activeStage = pendingSpell ? getSpellTargetStage(pendingSpell.spell.target, pendingSpell.currentStage) : null;
 
-  const awaitingCardTarget =
-    awaitingManualTarget && pendingSpell?.spell.target.type === "card";
+  const awaitingManualTarget = Boolean(
+    isAwaitingSpellTarget && pendingSpell && activeStage && spellTargetStageRequiresManualSelection(activeStage),
+  );
 
-  const awaitingWheelTarget =
-    awaitingManualTarget && pendingSpell?.spell.target.type === "wheel";
+  const awaitingCardTarget = awaitingManualTarget && activeStage?.type === "card";
+
+  const awaitingWheelTarget = awaitingManualTarget && activeStage?.type === "wheel";
 
   const awaitingSpellTarget = awaitingManualTarget;
 
-  const pendingOwnership: SpellTargetOwnership | null = awaitingCardTarget
-    ? pendingSpell!.spell.target.ownership
+  const pendingOwnership: SpellTargetOwnership | null = awaitingCardTarget && activeStage?.type === "card"
+    ? activeStage.ownership
     : null;
 
   const leftSlot = { side: "player" as const, card: playerCard, name: namesByLegacy.player };
@@ -167,15 +174,35 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       : "enemy"
     : null;
 
+  const stageLocation = activeStage?.type === "card" ? activeStage.location ?? "board" : null;
+  const stageArcana = activeStage?.type === "card" ? activeStage.arcana : undefined;
+  const previousTarget = pendingSpell?.targets[pendingSpell.targets.length - 1];
+
+  const adjacencyAllows = (slotOwnership: SpellTargetOwnership | null, laneIndex: number): boolean => {
+    if (!activeStage?.adjacentToPrevious) return true;
+    if (!previousTarget || previousTarget.type !== "card") return false;
+    if (typeof previousTarget.lane !== "number") return false;
+    if (!slotOwnership) return false;
+    if (typeof laneIndex !== "number") return false;
+    if (activeStage.ownership !== "any" && previousTarget.owner !== slotOwnership) return false;
+    return Math.abs(previousTarget.lane - laneIndex) === 1;
+  };
+
   const leftSlotTargetable =
     awaitingCardTarget &&
     !!leftSlot.card &&
-    (pendingOwnership === "any" || pendingOwnership === leftSlotOwnership);
+    (pendingOwnership === "any" || pendingOwnership === leftSlotOwnership) &&
+    (stageLocation === "any" || stageLocation === "board") &&
+    matchesArcana(getCardArcana(leftSlot.card), stageArcana) &&
+    adjacencyAllows(leftSlotOwnership, index);
 
   const rightSlotTargetable =
     awaitingCardTarget &&
     !!rightSlot.card &&
-    (pendingOwnership === "any" || pendingOwnership === rightSlotOwnership);
+    (pendingOwnership === "any" || pendingOwnership === rightSlotOwnership) &&
+    (stageLocation === "any" || stageLocation === "board") &&
+    matchesArcana(getCardArcana(rightSlot.card), stageArcana) &&
+    adjacencyAllows(rightSlotOwnership, index);
 
   const isPhaseChooseLike = isChooseLikePhase(phase);
 
@@ -201,11 +228,18 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       slotTargetable: rightSlotTargetable,
     }) || (revealOpposingCardDuringMirror && rightSlot.side !== localLegacySide);
 
-  const wheelScope = pendingSpell?.spell.target.type === "wheel" ? pendingSpell.spell.target.scope : null;
+  const wheelScope = activeStage?.type === "wheel" ? activeStage.scope : null;
+  const wheelRequiresArcana = activeStage?.type === "wheel" ? activeStage.requiresArcana : undefined;
+  const wheelHasRequiredArcana = (): boolean => {
+    if (!wheelRequiresArcana) return true;
+    const cards = [assign.player[index], assign.enemy[index]].filter(Boolean) as Card[];
+    return cards.some((card) => matchesArcana(getCardArcana(card), wheelRequiresArcana));
+  };
   const wheelTargetable =
     awaitingWheelTarget &&
     pendingSpell?.side === localLegacySide &&
-    (wheelScope === "any" || (wheelScope === "current" && isWheelActive));
+    (wheelScope === "any" || (wheelScope === "current" && isWheelActive)) &&
+    wheelHasRequiredArcana();
 
   const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
     if (!slot.card) return null;
@@ -222,17 +256,13 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       (pendingOwnership === "any" || pendingOwnership === slotOwnership);
 
     const canInteractNormally =
-      !awaitingSpellTarget &&
-      slot.side === localLegacySide &&
-      phase === "choose" &&
-      archetypeGateOpen &&
-      isWheelActive;
+      !awaitingSpellTarget && slot.side === localLegacySide && phase === "choose" && isWheelActive;
 
     const cardInteractable = canInteractNormally || isSlotTargetable;
 
     const handlePick = () => {
       if (isSlotTargetable && slot.card) {
-        onSpellTargetSelect?.({ side: slot.side, lane: index, cardId: slot.card.id });
+        onSpellTargetSelect?.({ side: slot.side, lane: index, card: slot.card, location: "board" });
         return;
       }
       if (!canInteractNormally) return;
@@ -401,7 +431,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
               (ownership === "ally" && isAlly) ||
               (ownership === "enemy" && !isAlly)
             ) {
-              onSpellTargetSelect?.({ side: leftSlot.side, lane: index, cardId: card.id });
+              onSpellTargetSelect?.({ side: leftSlot.side, lane: index, card, location: "board" });
               return;
             }
           }
@@ -512,7 +542,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
               (ownership === "ally" && isAlly) ||
               (ownership === "enemy" && !isAlly)
             ) {
-              onSpellTargetSelect?.({ side: rightSlot.side, lane: index, cardId: card.id });
+              onSpellTargetSelect?.({ side: rightSlot.side, lane: index, card, location: "board" });
               return;
             }
           }

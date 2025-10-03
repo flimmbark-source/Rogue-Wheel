@@ -42,12 +42,6 @@ import {
 } from "./game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
-import {
-  ARCHETYPE_DEFINITIONS,
-  ARCHETYPE_IDS,
-  DEFAULT_ARCHETYPE,
-  type ArchetypeId,
-} from "./game/archetypes";
 import { DEFAULT_GAME_MODE, normalizeGameMode } from "./gameModes";
 import {
   makeFighter,
@@ -57,6 +51,7 @@ import {
   getOnboardingState,
   setOnboardingStage as persistOnboardingStage,
   dismissOnboardingHint,
+  getProfileBundle,
   type MatchResultSummary,
   type LevelProgress,
   type OnboardingState,
@@ -81,7 +76,7 @@ import FirstRunCoach from "./features/threeWheel/components/FirstRunCoach";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
 import { getSpellDefinitions, type SpellDefinition, type SpellRuntimeState } from "./game/spells";
-import ArchetypeModal from "./features/threeWheel/components/ArchetypeModal";
+import { countSymbolsFromCards, getVisibleSpellsForHand } from "./game/grimoire";
 import StSCard from "./components/StSCard";
 
 // ---- Local aliases/types/state helpers
@@ -291,6 +286,14 @@ export default function ThreeWheel_WinsOnly({
   const effectiveGameMode = activeGameModes.length > 0 ? activeGameModes.join("+") : "classic";
   const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
 
+  const localGrimoireSpellIds = useMemo<SpellId[]>(() => {
+    try {
+      return getProfileBundle().grimoire?.spellIds ?? [];
+    } catch {
+      return [] as SpellId[];
+    }
+  }, []);
+
   const onboardingBootstrapRef = useRef<OnboardingState | null>(null);
   if (onboardingBootstrapRef.current === null) {
     onboardingBootstrapRef.current = getOnboardingState();
@@ -309,44 +312,11 @@ export default function ThreeWheel_WinsOnly({
   const [showGrimoire, setShowGrimoire] = useState(false);
   const closeGrimoire = useCallback(() => setShowGrimoire(false), [setShowGrimoire]);
 
-  const [localSelection, setLocalSelection] = useState<ArchetypeId>(() => DEFAULT_ARCHETYPE);
-  const remoteSelection: ArchetypeId = DEFAULT_ARCHETYPE;
-  const [localReady, setLocalReady] = useState(() => !isGrimoireMode);
-  const remoteReady = true;
-  const [showArchetypeModal, setShowArchetypeModal] = useState(isGrimoireMode);
-  const [archetypeGateOpen, setArchetypeGateOpen] = useState(() => !isGrimoireMode);
-
-  useEffect(() => {
-    if (isGrimoireMode) {
-      setLocalSelection(DEFAULT_ARCHETYPE);
-      setLocalReady(false);
-      setShowArchetypeModal(true);
-      setArchetypeGateOpen(false);
-    } else {
-      setLocalReady(true);
-      setShowArchetypeModal(false);
-      setArchetypeGateOpen(true);
-    }
-  }, [isGrimoireMode]);
-
-  const localSpells = useMemo<string[]>(() => {
-    const def = ARCHETYPE_DEFINITIONS[localSelection];
-    return def ? def.spellIds : [];
-  }, [localSelection]);
-
-  const remoteSpells = useMemo<string[]>(() => {
-    const def = ARCHETYPE_DEFINITIONS[remoteSelection];
-    return def ? def.spellIds : [];
-  }, [remoteSelection]);
-
-  const localSpellDefinitions = useMemo<SpellDefinition[]>(
-    () => getSpellDefinitions(localSpells),
-    [localSpells]
-  );
+  const localHandCards = localLegacySide === "player" ? player.hand : enemy.hand;
+  const localHandSymbols = useMemo(() => countSymbolsFromCards(localHandCards), [localHandCards]);
 
   const casterFighter = localLegacySide === "player" ? player : enemy;
   const opponentFighter = localLegacySide === "player" ? enemy : player;
-  const readyButtonDisabled = localReady;
 
   const localAnteValue = ante?.bets?.[localLegacySide] ?? 0;
   const remoteAnteValue = ante?.bets?.[remoteLegacySide] ?? 0;
@@ -387,16 +357,16 @@ export default function ThreeWheel_WinsOnly({
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
 
-  const handleLocalArchetypeSelect = useCallback((id: ArchetypeId) => {
-    setLocalSelection(id);
-    setLocalReady(false);
-  }, []);
+  const localSpellIds = useMemo(() => {
+    if (!isGrimoireMode) return [] as string[];
+    if (phase === "roundEnd" || phase === "ended") return [] as string[];
+    return getVisibleSpellsForHand(localHandSymbols, localGrimoireSpellIds);
+  }, [isGrimoireMode, phase, localHandSymbols, localGrimoireSpellIds]);
 
-  const handleLocalArchetypeReady = useCallback(() => {
-    setLocalReady(true);
-    setShowArchetypeModal(false);
-    setArchetypeGateOpen(true);
-  }, []);
+  const localSpellDefinitions = useMemo<SpellDefinition[]>(
+    () => getSpellDefinitions(localSpellIds),
+    [localSpellIds]
+  );
 
   const getSpellCost = useCallback(
     (spell: SpellDefinition): number =>
@@ -932,7 +902,6 @@ const renderWheelPanel = (i: number) => {
       data-game-mode={effectiveGameMode}
       data-mana-enabled={grimoireAttrValue}
       data-spells-enabled={grimoireAttrValue}
-      data-archetypes-enabled={grimoireAttrValue}
       data-pending-spell={pendingSpell ? pendingSpell.spell.id : ""}
       data-local-mana={localMana}
       data-awaiting-spell-target={isAwaitingSpellTarget ? "true" : "false"}
@@ -958,25 +927,6 @@ const renderWheelPanel = (i: number) => {
           </div>
         </div>
       ) : null}
-
-      {showArchetypeModal && (
-        <ArchetypeModal
-          isMultiplayer={isMultiplayer}
-          hudColors={HUD_COLORS}
-          localSide={localLegacySide}
-          remoteSide={remoteLegacySide}
-          namesBySide={namesByLegacy}
-          localSelection={localSelection}
-          remoteSelection={remoteSelection}
-          localReady={localReady}
-          remoteReady={remoteReady}
-          localSpells={localSpells}
-          remoteSpells={remoteSpells}
-          onSelect={handleLocalArchetypeSelect}
-          onReady={handleLocalArchetypeReady}
-          readyButtonDisabled={readyButtonDisabled}
-        />
-      )}
 
       {/* Controls */}
       <div className="flex items-center justify-between text-[12px] min-h-[24px]">
@@ -1113,16 +1063,21 @@ const renderWheelPanel = (i: number) => {
                   {isGrimoireMode && (
                     <div className="space-y-1">
                       <div>
-                        <span className="font-semibold">Grimoire - Casting Spells</span>
+                        <span className="font-semibold">Grimoire - Symbols &amp; Mana</span>
                       </div>
                       <div>
-                        Spells cost <span className="font-semibold">Mana</span> to cast. Your
-                        <span className="font-semibold"> Grimoire</span> can be accessed by pressing on your
-                        <span className="font-semibold"> 🔮 Mana</span>. After both players resolve and the wheels finish
-                        moving, you gain <span className="font-semibold">Mana equal to half your reserve sum</span>
-                        (rounded up). Some spells require you to select{" "}
-                        <span className="font-semibold">either a card or a wheel</span> before they resolve. Most spells
-                        are available after the Resolve phase, but some can be cast at any time.
+                        Each round your hand grants <span className="font-semibold">Arcana symbols</span> based on the loadout
+                        set on your profile. Spells appear in the Grimoire when your hand shows at least two of their required
+                        symbols (single-symbol spells only need that matching symbol).
+                      </div>
+                      <div>
+                        Spend <span className="font-semibold">Mana</span> to cast those spells during the phases shown in the
+                        Grimoire. Mana is earned after Resolve equal to half of your remaining reserve (rounded up).
+                      </div>
+                      <div>
+                        Some spells ask you to pick a <span className="font-semibold">card</span> or{" "}
+                        <span className="font-semibold">wheel</span> before they resolve. Use <b>Cancel</b> if you change
+                        your mind mid-cast.
                       </div>
                     </div>
                   )}
@@ -1233,8 +1188,8 @@ const renderWheelPanel = (i: number) => {
       </div>
     </div>
 
-    <div className="mt-1 text-[11px] leading-snug text-slate-300">
-      {spell.description}
+    <div className="mt-1 space-y-0.5 text-[11px] leading-snug text-slate-300">
+      <div>{spell.description}</div>
     </div>
 
   </button>
@@ -1302,8 +1257,11 @@ const renderWheelPanel = (i: number) => {
       </div>
     </div>
 
-    <div className="mt-1 text-[11px] leading-snug text-slate-300">
-      {spell.description}
+    <div className="mt-1 space-y-0.5 text-[11px] leading-snug text-slate-300">
+      {spell.targetSummary ? (
+        <div className="font-semibold text-slate-200">{spell.targetSummary}</div>
+      ) : null}
+      <div>{spell.description}</div>
     </div>
 
   </button>
@@ -1371,7 +1329,6 @@ const renderWheelPanel = (i: number) => {
                 setSelectedCardId={setSelectedCardId}
                 localLegacySide={localLegacySide}
                 phase={phase}
-                archetypeGateOpen={archetypeGateOpen}
                 setDragCardId={setDragCardId}
                 dragCardId={dragCardId}
                 setDragOverWheel={setDragOverWheel}

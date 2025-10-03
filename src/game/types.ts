@@ -25,7 +25,9 @@ export type PlayerCore = {
 };
 export type Players = Record<Side, PlayerCore>;
 
-export type TagId = "oddshift" | "parityflip" | "echoreserve";
+export type TagId = "oddshift" | "parityflip" | "echoreserve" | "grimoireFiller";
+
+export type Arcana = "fire" | "blade" | "eye" | "moon" | "serpent";
 
 export type CardType = "normal" | "split";
 
@@ -37,6 +39,7 @@ export type Card = {
   leftValue?: number;   // when type === "split"
   rightValue?: number;  // when type === "split"
   tags: TagId[];
+  arcana?: Arcana;
 };
 
 export type VC =

@@ -2,7 +2,18 @@
 // to match your existing game types/functions.
 
 import { shuffle } from "../game/math";
-import type { Card, Fighter } from "../game/types";
+import { deriveArcanaForCard } from "../game/arcana";
+import type { Arcana, Card, Fighter } from "../game/types";
+import {
+  DEFAULT_GRIMOIRE_SYMBOLS,
+  GRIMOIRE_SYMBOL_ORDER,
+  MAX_GRIMOIRE_SYMBOLS,
+  clampSymbols as clampGrimoireSymbols,
+  getSpellsForSymbols,
+  symbolsTotal,
+  type GrimoireSymbols,
+} from "../game/grimoire";
+import type { SpellId } from "../game/spells";
 import { uid } from "../utils/uid";
 
 // ===== Local persistence types (module-scoped) =====
@@ -20,17 +31,20 @@ export type Profile = {
   winStreak: number;
 };
 export type OnboardingState = { stage: number; dismissed: string[] };
+type GrimoireState = { symbols: GrimoireSymbols };
+
 type LocalState = {
   version: number;
   profile: Profile;
   inventory: InventoryItem[];
   decks: Deck[];
   onboarding: OnboardingState;
+  grimoire: GrimoireState;
 };
 
 // ===== Storage/config =====
 const KEY = "rw:single:state";
-const VERSION = 3;
+const VERSION = 4;
 const MAX_DECK_SIZE = 10;
 const MAX_COPIES_PER_DECK = 2;
 const MAX_PROFILE_NAME_LENGTH = 24;
@@ -53,6 +67,7 @@ let memoryState: LocalState | null = null;
 // ===== Seed data (keep numbers only to match Card { type:'normal', number:n }) =====
 const SEED_INVENTORY: InventoryItem[] = [];
 const SEED_ONBOARDING: OnboardingState = { stage: 0, dismissed: [] };
+const GRIMOIRE_SEED: GrimoireState = { symbols: { ...DEFAULT_GRIMOIRE_SYMBOLS } };
 
 const SEED_DECK: Deck = {
   id: uid("deck"),
@@ -76,6 +91,7 @@ function seed(): LocalState {
     inventory: SEED_INVENTORY,
     decks: [SEED_DECK],
     onboarding: { ...SEED_ONBOARDING },
+    grimoire: { symbols: { ...GRIMOIRE_SEED.symbols } },
   };
 }
 
@@ -97,6 +113,12 @@ function ensureOnboarding(state: LocalState): OnboardingState {
   const uniqueDismissed = Array.from(new Set(normalized.dismissed));
   state.onboarding = { stage: normalized.stage, dismissed: uniqueDismissed };
   return state.onboarding;
+}
+
+function ensureGrimoire(state: LocalState): GrimoireState {
+  const symbols = clampGrimoireSymbols(state.grimoire?.symbols ?? DEFAULT_GRIMOIRE_SYMBOLS);
+  state.grimoire = { symbols };
+  return state.grimoire;
 }
 
 function normalizeDisplayName(name: string): string {
@@ -157,13 +179,28 @@ function loadStateRaw(): LocalState {
     if (onboardingBefore !== onboardingAfter) {
       didUpgrade = true;
     }
+    const grimoireBefore = JSON.stringify(s.grimoire ?? null);
+    if (!s.grimoire) {
+      s.grimoire = { symbols: { ...DEFAULT_GRIMOIRE_SYMBOLS } };
+      didUpgrade = true;
+    }
+    ensureGrimoire(s);
+    const grimoireAfter = JSON.stringify(s.grimoire);
+    if (grimoireBefore !== grimoireAfter) {
+      didUpgrade = true;
+    }
     if (s.version < 3) {
       s.version = 3;
+      didUpgrade = true;
+    }
+    if (s.version < 4) {
+      s.version = 4;
       didUpgrade = true;
     }
     if (didUpgrade) {
       saveState(s);
     }
+    ensureGrimoire(s);
     return s;
   } catch {
     const s = seed();
@@ -207,6 +244,33 @@ export function setOnboardingStage(stage: number): OnboardingState {
     saveState(state);
   }
   return { stage: onboarding.stage, dismissed: [...onboarding.dismissed] };
+}
+
+export type GrimoireProfile = {
+  symbols: GrimoireSymbols;
+  spellIds: SpellId[];
+  total: number;
+};
+
+function getGrimoireProfileFromState(state: LocalState): GrimoireProfile {
+  const grimoire = ensureGrimoire(state);
+  const symbols = { ...grimoire.symbols };
+  const spellIds = getSpellsForSymbols(symbols);
+  return { symbols, spellIds, total: symbolsTotal(symbols) };
+}
+
+export function getGrimoireSymbols(): GrimoireSymbols {
+  const state = loadStateRaw();
+  const grimoire = ensureGrimoire(state);
+  return { ...grimoire.symbols };
+}
+
+export function setGrimoireSymbols(next: GrimoireSymbols): GrimoireProfile {
+  const state = loadStateRaw();
+  const normalized = clampGrimoireSymbols(next);
+  state.grimoire = { symbols: normalized };
+  saveState(state);
+  return getGrimoireProfileFromState(state);
 }
 
 export function dismissOnboardingHint(id: string): OnboardingState {
@@ -345,11 +409,23 @@ export function recordMatchResult({ didWin }: { didWin: boolean }): MatchResultS
 }
 
 // ===== Public profile/deck management API (used by UI) =====
-export type ProfileBundle = { profile: Profile; inventory: InventoryItem[]; decks: Deck[]; active: Deck | undefined };
+export type ProfileBundle = {
+  profile: Profile;
+  inventory: InventoryItem[];
+  decks: Deck[];
+  active: Deck | undefined;
+  grimoire: GrimoireProfile;
+};
 
 export function getProfileBundle(): ProfileBundle {
   const s = loadStateRaw();
-  return { profile: s.profile, inventory: s.inventory, decks: s.decks, active: findActive(s) };
+  return {
+    profile: s.profile,
+    inventory: s.inventory,
+    decks: s.decks,
+    active: findActive(s),
+    grimoire: getGrimoireProfileFromState(s),
+  };
 }
 
 export function updateProfileDisplayName(name: string): Profile {
@@ -442,18 +518,68 @@ function cardFromId(cardId: string): Card {
   else if (mNeg) num = parseInt(mNeg[1], 10);
   else if (mNum) num = parseInt(mNum[1], 10);
 
-  return {
+  const card: Card = {
     id: nextCardId(),
     name: `${num}`,
     type: "normal",
     number: num,
     tags: [],
   };
+
+  card.arcana = deriveArcanaForCard(card);
+  return card;
+}
+
+function buildGrimoireDeck(symbols: GrimoireSymbols): Card[] {
+  const queue: Arcana[] = [];
+  for (const arcana of GRIMOIRE_SYMBOL_ORDER) {
+    const count = symbols[arcana] ?? 0;
+    for (let i = 0; i < count; i++) {
+      queue.push(arcana);
+    }
+  }
+
+  const cards: Card[] = [];
+  const baseNumbers = Array.from({ length: MAX_DECK_SIZE }, (_, n) => n);
+  let index = 0;
+
+  for (const arcana of queue) {
+    const number = baseNumbers[index % baseNumbers.length];
+    const card: Card = {
+      id: nextCardId(),
+      name: `${number}`,
+      type: "normal",
+      number,
+      tags: [],
+      arcana,
+    };
+    cards.push(card);
+    index += 1;
+  }
+
+  while (cards.length < MAX_DECK_SIZE) {
+    const number = baseNumbers[index % baseNumbers.length];
+    const filler: Card = {
+      id: nextCardId(),
+      name: `${number}`,
+      type: "normal",
+      number,
+      tags: ["grimoireFiller"],
+    };
+    cards.push(filler);
+    index += 1;
+  }
+
+  return cards;
 }
 
 // ====== Build a runtime deck (Card[]) from the ACTIVE profile deck ======
 export function buildActiveDeckAsCards(): Card[] {
-  const { active } = getProfileBundle();
+  const { active, grimoire } = getProfileBundle();
+  const symbolDeck = grimoire?.symbols ?? DEFAULT_GRIMOIRE_SYMBOLS;
+  if (symbolsTotal(symbolDeck) > 0) {
+    return shuffle(buildGrimoireDeck(symbolDeck));
+  }
   if (!active || !active.cards?.length) return starterDeck(); // fallback
 
   const pool: Card[] = [];
@@ -465,14 +591,7 @@ export function buildActiveDeckAsCards(): Card[] {
 
 // ====== Runtime helpers (folded from your src/game/decks.ts) ======
 export function starterDeck(): Card[] {
-  const base: Card[] = Array.from({ length: 10 }, (_, n) => ({
-    id: nextCardId(),
-    name: `${n}`,
-    type: "normal",
-    number: n,
-    tags: [],
-  }));
-  return shuffle(base);
+  return shuffle(buildGrimoireDeck(DEFAULT_GRIMOIRE_SYMBOLS));
 }
 
 export function drawOne(f: Fighter): Fighter {

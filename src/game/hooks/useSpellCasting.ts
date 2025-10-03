@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { CorePhase, Fighter, Phase } from "../types";
+import type { Card, CorePhase, Fighter, Phase } from "../types";
 import {
   computeSpellCost,
   resolvePendingSpell,
-  spellTargetRequiresManualSelection,
   type PendingSpellDescriptor,
   type SpellDefinition,
   type SpellEffectPayload,
   type SpellRuntimeState,
   type SpellTargetInstance,
 } from "../spellEngine";
+import { getSpellTargetStage, spellTargetStageRequiresManualSelection } from "../spells";
+import type { SpellTargetLocation } from "../spells";
+import { getCardArcana, matchesArcana } from "../arcana";
 import type { LegacySide } from "../../features/threeWheel/utils/spellEffectTransforms";
 
 type SideState<T> = Record<LegacySide, T>;
@@ -34,7 +36,9 @@ export type UseSpellCastingResult = {
   awaitingSpellTarget: boolean;
   handleSpellActivate: (spell: SpellDefinition) => void;
   handlePendingSpellCancel: (refundMana: boolean) => void;
-  handleSpellTargetSelect: (selection: { side: LegacySide; lane: number | null; cardId: string }) => void;
+  handleSpellTargetSelect: (
+    selection: { side: LegacySide; lane: number | null; card: Card; location: SpellTargetLocation },
+  ) => void;
   handleWheelTargetSelect: (wheelIndex: number) => void;
 };
 
@@ -44,6 +48,13 @@ const enqueueMicrotask = (task: () => void) => {
   } else {
     Promise.resolve().then(task);
   }
+};
+
+const getCardValueForSpell = (card: Card): number => {
+  if (typeof card.number === "number" && Number.isFinite(card.number)) return card.number;
+  if (typeof card.leftValue === "number" && Number.isFinite(card.leftValue)) return card.leftValue;
+  if (typeof card.rightValue === "number" && Number.isFinite(card.rightValue)) return card.rightValue;
+  return 0;
 };
 
 export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastingResult {
@@ -205,37 +216,17 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
 
       setPhaseBeforeSpell((current) => current ?? phaseForLogic);
 
-      const requiresManualTarget = spellTargetRequiresManualSelection(spell.target);
-
       closeGrimoire();
-
-      const initialTarget: SpellTargetInstance | null = (() => {
-        switch (spell.target.type) {
-          case "self":
-            return { type: "self" };
-          case "none":
-            return { type: "none" };
-          default:
-            return requiresManualTarget ? null : null;
-        }
-      })();
-
       const descriptor: PendingSpellDescriptor = {
         side: localSide,
         spell,
-        target: initialTarget,
+        targets: [],
+        currentStage: 0,
         spentMana: effectiveCost,
       };
-
-      if (requiresManualTarget) {
-        beginPendingSpell({ ...descriptor, target: null });
-        return;
-      }
-
-      handleResolvePendingSpell(descriptor, initialTarget);
+      handleResolvePendingSpell(descriptor);
     },
     [
-      beginPendingSpell,
       closeGrimoire,
       getSpellCost,
       handleResolvePendingSpell,
@@ -249,46 +240,66 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
   );
 
   const handleSpellTargetSelect = useCallback(
-    (selection: { side: LegacySide; lane: number | null; cardId: string }) => {
+    (selection: { side: LegacySide; lane: number | null; card: Card; location: SpellTargetLocation }) => {
       if (!pendingSpell) return;
 
       if (pendingSpell.side !== localSide) {
         return;
       }
 
-      const definition = pendingSpell.spell.target;
-      if (definition.type !== "card" || definition.automatic === true) {
+      const stage = getSpellTargetStage(pendingSpell.spell.target, pendingSpell.currentStage);
+      if (!stage || stage.type !== "card" || stage.automatic) {
         return;
       }
 
       const candidateOwnership = selection.side === pendingSpell.side ? "ally" : "enemy";
 
-      const allowedOwnership = definition.ownership;
+      const allowedOwnership = stage.ownership;
       const isAllowed = allowedOwnership === "any" || allowedOwnership === candidateOwnership;
       if (!isAllowed) {
         return;
       }
 
-      const sourceFighter = selection.side === localSide ? caster : opponent;
-      const cardName = (() => {
-        const pools = [sourceFighter.hand, sourceFighter.deck, sourceFighter.discard];
-        for (const pool of pools) {
-          const match = pool.find((card) => card.id === selection.cardId);
-          if (match) return match.name;
+      const stageLocation = stage.location ?? "board";
+      if (stageLocation !== "any") {
+        if (stageLocation === "board" && selection.location !== "board") return;
+        if (stageLocation === "hand" && selection.location !== "hand") return;
+      }
+
+      const cardArcana = getCardArcana(selection.card);
+      if (!matchesArcana(cardArcana, stage.arcana)) {
+        return;
+      }
+
+      if (stage.adjacentToPrevious) {
+        const previous = pendingSpell.targets[pendingSpell.targets.length - 1];
+        if (
+          !previous ||
+          previous.type !== "card" ||
+          typeof previous.lane !== "number" ||
+          typeof selection.lane !== "number"
+        ) {
+          return;
         }
-        return undefined;
-      })();
+        if (previous.owner !== candidateOwnership) return;
+        if (Math.abs(previous.lane - selection.lane) !== 1) return;
+      }
 
       const nextTarget: SpellTargetInstance = {
         type: "card",
-        cardId: selection.cardId,
+        cardId: selection.card.id,
         owner: candidateOwnership,
-        cardName,
+        cardName: selection.card.name,
+        arcana: cardArcana,
+        location: selection.location,
+        lane: selection.lane,
+        stageIndex: pendingSpell.currentStage,
+        cardValue: getCardValueForSpell(selection.card),
       };
 
       handleResolvePendingSpell(pendingSpell, nextTarget);
     },
-    [caster, handleResolvePendingSpell, localSide, opponent, pendingSpell],
+    [handleResolvePendingSpell, localSide, pendingSpell],
   );
 
   const handleWheelTargetSelect = useCallback(
@@ -296,10 +307,10 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
       if (!pendingSpell) return;
       if (pendingSpell.side !== localSide) return;
 
-      const definition = pendingSpell.spell.target;
-      if (definition.type !== "wheel") return;
+      const stage = getSpellTargetStage(pendingSpell.spell.target, pendingSpell.currentStage);
+      if (!stage || stage.type !== "wheel") return;
 
-      if (definition.scope === "current" && !isWheelActive(wheelIndex)) {
+      if (stage.scope === "current" && !isWheelActive(wheelIndex)) {
         return;
       }
 
@@ -307,6 +318,7 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
         type: "wheel",
         wheelId: String(wheelIndex),
         label: `Wheel ${wheelIndex + 1}`,
+        stageIndex: pendingSpell.currentStage,
       };
 
       handleResolvePendingSpell(pendingSpell, wheelTarget);
@@ -315,11 +327,10 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
   );
 
   const awaitingSpellTarget = useMemo(() => {
-    return (
-      !!pendingSpell &&
-      spellTargetRequiresManualSelection(pendingSpell.spell.target) &&
-      !pendingSpell.target
-    );
+    if (!pendingSpell) return false;
+    const stage = getSpellTargetStage(pendingSpell.spell.target, pendingSpell.currentStage);
+    if (!stage) return false;
+    return spellTargetStageRequiresManualSelection(stage);
   }, [pendingSpell]);
 
   useEffect(() => {

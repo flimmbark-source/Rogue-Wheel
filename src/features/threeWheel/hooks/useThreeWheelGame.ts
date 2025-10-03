@@ -223,7 +223,15 @@ export function useThreeWheelGame({
   const chanRef = useRef<AblyChannel | null>(null);
 
   const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
+  const playerRef = useRef(player);
+  useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
   const [enemy, setEnemy] = useState<Fighter>(() => makeFighter("Shade Bandit"));
+  const enemyRef = useRef(enemy);
+  useEffect(() => {
+    enemyRef.current = enemy;
+  }, [enemy]);
   const [initiative, setInitiative] = useState<LegacySide>(() =>
     hostId ? hostLegacySide : localLegacySide
   );
@@ -621,6 +629,7 @@ export function useThreeWheelGame({
 
   const assignToWheelFor = useCallback(
     (side: LegacySide, laneIndex: number, card: Card) => {
+      if (phaseRef.current !== "choose") return false;
       if (!active[laneIndex]) return false;
 
       const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
@@ -689,6 +698,7 @@ export function useThreeWheelGame({
 
   const clearAssignFor = useCallback(
     (side: LegacySide, laneIndex: number) => {
+      if (phaseRef.current !== "choose") return false;
       const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
       const prev = lane[laneIndex];
       if (!prev) return false;
@@ -929,6 +939,21 @@ export function useThreeWheelGame({
             snapshotTokens = nextTokens;
             tokensAdjusted = true;
           },
+          updateFighter: (side, updater) => {
+            if (side === "player") {
+              setPlayer((prev) => {
+                const next = updater(prev);
+                playerRef.current = next;
+                return next;
+              });
+            } else {
+              setEnemy((prev) => {
+                const next = updater(prev);
+                enemyRef.current = next;
+                return next;
+              });
+            }
+          },
         },
         options,
       );
@@ -969,11 +994,12 @@ export function useThreeWheelGame({
 
   function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
     const playedIds = new Set(played.map((c) => c.id));
+    const leftovers = f.hand.filter((c) => !playedIds.has(c.id));
     const next: Fighter = {
       name: f.name,
       deck: [...f.deck],
-      hand: f.hand.filter((c) => !playedIds.has(c.id)),
-      discard: [...f.discard, ...played],
+      hand: [],
+      discard: [...f.discard, ...played, ...leftovers],
     };
 
     const refilled = refillTo(next, 5);
@@ -1542,6 +1568,7 @@ export function useThreeWheelGame({
 
   const startPointerDrag = useCallback(
     (card: Card, e: ReactPointerEvent) => {
+      if (phaseRef.current !== "choose") return;
       if (e.pointerType === "mouse") return;
       e.currentTarget.setPointerCapture?.(e.pointerId);
       setSelectedCardId(card.id);

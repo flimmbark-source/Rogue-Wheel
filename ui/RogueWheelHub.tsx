@@ -311,30 +311,37 @@ function HowToContent() {
 
       <div className="space-y-4">
         <h2 className="text-xl font-bold border-b border-white/10 pb-2">Grimoire Mode</h2>
-        <p>Use spells to bend a round in your favor by spending <b>Mana</b> and applying targeted effects.</p>
+        <p>
+          Configure your deck with arcana symbols to unlock spells, then spend <b>Mana</b> during a round to bend wheels in your
+          favor.
+        </p>
 
         <ol className="list-decimal pl-5 space-y-2">
-          <li><b>Open:</b> Tap <b>Grimoire</b> to view known spells and your current 🔹 <b>Mana</b>.</li>
           <li>
-            <b>Cast:</b> Choose a spell that’s <b>available this phase</b> and that you can <b>afford</b>.
-            If it needs a target, you’ll see <i>Select a target…</i>.
+            <b>Prepare:</b> On the Profile screen assign up to ten <b>Arcana symbols</b> (🔥, 🗡️, 👁️, 🌙, 🐍). Your opening hand
+            each round reflects that loadout and determines which spells you know.
+          </li>
+          <li><b>Open:</b> Tap <b>Grimoire</b> to view your symbols, known spells, and current 🔹 <b>Mana</b>.</li>
+          <li>
+            <b>Cast:</b> Choose a spell that matches the <b>current phase</b> and whose <b>symbol and mana costs</b> you meet. If
+            it needs a target, you’ll see <i>Select a target…</i>.
           </li>
           <li>
             <b>Target:</b> Click a valid <b>card</b> or <b>wheel</b> (some spells specify <i>Ally</i>, <i>Enemy</i>, or <i>Any</i>).
             Use <b>Cancel</b> to back out if needed.
           </li>
-          <li><b>Resolve:</b> The effect applies immediately and shows icons/tags on the affected slot or wheel.</li>
+          <li>
+            <b>Refresh:</b> Effects apply immediately and mark the affected slots. After Resolve you gain Mana equal to half of
+            your reserve (rounded up) and your next draw may unlock a different mix of spells.
+          </li>
         </ol>
 
         <div className="grid gap-3 rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
           <div className="font-semibold">Tips</div>
           <ul className="list-disc pl-5 space-y-1">
-            <li>
-              After both players resolve a round, gain <b>Mana equal to half of your reserve sum</b> (rounded up);
-              save it for key moments or chain multiple small spells.
-            </li>
-            <li>Check spell <b>phase</b>, most work in <i>Choose</i>, some only after Resolve.</li>
-            <li>If a spell is disabled, you’re either short on Mana or it’s the wrong phase.</li>
+            <li>Adjust your symbol mix between runs to shift which archetype spells can appear.</li>
+            <li>Hands refresh symbols every round — reserve choices can influence what you draw next.</li>
+            <li>Disabled spells indicate you’re missing Mana, symbols, or you’re in the wrong phase.</li>
           </ul>
         </div>
 
@@ -349,8 +356,8 @@ function HowToContent() {
           <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
             <div className="font-semibold">Mana & Availability</div>
             <p>
-              🔹 Mana is awarded after Resolve based on half of your remaining reserve (rounded up). Spells show cost
-              and whether they’re usable <i>now</i>.
+              🔹 Mana is awarded after Resolve based on half of your remaining reserve (rounded up). Spells list their symbol
+              badges and phases so you know when they’ll be usable.
             </p>
           </div>
         </div>

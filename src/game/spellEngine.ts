@@ -1,12 +1,12 @@
 import type { Fighter, Phase } from "./types.js";
 import { SLICES } from "./types.js";
-import type {
-  SpellDefinition,
-  SpellRuntimeState,
-  SpellTargetInstance,
-  SpellTargetOwnership,
+import type { SpellDefinition, SpellRuntimeState, SpellTargetInstance, SpellTargetOwnership } from "./spells.js";
+import {
+  spellTargetRequiresManualSelection,
+  getSpellTargetStages,
+  getSpellTargetStage,
+  spellTargetStageRequiresManualSelection,
 } from "./spells.js";
-import { spellTargetRequiresManualSelection } from "./spells.js";
 import {
   applyCardStatAdjustments,
   applyChilledCardUpdates,
@@ -26,7 +26,8 @@ export { spellTargetRequiresManualSelection };
 export type PendingSpellDescriptor = {
   side: LegacySide;
   spell: SpellDefinition;
-  target: SpellTargetInstance | null;
+  targets: SpellTargetInstance[];
+  currentStage: number;
   spentMana: number;
 };
 
@@ -81,33 +82,75 @@ const RUNTIME_CLEANUP_KEYS: Array<keyof SpellRuntimeState | string> = [
   "mirrorCopyEffects",
   "wheelTokenAdjustments",
   "reserveDrains",
-  "lastFireballTarget",
   "chilledCards",
   "delayedEffects",
   "timeMomentum",
+  "cardAdjustments",
+  "handAdjustments",
+  "handDiscards",
+  "positionSwaps",
+  "initiativeChallenges",
   "log",
 ];
 
 export function resolvePendingSpell(params: ResolveSpellParams): SpellResolutionResult {
   const { descriptor, caster, opponent, phase, runtimeState, targetOverride } = params;
 
-  const manualTargetRequired = spellTargetRequiresManualSelection(descriptor.spell.target);
-  const finalTarget =
-    targetOverride !== undefined ? targetOverride : descriptor.target ? descriptor.target : null;
+  const stages = getSpellTargetStages(descriptor.spell.target);
+  const pendingTargets = Array.isArray(descriptor.targets) ? [...descriptor.targets] : [];
+  let stageIndex = descriptor.currentStage ?? 0;
+  const casterSideLegacy = descriptor.side;
+  const opponentSideLegacy: LegacySide = casterSideLegacy === "player" ? "enemy" : "player";
+  const ownerToLegacy = (owner: SpellTargetOwnership | undefined): LegacySide | null => {
+    if (owner === "ally") return casterSideLegacy;
+    if (owner === "enemy") return opponentSideLegacy;
+    return null;
+  };
 
-  if (manualTargetRequired && !finalTarget) {
+  if (targetOverride !== undefined) {
+    if (targetOverride === null) {
+      return {
+        outcome: "requiresTarget",
+        pendingSpell: { ...descriptor },
+        manaRefund: 0,
+      };
+    }
+    pendingTargets[stageIndex] = { ...targetOverride, stageIndex };
+    stageIndex += 1;
+  }
+
+  while (stageIndex < stages.length) {
+    const stage = stages[stageIndex];
+    if (spellTargetStageRequiresManualSelection(stage)) break;
+    if (stage.type === "self") {
+      pendingTargets[stageIndex] = { type: "self", stageIndex };
+      stageIndex += 1;
+      continue;
+    }
+    if (stage.type === "none") {
+      pendingTargets[stageIndex] = { type: "none", stageIndex };
+      stageIndex += 1;
+      continue;
+    }
+    break;
+  }
+
+  if (stageIndex < stages.length) {
     return {
       outcome: "requiresTarget",
-      pendingSpell: { ...descriptor, target: null },
+      pendingSpell: { ...descriptor, targets: pendingTargets, currentStage: stageIndex },
       manaRefund: 0,
     };
   }
+
+  const finalTarget = pendingTargets[pendingTargets.length - 1] ?? null;
 
   const context = {
     caster,
     opponent,
     phase,
     target: finalTarget ?? undefined,
+    targets: pendingTargets,
     state: runtimeState,
   } as const;
 
@@ -160,18 +203,113 @@ export function resolvePendingSpell(params: ResolveSpellParams): SpellResolution
           let targetSide: LegacySide | null = null;
           const target = (entry as { target?: unknown }).target;
           if (target && typeof target === "object" && (target as { type?: unknown }).type === "card") {
-            const owner = (target as { owner?: unknown }).owner;
-            if (owner === "ally") targetSide = descriptor.side;
-            else if (owner === "enemy") targetSide = descriptor.side === "player" ? "enemy" : "player";
+            const owner = (target as { owner?: unknown }).owner as SpellTargetOwnership | undefined;
+            targetSide = ownerToLegacy(owner);
           }
 
           if (!targetSide) {
-            targetSide = descriptor.side === "player" ? "enemy" : "player";
+            targetSide = opponentSideLegacy;
           }
 
           return { side: targetSide, amount };
         })
         .filter((entry): entry is { side: LegacySide; amount: number } => entry !== null)
+    : undefined;
+
+  const rawHandAdjustments = Array.isArray(runtimeState.handAdjustments)
+    ? runtimeState.handAdjustments.reduce<
+        Array<{ side: LegacySide; cardId: string; numberDelta?: number }>
+      >((acc, entry: unknown) => {
+        if (!entry || typeof entry !== "object") return acc;
+        const target = (entry as { target?: unknown }).target;
+        if (!target || typeof target !== "object" || (target as { type?: unknown }).type !== "card") {
+          return acc;
+        }
+        const cardId = (target as { cardId?: unknown }).cardId;
+        if (typeof cardId !== "string") return acc;
+        const owner = ownerToLegacy((target as { owner?: unknown }).owner as SpellTargetOwnership | undefined);
+        if (!owner) return acc;
+        const numberDelta = (entry as { numberDelta?: unknown }).numberDelta;
+        acc.push({
+          side: owner,
+          cardId,
+          numberDelta: typeof numberDelta === "number" ? numberDelta : undefined,
+        });
+        return acc;
+      }, [])
+    : undefined;
+
+  const handAdjustments = rawHandAdjustments && rawHandAdjustments.length > 0 ? rawHandAdjustments : undefined;
+
+  const rawHandDiscards = Array.isArray(runtimeState.handDiscards)
+    ? runtimeState.handDiscards.reduce<Array<{ side: LegacySide; cardId: string }>>(
+        (acc, entry: unknown) => {
+          if (!entry || typeof entry !== "object") return acc;
+          const target = (entry as { target?: unknown }).target;
+          if (!target || typeof target !== "object" || (target as { type?: unknown }).type !== "card") {
+            return acc;
+          }
+          const cardId = (target as { cardId?: unknown }).cardId;
+          if (typeof cardId !== "string") return acc;
+          const owner = ownerToLegacy((target as { owner?: unknown }).owner as SpellTargetOwnership | undefined);
+          if (!owner) return acc;
+          acc.push({ side: owner, cardId });
+          return acc;
+        },
+        [],
+      )
+    : undefined;
+
+  const handDiscards = rawHandDiscards && rawHandDiscards.length > 0 ? rawHandDiscards : undefined;
+
+  const positionSwaps = Array.isArray(runtimeState.positionSwaps)
+    ? runtimeState.positionSwaps
+        .map((entry: unknown) => {
+          if (!entry || typeof entry !== "object") return null;
+          const first = (entry as { first?: unknown }).first;
+          const second = (entry as { second?: unknown }).second;
+          if (
+            !first ||
+            typeof first !== "object" ||
+            (first as { type?: unknown }).type !== "card" ||
+            !second ||
+            typeof second !== "object" ||
+            (second as { type?: unknown }).type !== "card"
+          ) {
+            return null;
+          }
+          const laneA = (first as { lane?: unknown }).lane;
+          const laneB = (second as { lane?: unknown }).lane;
+          if (!Number.isInteger(laneA) || !Number.isInteger(laneB)) return null;
+          const owner = ownerToLegacy((first as { owner?: unknown }).owner as SpellTargetOwnership | undefined);
+          if (!owner) return null;
+          return { side: owner, laneA: laneA as number, laneB: laneB as number };
+        })
+        .filter((entry): entry is { side: LegacySide; laneA: number; laneB: number } => entry !== null)
+    : undefined;
+
+  const initiativeChallenges = Array.isArray(runtimeState.initiativeChallenges)
+    ? runtimeState.initiativeChallenges
+        .map((entry: unknown) => {
+          if (!entry || typeof entry !== "object") return null;
+          const target = (entry as { target?: unknown }).target;
+          if (!target || typeof target !== "object" || (target as { type?: unknown }).type !== "card") {
+            return null;
+          }
+          const cardId = (target as { cardId?: unknown }).cardId;
+          if (typeof cardId !== "string") return null;
+          const lane = (target as { lane?: unknown }).lane;
+          if (!Number.isInteger(lane)) return null;
+          const owner = ownerToLegacy((target as { owner?: unknown }).owner as SpellTargetOwnership | undefined);
+          if (!owner) return null;
+          const mode = (entry as { mode?: unknown }).mode;
+          const normalizedMode = mode === "lower" ? "lower" : "higher";
+          return { side: owner, lane: lane as number, cardId, mode: normalizedMode };
+        })
+        .filter(
+          (entry): entry is { side: LegacySide; lane: number; cardId: string; mode: "higher" | "lower" } =>
+            entry !== null,
+        )
     : undefined;
 
   const logMessages = Array.isArray(runtimeState.log)
@@ -189,6 +327,18 @@ export function resolvePendingSpell(params: ResolveSpellParams): SpellResolution
   }
   if (reserveDrains && reserveDrains.length > 0) {
     effectPayload.reserveDrains = reserveDrains;
+  }
+  if (handAdjustments && handAdjustments.length > 0) {
+    effectPayload.handAdjustments = handAdjustments;
+  }
+  if (handDiscards && handDiscards.length > 0) {
+    effectPayload.handDiscards = handDiscards;
+  }
+  if (positionSwaps && positionSwaps.length > 0) {
+    effectPayload.positionSwaps = positionSwaps;
+  }
+  if (initiativeChallenges && initiativeChallenges.length > 0) {
+    effectPayload.initiativeChallenges = initiativeChallenges;
   }
   if (runtimeSummary.cardAdjustments && runtimeSummary.cardAdjustments.length > 0) {
     effectPayload.cardAdjustments = runtimeSummary.cardAdjustments;
@@ -211,6 +361,10 @@ export function resolvePendingSpell(params: ResolveSpellParams): SpellResolution
     (effectPayload.wheelTokenAdjustments?.length ?? 0) > 0 ||
     (effectPayload.reserveDrains?.length ?? 0) > 0 ||
     (effectPayload.cardAdjustments?.length ?? 0) > 0 ||
+    (effectPayload.handAdjustments?.length ?? 0) > 0 ||
+    (effectPayload.handDiscards?.length ?? 0) > 0 ||
+    (effectPayload.positionSwaps?.length ?? 0) > 0 ||
+    (effectPayload.initiativeChallenges?.length ?? 0) > 0 ||
     (effectPayload.chilledCards?.length ?? 0) > 0 ||
     (effectPayload.delayedEffects?.length ?? 0) > 0 ||
     Boolean(effectPayload.initiative) ||
@@ -254,6 +408,7 @@ export type SpellEffectApplicationContext<CardT> = {
   applyReservePenalty?: (side: LegacySide, amount: number) => void;
   startingTokens?: [number, number, number];
   updateRoundStartTokens?: (tokens: [number, number, number]) => void;
+  updateFighter: (side: LegacySide, updater: (fighter: Fighter) => Fighter) => void;
 };
 
 type CardLikeWithValues = { number?: number | null; leftValue?: number | null; rightValue?: number | null };
@@ -306,6 +461,7 @@ export function applySpellEffects<CardT extends { id: string }>(
     applyReservePenalty,
     startingTokens,
     updateRoundStartTokens,
+    updateFighter,
   } = context;
 
   const {
@@ -313,6 +469,10 @@ export function applySpellEffects<CardT extends { id: string }>(
     wheelTokenAdjustments,
     reserveDrains,
     cardAdjustments,
+    handAdjustments,
+    handDiscards,
+    positionSwaps,
+    initiativeChallenges,
     chilledCards,
     delayedEffects,
     initiative: initiativeTarget,
@@ -320,6 +480,7 @@ export function applySpellEffects<CardT extends { id: string }>(
   } = payload;
 
   let mirrorUpdatedAssignments: AssignmentState<CardT> | null = null;
+  let latestAssignments: AssignmentState<CardT> = assignSnapshot;
   if (mirrorCopyEffects?.length) {
     updateAssignments((prev) => {
       let nextPlayer = prev.player;
@@ -375,6 +536,7 @@ export function applySpellEffects<CardT extends { id: string }>(
       if (!changed) return prev;
       const updated = { player: nextPlayer, enemy: nextEnemy };
       mirrorUpdatedAssignments = updated;
+      latestAssignments = updated;
       return updated;
     });
   }
@@ -463,6 +625,7 @@ export function applySpellEffects<CardT extends { id: string }>(
       const updated = applyCardStatAdjustments(prev, cardAdjustments as CardStatAdjustment[]);
       if (updated) {
         updatedAssignments = updated;
+        latestAssignments = updated;
         return updated;
       }
       return prev;
@@ -474,10 +637,106 @@ export function applySpellEffects<CardT extends { id: string }>(
     }
   }
 
+  if (handAdjustments?.length) {
+    handAdjustments.forEach((adjustment) => {
+      updateFighter(adjustment.side, (fighter) => {
+        const index = fighter.hand.findIndex((card) => card.id === adjustment.cardId);
+        if (index === -1) return fighter;
+        const currentCard = fighter.hand[index];
+        if (!currentCard) return fighter;
+        const nextHand = [...fighter.hand];
+        const updatedCard = { ...currentCard } as typeof currentCard;
+        if (typeof adjustment.numberDelta === "number" && Number.isFinite(adjustment.numberDelta)) {
+          const currentValue = typeof updatedCard.number === "number" ? updatedCard.number : 0;
+          const nextValue = Math.max(0, Math.round(currentValue + adjustment.numberDelta));
+          if (nextValue !== currentValue) {
+            updatedCard.number = nextValue;
+          }
+        }
+        if (nextHand[index] === updatedCard) return fighter;
+        nextHand[index] = updatedCard;
+        return { ...fighter, hand: nextHand };
+      });
+    });
+  }
+
+  if (handDiscards?.length) {
+    handDiscards.forEach((discard) => {
+      updateFighter(discard.side, (fighter) => {
+        const index = fighter.hand.findIndex((card) => card.id === discard.cardId);
+        if (index === -1) return fighter;
+        const nextHand = [...fighter.hand];
+        const [removed] = nextHand.splice(index, 1);
+        const nextDiscard = removed ? [...fighter.discard, removed] : [...fighter.discard];
+        return { ...fighter, hand: nextHand, discard: nextDiscard };
+      });
+    });
+  }
+
+  if (positionSwaps?.length) {
+    updateAssignments((prev) => {
+      let nextPlayer = prev.player;
+      let nextEnemy = prev.enemy;
+      let changed = false;
+
+      positionSwaps.forEach((swap) => {
+        const side = swap.side;
+        const laneA = swap.laneA;
+        const laneB = swap.laneB;
+        if (!Number.isInteger(laneA) || !Number.isInteger(laneB)) return;
+        const lanes = side === "player" ? prev.player : prev.enemy;
+        if (
+          laneA < 0 ||
+          laneB < 0 ||
+          laneA >= lanes.length ||
+          laneB >= lanes.length ||
+          laneA === laneB
+        ) {
+          return;
+        }
+
+        const baseline = side === "player" ? prev.player : prev.enemy;
+        const working = side === "player" ? nextPlayer : nextEnemy;
+        const targetArray: (CardT | null)[] = working === baseline ? [...baseline] : [...working];
+        const temp = targetArray[laneA];
+        targetArray[laneA] = targetArray[laneB];
+        targetArray[laneB] = temp;
+        if (side === "player") nextPlayer = targetArray;
+        else nextEnemy = targetArray;
+        changed = true;
+      });
+
+      if (!changed) return prev;
+      const updated = { player: nextPlayer, enemy: nextEnemy } as AssignmentState<CardT>;
+      latestAssignments = updated;
+      return updated;
+    });
+  }
+
   if (chilledCards?.length) {
     updateLaneChillStacks((prev) => {
-      const updated = applyChilledCardUpdates(prev, assignSnapshot, chilledCards as ChilledCardUpdate[]);
+      const updated = applyChilledCardUpdates(prev, latestAssignments, chilledCards as ChilledCardUpdate[]);
       return updated ?? prev;
+    });
+  }
+
+  if (initiativeChallenges?.length) {
+    initiativeChallenges.forEach((challenge) => {
+      const laneIndex = challenge.lane;
+      if (!Number.isInteger(laneIndex)) return;
+      const challengerSide = challenge.side;
+      const opponentSide = challengerSide === "player" ? "enemy" : "player";
+      const challengerLanes = challengerSide === "player" ? latestAssignments.player : latestAssignments.enemy;
+      const opponentLanes = opponentSide === "player" ? latestAssignments.player : latestAssignments.enemy;
+      const challengerCard = challengerLanes[laneIndex as number] as CardLikeWithValues | null;
+      const opponentCard = opponentLanes[laneIndex as number] as CardLikeWithValues | null;
+      const challengerValue = getCardValue(challengerCard);
+      const opponentValue = getCardValue(opponentCard);
+      const success =
+        challenge.mode === "lower" ? challengerValue < opponentValue : challengerValue > opponentValue;
+      if (success) {
+        setInitiative(challengerSide);
+      }
     });
   }
 
