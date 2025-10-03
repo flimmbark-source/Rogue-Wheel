@@ -152,9 +152,29 @@ export function handMeetsVisibilityRequirement(
   return false;
 }
 
-export function getVisibleSpellsForHand(handSymbols: GrimoireSymbols): SpellId[] {
+export function getVisibleSpellsForHand(
+  handSymbols: GrimoireSymbols,
+  availableSpellIds?: SpellId[],
+): SpellId[] {
+  const allowedPriority = (() => {
+    if (!availableSpellIds || availableSpellIds.length === 0) {
+      return SPELL_PRIORITY;
+    }
+
+    const allowed = new Set<SpellId>(availableSpellIds);
+    const prioritized = SPELL_PRIORITY.filter((id) => allowed.has(id));
+
+    if (prioritized.length === allowed.size) {
+      return prioritized;
+    }
+
+    const extras = availableSpellIds.filter((id) => !SPELL_PRIORITY.includes(id));
+
+    return [...prioritized, ...extras];
+  })();
+
   const visible: SpellId[] = [];
-  for (const id of SPELL_PRIORITY) {
+  for (const id of allowedPriority) {
     if (handMeetsVisibilityRequirement(handSymbols, GRIMOIRE_SPELL_REQUIREMENTS[id])) {
       visible.push(id);
     }

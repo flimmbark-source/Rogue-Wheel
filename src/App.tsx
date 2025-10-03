@@ -360,8 +360,8 @@ export default function ThreeWheel_WinsOnly({
   const localSpellIds = useMemo(() => {
     if (!isGrimoireMode) return [] as string[];
     if (phase === "roundEnd" || phase === "ended") return [] as string[];
-    return getVisibleSpellsForHand(localHandSymbols);
-  }, [isGrimoireMode, phase, localHandSymbols]);
+    return getVisibleSpellsForHand(localHandSymbols, localGrimoireSpellIds);
+  }, [isGrimoireMode, phase, localHandSymbols, localGrimoireSpellIds]);
 
   const localSpellDefinitions = useMemo<SpellDefinition[]>(
     () => getSpellDefinitions(localSpellIds),
