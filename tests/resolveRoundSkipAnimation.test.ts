@@ -95,11 +95,11 @@ let wheelHUD = [...hudBefore] as [string | null, string | null, string | null];
 let winsState = { ...initialWins };
 let tokensState = [...initialTokens] as [number, number, number];
 
-// Skip animation path should immediately apply the recalculated totals and winners.
+// Skip animation path should immediately apply the recalculated totals and winners
+// except for the round win totals, which are now deferred until the round fully ends.
 const applyImmediateUpdates = () => {
   tokensState = tokensAfterSpell;
   wheelHUD = summary.hudColors;
-  winsState = summary.wins;
 };
 
 applyImmediateUpdates();
@@ -113,8 +113,9 @@ assert.notEqual(
 );
 assert.equal(tokensState[0], tokensAfterSpell[0], "Wheel token should move immediately after spell resolution");
 assert.equal(wheelHUD[0], PLAYER_COLOR, "Player badge updates instantly after spell");
-assert.equal(winsState.player, 1, "Player win total increases right away");
-assert.equal(winsState.enemy, 1, "Enemy total remains unchanged");
+assert.equal(winsState.player, 0, "Player win total should be deferred until round end");
+assert.equal(winsState.enemy, 1, "Enemy total remains unchanged before deferred update");
+assert.equal(summary.wins.player, 1, "Summary still reports the pending player win");
 assert(summary.logs.includes("Wheel 1 win -> player (Strongest 9 vs 5)."));
 assert(summary.logs.includes("Hero wins the round 1-0 and takes initiative next round."));
 assert.equal(summary.matchEnded, false);
