@@ -282,7 +282,7 @@ export default function ThreeWheel_WinsOnly({
     startPointerDrag,
     assignToWheelLocal,
     handleRevealClick,
-    handleNextClick,
+    handleNextClick: handleNextClickBase,
     handleRematchClick,
     handleExitClick,
     applySpellEffects,
@@ -358,7 +358,18 @@ export default function ThreeWheel_WinsOnly({
   const localHandCards = localLegacySide === "player" ? player.hand : enemy.hand;
   const localHandCount = localHandCards.length;
   const localHandSymbols = useMemo(() => countSymbolsFromCards(localHandCards), [localHandCards]);
-  const lastChooseVisibleSpellIdsRef = useRef<SpellId[]>([]);
+  const [spellLock, setSpellLock] = useState<{ round: number | null; ids: SpellId[] }>({
+    round: null,
+    ids: [],
+  });
+  const clearSpellLock = useCallback(() => {
+    setSpellLock((prev) => {
+      if (prev.round === null && prev.ids.length === 0) {
+        return prev;
+      }
+      return { round: null, ids: [] };
+    });
+  }, []);
 
   const casterFighter = localLegacySide === "player" ? player : enemy;
   const opponentFighter = localLegacySide === "player" ? enemy : player;
@@ -587,12 +598,12 @@ export default function ThreeWheel_WinsOnly({
     lastCorePhaseRef.current = phaseForLogic;
 
     if (!isGrimoireMode) {
-      lastChooseVisibleSpellIdsRef.current = [];
+      clearSpellLock();
       return;
     }
 
     if (phaseForLogic === "ended") {
-      lastChooseVisibleSpellIdsRef.current = [];
+      clearSpellLock();
       return;
     }
 
@@ -615,26 +626,32 @@ export default function ThreeWheel_WinsOnly({
     if (!isGrimoireMode) return [] as SpellId[];
     if (phaseForLogic === "ended") return [] as SpellId[];
 
+    if (spellLock.round !== null) {
+      return spellLock.ids;
+    }
+
     if (phase === "choose" || phaseForLogic === "choose") {
-      return liveVisibleSpellIds ?? lastChooseVisibleSpellIdsRef.current;
+      return liveVisibleSpellIds ?? spellLock.ids;
     }
 
-    if (phase === "roundEnd") {
-      return lastChooseVisibleSpellIdsRef.current;
-    }
-
-    return lastChooseVisibleSpellIdsRef.current;
+    return spellLock.ids;
   }, [
     isGrimoireMode,
     phase,
     phaseForLogic,
     liveVisibleSpellIds,
+    spellLock,
   ]);
 
   const localSpellDefinitions = useMemo<SpellDefinition[]>(
     () => getSpellDefinitions(localSpellIds),
     [localSpellIds]
   );
+
+  const handleNextClick = useCallback(() => {
+    clearSpellLock();
+    handleNextClickBase();
+  }, [clearSpellLock, handleNextClickBase]);
 
   const getSpellCost = useCallback(
     (spell: SpellDefinition): number =>
