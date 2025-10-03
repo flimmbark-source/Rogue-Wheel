@@ -1054,16 +1054,20 @@ const renderWheelPanel = (i: number) => {
                   {isGrimoireMode && (
                     <div className="space-y-1">
                       <div>
-                        <span className="font-semibold">Grimoire - Casting Spells</span>
+                        <span className="font-semibold">Grimoire - Symbols &amp; Mana</span>
                       </div>
                       <div>
-                        Spells cost <span className="font-semibold">Mana</span> to cast. Your
-                        <span className="font-semibold"> Grimoire</span> can be accessed by pressing on your
-                        <span className="font-semibold"> 🔮 Mana</span>. After both players resolve and the wheels finish
-                        moving, you gain <span className="font-semibold">Mana equal to half your reserve sum</span>
-                        (rounded up). Some spells require you to select{" "}
-                        <span className="font-semibold">either a card or a wheel</span> before they resolve. Most spells
-                        are available after the Resolve phase, but some can be cast at any time.
+                        Each round your hand grants <span className="font-semibold">Arcana symbols</span> based on the loadout
+                        set on your profile. Spells appear in the Grimoire when their symbol requirements are met.
+                      </div>
+                      <div>
+                        Spend <span className="font-semibold">Mana</span> to cast those spells during the phases shown in the
+                        Grimoire. Mana is earned after Resolve equal to half of your remaining reserve (rounded up).
+                      </div>
+                      <div>
+                        Some spells ask you to pick a <span className="font-semibold">card</span> or{" "}
+                        <span className="font-semibold">wheel</span> before they resolve. Use <b>Cancel</b> if you change
+                        your mind mid-cast.
                       </div>
                     </div>
                   )}
