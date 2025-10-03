@@ -236,6 +236,13 @@ export function useThreeWheelGame({
     hostId ? hostLegacySide : localLegacySide
   );
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
+  const pendingWinsRef = useRef<{ player: number; enemy: number } | null>(null);
+
+  const commitPendingWins = useCallback(() => {
+    if (!pendingWinsRef.current) return;
+    setWins(pendingWinsRef.current);
+    pendingWinsRef.current = null;
+  }, [setWins]);
   const [round, setRound] = useState(1);
   const [anteState, setAnteState] = useState<AnteState>(() => ({
     round: 0,
@@ -1137,7 +1144,10 @@ export function useThreeWheelGame({
       });
 
       setWheelHUD(summary.hudColors);
-      setWins(summary.wins);
+      pendingWinsRef.current = summary.wins;
+      if (summary.matchEnded) {
+        commitPendingWins();
+      }
       setReserveSums({ player: finalAnalysis.pReserve, enemy: finalAnalysis.eReserve });
 
       if (summary.shouldResetAnte) {
@@ -1213,6 +1223,8 @@ export function useThreeWheelGame({
       const allow = opts?.force || phase === "roundEnd";
       if (!allow) return false;
 
+      commitPendingWins();
+
       clearResolveVotes();
       clearAdvanceVotes();
 
@@ -1250,6 +1262,7 @@ export function useThreeWheelGame({
     [
       clearResolveVotes,
       clearAdvanceVotes,
+      commitPendingWins,
       generateWheelSet,
       phase,
       setDragOverWheel,
@@ -1466,6 +1479,7 @@ export function useThreeWheelGame({
     setInitiative(hostId ? hostLegacySide : localLegacySide);
 
     setWins({ player: 0, enemy: 0 });
+    pendingWinsRef.current = null;
     setRound(1);
     setAnteState({ round: 0, bets: { player: 0, enemy: 0 }, odds: { player: 1.2, enemy: 1.2 } });
     setPhase("choose");
