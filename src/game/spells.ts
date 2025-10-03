@@ -290,7 +290,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   mirrorImage: {
     id: "mirrorImage",
     name: "Mirror Image",
-    description: "Your 👁️ card copies the opposing value.",
+    description: "Target card copies the opposing value.",
     targetSummary: "Target: 👁️ ally card",
     cost: 4,
     icon: "👁️",
@@ -327,7 +327,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   arcaneShift: {
     id: "arcaneShift",
     name: "Arcane Shift",
-    description: "Advance the wheel housing a 🌒 card by 1 space.",
+    description: "Advance a wheel by 1 space.",
     targetSummary: "Target: Wheel with 🌒 card",
     cost: 3,
     icon: "🌒",
@@ -357,7 +357,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   hex: {
     id: "hex",
     name: "Hex",
-    description: "Remove 2 reserve from foe if a 🐍 card is present.",
+    description: "Remove 2 reserve from foe.",
     targetSummary: "Target: 🐍 enemy card",
     cost: 4,
     icon: "🐍",
@@ -385,7 +385,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   timeTwist: {
     id: "timeTwist",
     name: "Time Twist",
-    description: "Discard a 👁️ or 🌒 card in hand to gain initiative.",
+    description: "Discard a card in hand to gain initiative.",
     targetSummary: "Target: Your 👁️ or 🌒 card in hand",
     cost: 5,
     icon: "⏳",
@@ -414,7 +414,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   kindle: {
     id: "kindle",
     name: "Kindle",
-    description: "Increase a 🔥 card by +2. If it rests in reserve, remove 2 reserve from foe.",
+    description: "Increase a card by +2. If it rests in reserve, remove 2 reserve from foe.",
     targetSummary: "Target: 🔥 ally card",
     cost: 2,
     icon: "🔥",
@@ -452,7 +452,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   suddenStrike: {
     id: "suddenStrike",
     name: "Sudden Strike",
-    description: "Reveal a 🗡️ card, foe must reveal a card. If the opposing card is lower, seize initiative.",
+    description: "Both you and your foe must reveal a card. If the opposing card is lower, seize initiative.",
     targetSummary: "Target: Your 🗡️ card",
     cost: 3,
     icon: "🗡️",
@@ -480,7 +480,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   leech: {
     id: "leech",
     name: "Leech",
-    description: "Drain value from an adjacent card into your 🐍.",
+    description: "Drain value from an adjacent card into target card.",
     targetSummary: "Targets: 🐍 card then adjacent card",
     cost: 4,
     icon: "🐍",
@@ -520,7 +520,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   crosscut: {
     id: "crosscut",
     name: "Crosscut",
-    description: "Reveal a 🗡️ card in your reserve, your foe reveals any reserve card, Compare the revealed cards and drain foe's reserve by their difference.",
+    description: "Both you and your foe reveal a reserve card. Compare the revealed cards and drain foe's reserve by their difference.",
     targetSummary: "Targets: 🗡️ card in hand, then opposing card",
     cost: 3,
     icon: "🗡️",
@@ -564,7 +564,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   offering: {
     id: "offering",
     name: "Offering",
-    description: "Sacrifice a reserve card to increase a 🔥 card by its value.",
+    description: "Sacrifice a reserve card to increase a card by its value.",
     targetSummary: "Targets: 🔥 card, then your reserve card",
     cost: 4,
     icon: "🔥",
@@ -603,7 +603,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   phantom: {
     id: "phantom",
     name: "Phantom",
-    description: "Swap a 🌒 card with another of your cards.",
+    description: "Swap a card with another of your cards.",
     targetSummary: "Targets: 🌒 card and another ally card",
     cost: 3,
     icon: "🌒",
