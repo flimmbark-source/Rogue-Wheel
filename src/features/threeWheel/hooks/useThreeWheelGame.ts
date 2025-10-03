@@ -621,6 +621,7 @@ export function useThreeWheelGame({
 
   const assignToWheelFor = useCallback(
     (side: LegacySide, laneIndex: number, card: Card) => {
+      if (phaseRef.current !== "choose") return false;
       if (!active[laneIndex]) return false;
 
       const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
@@ -689,6 +690,7 @@ export function useThreeWheelGame({
 
   const clearAssignFor = useCallback(
     (side: LegacySide, laneIndex: number) => {
+      if (phaseRef.current !== "choose") return false;
       const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
       const prev = lane[laneIndex];
       if (!prev) return false;
@@ -1543,6 +1545,7 @@ export function useThreeWheelGame({
 
   const startPointerDrag = useCallback(
     (card: Card, e: ReactPointerEvent) => {
+      if (phaseRef.current !== "choose") return;
       if (e.pointerType === "mouse") return;
       e.currentTarget.setPointerCapture?.(e.pointerId);
       setSelectedCardId(card.id);
