@@ -34,6 +34,8 @@ export default memo(function StSCard({
   onPointerDown,
   className,
   spellTargetable,
+  ariaLabel,
+  ariaPressed,
 }: {
   card: Card;
   disabled?: boolean;
@@ -46,6 +48,8 @@ export default memo(function StSCard({
   onPointerDown?: React.PointerEventHandler<HTMLButtonElement>;
   className?: string;
   spellTargetable?: boolean;
+  ariaLabel?: string;
+  ariaPressed?: boolean;
 }) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
   const arcana = useMemo(() => getCardArcana(card), [card]);
@@ -56,7 +60,8 @@ export default memo(function StSCard({
       disabled={disabled}
       className={`relative select-none ${disabled ? 'opacity-60' : 'hover:scale-[1.02]'} transition will-change-transform ${selected ? 'ring-2 ring-amber-400' : ''} ${className ?? ''}`.trim()}
       style={{ width: dims.w, height: dims.h }}
-      aria-label={`Card`}
+      aria-label={ariaLabel ?? `Card`}
+      aria-pressed={ariaPressed}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
