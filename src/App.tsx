@@ -413,6 +413,7 @@ export default function ThreeWheel_WinsOnly({
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
   const lastCorePhaseRef = useRef<CorePhase>(phaseForLogic);
+  const lastChooseVisibleSpellIdsRef = useRef<SpellId[] | null>(null);
 
   const castCpuSpell = useCallback(
     (decision: CpuSpellDecision) => {
