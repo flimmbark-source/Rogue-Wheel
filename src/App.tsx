@@ -357,6 +357,7 @@ export default function ThreeWheel_WinsOnly({
 
   const localHandCards = localLegacySide === "player" ? player.hand : enemy.hand;
   const localHandSymbols = useMemo(() => countSymbolsFromCards(localHandCards), [localHandCards]);
+  const lastChooseVisibleSpellIdsRef = useRef<SpellId[]>([]);
 
   const casterFighter = localLegacySide === "player" ? player : enemy;
   const opponentFighter = localLegacySide === "player" ? enemy : player;
@@ -573,11 +574,47 @@ export default function ThreeWheel_WinsOnly({
     attemptCpuSpell();
   }, [attemptCpuSpell, cpuResponseTick]);
 
-  const localSpellIds = useMemo(() => {
-    if (!isGrimoireMode) return [] as string[];
-    if (phase === "roundEnd" || phase === "ended") return [] as string[];
+  const liveVisibleSpellIds = useMemo(() => {
+    if (!isGrimoireMode) return null;
+    if (phaseForLogic !== "choose") return null;
     return getVisibleSpellsForHand(localHandSymbols, localGrimoireSpellIds);
-  }, [isGrimoireMode, phase, localHandSymbols, localGrimoireSpellIds]);
+  }, [isGrimoireMode, phaseForLogic, localHandSymbols, localGrimoireSpellIds]);
+
+  useEffect(() => {
+    if (!isGrimoireMode) {
+      lastChooseVisibleSpellIdsRef.current = [];
+      return;
+    }
+
+    if (phaseForLogic === "ended") {
+      lastChooseVisibleSpellIdsRef.current = [];
+      return;
+    }
+
+    if (liveVisibleSpellIds !== null) {
+      lastChooseVisibleSpellIdsRef.current = liveVisibleSpellIds;
+    }
+  }, [isGrimoireMode, phaseForLogic, liveVisibleSpellIds]);
+
+  const localSpellIds = useMemo(() => {
+    if (!isGrimoireMode) return [] as SpellId[];
+    if (phaseForLogic === "ended") return [] as SpellId[];
+
+    if (phase === "choose" || phaseForLogic === "choose") {
+      return liveVisibleSpellIds ?? lastChooseVisibleSpellIdsRef.current;
+    }
+
+    if (phase === "roundEnd") {
+      return lastChooseVisibleSpellIdsRef.current;
+    }
+
+    return lastChooseVisibleSpellIdsRef.current;
+  }, [
+    isGrimoireMode,
+    phase,
+    phaseForLogic,
+    liveVisibleSpellIds,
+  ]);
 
   const localSpellDefinitions = useMemo<SpellDefinition[]>(
     () => getSpellDefinitions(localSpellIds),
