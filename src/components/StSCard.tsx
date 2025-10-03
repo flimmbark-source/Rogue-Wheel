@@ -140,6 +140,9 @@ export default memo(function StSCard({
           <ArcanaGlyph symbol={symbol} />
         </div>
       </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center">
+        <ArcanaGlyph symbol={symbol} />
+      </div>
     </button>
   );
 });
