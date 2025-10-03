@@ -233,7 +233,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "fireball",
     name: "Fireball",
     description: "Reduce an enemy card's value 2. Each successive cast costs +1 Mana.",
-    targetSummary: "Target: 🔥 enemy card",
+    targetSummary: "Target: Enemy card",
     cost: 2,
     variableCost: (context) => {
       const streak = (context.state.fireballStreak as number | undefined) ?? 0;
@@ -248,7 +248,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ownership: "enemy",
       arcana: "fire",
       location: "board",
-      label: "Enemy 🔥 card",
+      label: "Enemy card",
     },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -265,7 +265,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "iceShard",
     name: "Ice Shard",
     description: "Freeze a card's value for the round.",
-    targetSummary: "Target: 🗡️ enemy card",
+    targetSummary: "Target: Enemy card",
     cost: 1,
     icon: "🗡️",
     allowedPhases: ["roundEnd", "showEnemy"],
@@ -274,7 +274,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ownership: "enemy",
       arcana: "blade",
       location: "board",
-      label: "Enemy 🗡️ card",
+      label: "Enemy card",
     },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -291,7 +291,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "mirrorImage",
     name: "Mirror Image",
     description: "Target card copies the opposing value.",
-    targetSummary: "Target: 👁️ ally card",
+    targetSummary: "Target: Ally card",
     cost: 4,
     icon: "👁️",
     allowedPhases: ["roundEnd", "showEnemy"],
@@ -300,7 +300,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ownership: "ally",
       arcana: "eye",
       location: "board",
-      label: "Your 👁️ card",
+      label: "Your card",
     },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -328,7 +328,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "arcaneShift",
     name: "Arcane Shift",
     description: "Advance a wheel by 1 space.",
-    targetSummary: "Target: Wheel with 🌒 card",
+    targetSummary: "Target: Wheel",
     cost: 3,
     icon: "🌒",
     allowedPhases: ["roundEnd", "showEnemy", "anim"],
@@ -336,7 +336,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       type: "wheel",
       scope: "current",
       requiresArcana: "moon",
-      label: "Wheel containing 🌒",
+      label: "Wheel",
     },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -358,7 +358,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "hex",
     name: "Hex",
     description: "Remove 2 reserve from foe.",
-    targetSummary: "Target: 🐍 enemy card",
+    targetSummary: "Target: Enemy card",
     cost: 4,
     icon: "🐍",
     allowedPhases: ["roundEnd", "showEnemy"],
@@ -367,7 +367,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ownership: "enemy",
       arcana: "serpent",
       location: "board",
-      label: "Enemy 🐍 card",
+      label: "Enemy card",
     },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -386,7 +386,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "timeTwist",
     name: "Time Twist",
     description: "Discard a card in hand to gain initiative.",
-    targetSummary: "Target: Your 👁️ or 🌒 card in hand",
+    targetSummary: "Target: A card in hand",
     cost: 5,
     icon: "⏳",
     allowedPhases: ["choose", "roundEnd"],
@@ -395,7 +395,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ownership: "ally",
       arcana: ["eye", "moon"],
       location: "hand",
-      label: "Your 👁️ or 🌒 reserve card",
+      label: "Your Reserve card",
     },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -415,7 +415,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "kindle",
     name: "Kindle",
     description: "Increase a card by +2. If it rests in reserve, remove 2 reserve from foe.",
-    targetSummary: "Target: 🔥 ally card",
+    targetSummary: "Target: Ally card",
     cost: 2,
     icon: "🔥",
     allowedPhases: ["choose", "roundEnd", "showEnemy"],
@@ -424,7 +424,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ownership: "ally",
       arcana: "fire",
       location: "any",
-      label: "Your 🔥 card",
+      label: "Your card",
     },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -453,7 +453,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "suddenStrike",
     name: "Sudden Strike",
     description: "Both you and your foe must reveal a card. If the opposing card is lower, seize initiative.",
-    targetSummary: "Target: Your 🗡️ card",
+    targetSummary: "Target: Your card",
     cost: 3,
     icon: "🗡️",
     allowedPhases: ["roundEnd", "showEnemy"],
@@ -462,7 +462,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ownership: "ally",
       arcana: "blade",
       location: "board",
-      label: "Your 🗡️ card",
+      label: "Your card",
     },
     resolver: (context) => {
       const log = ensureLog(context);
@@ -481,7 +481,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "leech",
     name: "Leech",
     description: "Drain value from an adjacent card into target card.",
-    targetSummary: "Targets: 🐍 card then adjacent card",
+    targetSummary: "Targets: Ally card then adjacent card",
     cost: 4,
     icon: "🐍",
     allowedPhases: ["roundEnd", "showEnemy"],
@@ -493,7 +493,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
           ownership: "ally",
           arcana: "serpent",
           location: "board",
-          label: "Your 🐍 card",
+          label: "Your card",
         },
         {
           type: "card",
@@ -521,7 +521,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "crosscut",
     name: "Crosscut",
     description: "Both you and your foe reveal a reserve card. Compare the revealed cards and drain foe's reserve by their difference.",
-    targetSummary: "Targets: 🗡️ card in hand, then opposing card",
+    targetSummary: "Targets: Card in hand, then opposing card",
     cost: 3,
     icon: "🗡️",
     allowedPhases: ["choose", "roundEnd"],
@@ -533,7 +533,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
           ownership: "ally",
           arcana: "blade",
           location: "hand",
-          label: "Your reserve blade",
+          label: "Your reserve card",
         },
         {
           type: "card",
@@ -565,7 +565,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "offering",
     name: "Offering",
     description: "Sacrifice a reserve card to increase a card by its value.",
-    targetSummary: "Targets: 🔥 card, then your reserve card",
+    targetSummary: "Targets: Ally card, then your reserve card",
     cost: 4,
     icon: "🔥",
     allowedPhases: ["choose", "roundEnd"],
@@ -577,7 +577,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
           ownership: "ally",
           arcana: "fire",
           location: "board",
-          label: "Your 🔥 card",
+          label: "Your card",
         },
         {
           type: "card",
@@ -616,7 +616,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
           ownership: "ally",
           arcana: "moon",
           location: "board",
-          label: "Your 🌒 card",
+          label: "Your card",
         },
         {
           type: "card",
