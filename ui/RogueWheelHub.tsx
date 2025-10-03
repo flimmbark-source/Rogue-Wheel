@@ -315,13 +315,17 @@ function HowToContent() {
           Configure your deck with arcana symbols to unlock spells, then spend <b>Mana</b> during a round to bend wheels in your
           favor.
         </p>
+          <li>
+            Before a match, on the Profile screen, assign up to ten <b>Arcana symbols</b> (🔥, 🗡️, 👁️, 🌙, 🐍). The cards in your deck
+            reflect that loadout, while the arcana you draw in a round determines which spells you can cast.
+          </li>
+        <p>
+          <b>How to cast spells</b>:
+        </p>
 
         <ol className="list-decimal pl-5 space-y-2">
-          <li>
-            <b>Prepare:</b> On the Profile screen assign up to ten <b>Arcana symbols</b> (🔥, 🗡️, 👁️, 🌙, 🐍). Your opening hand
-            each round reflects that loadout and determines which spells you know.
-          </li>
-          <li><b>Open:</b> Tap <b>Grimoire</b> to view your symbols, known spells, and current 🔹 <b>Mana</b>.</li>
+
+          <li><b>Open:</b> Tap your 🔹 <b>Mana</b> to access your <b>Grimoire</b> and view your known spells.</li>
           <li>
             <b>Cast:</b> Choose a spell that matches the <b>current phase</b> and whose <b>symbol and mana costs</b> you meet. If
             it needs a target, you’ll see <i>Select a target…</i>.
