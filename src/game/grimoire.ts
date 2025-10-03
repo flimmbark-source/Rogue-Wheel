@@ -26,17 +26,17 @@ export type GrimoireRequirement = Partial<Record<Arcana, number>>;
 
 export const GRIMOIRE_SPELL_REQUIREMENTS: Record<SpellId, GrimoireRequirement> = {
   fireball: { fire: 3 },
-  kindle: { fire: 2, moon: 1 },
-  hex: { serpent: 2 },
-  mirrorImage: { eye: 2, moon: 1 },
-  iceShard: { moon: 2 },
-  suddenStrike: { blade: 2 },
-  crosscut: { blade: 1, fire: 1 },
-  leech: { serpent: 1, eye: 1 },
-  arcaneShift: { eye: 3 },
-  timeTwist: { moon: 1, eye: 1, serpent: 1 },
-  offering: { fire: 1, serpent: 2 },
-  phantom: { moon: 1, blade: 1, eye: 1 },
+  kindle: { fire: 2, moon: 2 },
+  hex: { serpent: 3 },
+  mirrorImage: { eye: 3, moon: 1 },
+  iceShard: { moon: 3 },
+  suddenStrike: { blade: 3 },
+  crosscut: { blade: 2, fire: 1 },
+  leech: { serpent: 2, eye: 1 },
+  arcaneShift: { eye: 4 },
+  timeTwist: { moon: 1, eye: 2, serpent: 1 },
+  offering: { fire: 2, serpent: 2 },
+  phantom: { moon: 2, blade: 1, eye: 1 },
 };
 
 const SPELL_PRIORITY: SpellId[] = [
