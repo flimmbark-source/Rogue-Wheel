@@ -42,12 +42,6 @@ import {
 } from "./game/types";
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
-import {
-  ARCHETYPE_DEFINITIONS,
-  ARCHETYPE_IDS,
-  DEFAULT_ARCHETYPE,
-  type ArchetypeId,
-} from "./game/archetypes";
 import { DEFAULT_GAME_MODE, normalizeGameMode } from "./gameModes";
 import {
   makeFighter,
@@ -81,7 +75,7 @@ import FirstRunCoach from "./features/threeWheel/components/FirstRunCoach";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
 import { getSpellDefinitions, type SpellDefinition, type SpellRuntimeState } from "./game/spells";
-import ArchetypeModal from "./features/threeWheel/components/ArchetypeModal";
+import { countSymbolsFromCards, getSpellsForSymbols } from "./game/grimoire";
 import StSCard from "./components/StSCard";
 
 // ---- Local aliases/types/state helpers
@@ -309,44 +303,11 @@ export default function ThreeWheel_WinsOnly({
   const [showGrimoire, setShowGrimoire] = useState(false);
   const closeGrimoire = useCallback(() => setShowGrimoire(false), [setShowGrimoire]);
 
-  const [localSelection, setLocalSelection] = useState<ArchetypeId>(() => DEFAULT_ARCHETYPE);
-  const remoteSelection: ArchetypeId = DEFAULT_ARCHETYPE;
-  const [localReady, setLocalReady] = useState(() => !isGrimoireMode);
-  const remoteReady = true;
-  const [showArchetypeModal, setShowArchetypeModal] = useState(isGrimoireMode);
-  const [archetypeGateOpen, setArchetypeGateOpen] = useState(() => !isGrimoireMode);
-
-  useEffect(() => {
-    if (isGrimoireMode) {
-      setLocalSelection(DEFAULT_ARCHETYPE);
-      setLocalReady(false);
-      setShowArchetypeModal(true);
-      setArchetypeGateOpen(false);
-    } else {
-      setLocalReady(true);
-      setShowArchetypeModal(false);
-      setArchetypeGateOpen(true);
-    }
-  }, [isGrimoireMode]);
-
-  const localSpells = useMemo<string[]>(() => {
-    const def = ARCHETYPE_DEFINITIONS[localSelection];
-    return def ? def.spellIds : [];
-  }, [localSelection]);
-
-  const remoteSpells = useMemo<string[]>(() => {
-    const def = ARCHETYPE_DEFINITIONS[remoteSelection];
-    return def ? def.spellIds : [];
-  }, [remoteSelection]);
-
-  const localSpellDefinitions = useMemo<SpellDefinition[]>(
-    () => getSpellDefinitions(localSpells),
-    [localSpells]
-  );
+  const localHandCards = localLegacySide === "player" ? player.hand : enemy.hand;
+  const localHandSymbols = useMemo(() => countSymbolsFromCards(localHandCards), [localHandCards]);
 
   const casterFighter = localLegacySide === "player" ? player : enemy;
   const opponentFighter = localLegacySide === "player" ? enemy : player;
-  const readyButtonDisabled = localReady;
 
   const localAnteValue = ante?.bets?.[localLegacySide] ?? 0;
   const remoteAnteValue = ante?.bets?.[remoteLegacySide] ?? 0;
@@ -387,16 +348,16 @@ export default function ThreeWheel_WinsOnly({
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
 
-  const handleLocalArchetypeSelect = useCallback((id: ArchetypeId) => {
-    setLocalSelection(id);
-    setLocalReady(false);
-  }, []);
+  const localSpellIds = useMemo(() => {
+    if (!isGrimoireMode) return [] as string[];
+    if (phase === "roundEnd" || phase === "ended") return [] as string[];
+    return getSpellsForSymbols(localHandSymbols);
+  }, [isGrimoireMode, phase, localHandSymbols]);
 
-  const handleLocalArchetypeReady = useCallback(() => {
-    setLocalReady(true);
-    setShowArchetypeModal(false);
-    setArchetypeGateOpen(true);
-  }, []);
+  const localSpellDefinitions = useMemo<SpellDefinition[]>(
+    () => getSpellDefinitions(localSpellIds),
+    [localSpellIds]
+  );
 
   const getSpellCost = useCallback(
     (spell: SpellDefinition): number =>
@@ -932,7 +893,6 @@ const renderWheelPanel = (i: number) => {
       data-game-mode={effectiveGameMode}
       data-mana-enabled={grimoireAttrValue}
       data-spells-enabled={grimoireAttrValue}
-      data-archetypes-enabled={grimoireAttrValue}
       data-pending-spell={pendingSpell ? pendingSpell.spell.id : ""}
       data-local-mana={localMana}
       data-awaiting-spell-target={isAwaitingSpellTarget ? "true" : "false"}
@@ -958,25 +918,6 @@ const renderWheelPanel = (i: number) => {
           </div>
         </div>
       ) : null}
-
-      {showArchetypeModal && (
-        <ArchetypeModal
-          isMultiplayer={isMultiplayer}
-          hudColors={HUD_COLORS}
-          localSide={localLegacySide}
-          remoteSide={remoteLegacySide}
-          namesBySide={namesByLegacy}
-          localSelection={localSelection}
-          remoteSelection={remoteSelection}
-          localReady={localReady}
-          remoteReady={remoteReady}
-          localSpells={localSpells}
-          remoteSpells={remoteSpells}
-          onSelect={handleLocalArchetypeSelect}
-          onReady={handleLocalArchetypeReady}
-          readyButtonDisabled={readyButtonDisabled}
-        />
-      )}
 
       {/* Controls */}
       <div className="flex items-center justify-between text-[12px] min-h-[24px]">
@@ -1377,7 +1318,6 @@ const renderWheelPanel = (i: number) => {
                 setSelectedCardId={setSelectedCardId}
                 localLegacySide={localLegacySide}
                 phase={phase}
-                archetypeGateOpen={archetypeGateOpen}
                 setDragCardId={setDragCardId}
                 dragCardId={dragCardId}
                 setDragOverWheel={setDragOverWheel}

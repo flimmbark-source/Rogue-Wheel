@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import {
   getProfileBundle,
   expRequiredForLevel,
@@ -7,8 +7,13 @@ import {
   getOnboardingState,
   type OnboardingState,
   setTutorialEnabled,
+  setGrimoireSymbols,
 } from "./player/profileStore";
 import LoadingScreen from "./components/LoadingScreen";
+import { ARCANA_EMOJI } from "./game/arcana";
+import { GRIMOIRE_SYMBOL_ORDER, MAX_GRIMOIRE_SYMBOLS, symbolsTotal, GRIMOIRE_SPELL_REQUIREMENTS } from "./game/grimoire";
+import type { Arcana } from "./game/types";
+import { getSpellDefinitions } from "./game/spells";
 
 export default function ProfilePage() {
   // Initialize immediately so we can render without waiting for an effect
@@ -117,6 +122,26 @@ export default function ProfilePage() {
 
   const { profile } = bundle;
 
+  const grimoireSymbols = bundle.grimoire.symbols;
+  const grimoireTotal = symbolsTotal(grimoireSymbols);
+  const remainingSlots = Math.max(0, MAX_GRIMOIRE_SYMBOLS - grimoireTotal);
+  const grimoireSpells = useMemo(
+    () => getSpellDefinitions(bundle.grimoire.spellIds),
+    [bundle.grimoire.spellIds],
+  );
+
+  const handleSymbolAdjust = useCallback(
+    (arcana: Arcana, delta: number) => {
+      const current = bundle.grimoire.symbols;
+      if (delta > 0 && grimoireTotal >= MAX_GRIMOIRE_SYMBOLS) return;
+      if (delta < 0 && (current[arcana] ?? 0) <= 0) return;
+      const next = { ...current, [arcana]: Math.max(0, (current[arcana] ?? 0) + delta) };
+      const updated = setGrimoireSymbols(next);
+      setBundle((prev) => (prev ? { ...prev, grimoire: updated } : prev));
+    },
+    [bundle, grimoireTotal],
+  );
+
   const expToNext = expRequiredForLevel(profile.level);
   const expPercent = expToNext > 0 ? Math.min(1, profile.exp / expToNext) : 0;
 
@@ -187,6 +212,101 @@ export default function ProfilePage() {
             <option value="enabled">Enabled</option>
             <option value="disabled">Disabled</option>
           </select>
+        </div>
+
+        <div className="mt-4 rounded-lg bg-white/5 p-3 ring-1 ring-white/10">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-medium text-white">Grimoire mode</div>
+              <div className="text-xs text-white/60">
+                Adjust the symbols in your deck to learn spells. Your grimoire refreshes at the start of each round based on your hand.
+              </div>
+            </div>
+            <div className="text-xs font-semibold text-emerald-200/80">
+              {remainingSlots} symbol{remainingSlots === 1 ? "" : "s"} available
+            </div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-5">
+            {GRIMOIRE_SYMBOL_ORDER.map((arcana) => {
+              const count = grimoireSymbols[arcana] ?? 0;
+              const canDecrease = count > 0;
+              const canIncrease = remainingSlots > 0;
+              return (
+                <div key={arcana} className="rounded-xl border border-white/10 bg-slate-900/70 p-3 shadow-inner">
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl" aria-hidden>{ARCANA_EMOJI[arcana]}</span>
+                    <span className="text-sm font-semibold text-white">×{count}</span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSymbolAdjust(arcana, -1)}
+                      disabled={!canDecrease}
+                      className="flex-1 rounded-lg border border-white/20 px-2 py-1 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      −
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSymbolAdjust(arcana, 1)}
+                      disabled={!canIncrease}
+                      className="flex-1 rounded-lg border border-emerald-300/60 bg-emerald-400/20 px-2 py-1 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/30 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4">
+            <div className="text-sm font-medium text-white">Spells</div>
+            <div className="text-xs text-white/60">
+              Spells are available when your hand contains the required symbols. Descriptions are shown below.
+            </div>
+            {grimoireSpells.length === 0 ? (
+              <div className="mt-2 rounded-lg border border-white/10 bg-slate-900/60 px-3 py-2 text-xs text-white/60">
+                No spells unlocked. Increase your symbols to learn new spells.
+              </div>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {grimoireSpells.map((spell) => {
+                  const requirement = GRIMOIRE_SPELL_REQUIREMENTS[spell.id as keyof typeof GRIMOIRE_SPELL_REQUIREMENTS];
+                  const requirementEntries = requirement
+                    ? GRIMOIRE_SYMBOL_ORDER.filter((arcana) => (requirement?.[arcana] ?? 0) > 0).map((arcana) => [arcana, requirement?.[arcana] ?? 0] as [Arcana, number])
+                    : [];
+                  return (
+                    <li key={spell.id} className="rounded-xl border border-white/10 bg-slate-900/80 p-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                          {spell.icon ? <span aria-hidden>{spell.icon}</span> : null}
+                          <span>{spell.name}</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1 text-xs text-amber-200/90">
+                          {requirementEntries.length === 0 ? (
+                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-white/70">No requirement</span>
+                          ) : (
+                            requirementEntries.map(([arc, amount]) => (
+                              <span
+                                key={arc}
+                                className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5"
+                              >
+                                <span aria-hidden>{ARCANA_EMOJI[arc]}</span>
+                                <span>×{amount}</span>
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs leading-relaxed text-white/70">{spell.description}</div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
         </div>
       </section>
     </div>

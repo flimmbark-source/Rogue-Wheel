@@ -25,7 +25,7 @@ export type PlayerCore = {
 };
 export type Players = Record<Side, PlayerCore>;
 
-export type TagId = "oddshift" | "parityflip" | "echoreserve";
+export type TagId = "oddshift" | "parityflip" | "echoreserve" | "grimoireFiller";
 
 export type Arcana = "fire" | "blade" | "eye" | "moon" | "serpent";
 
