@@ -520,7 +520,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   crosscut: {
     id: "crosscut",
     name: "Crosscut",
-    description: "RYu and foe both reveal a reserve card, Compare the revealed cards against each other; drain foe's reserve by their difference.",
+    description: "Reveal a 🗡️ card in your reserve, your foe reveals any reserve card, Compare the revealed cards and drain foe's reserve by their difference.",
     targetSummary: "Targets: 🗡️ card in hand, then opposing card",
     cost: 3,
     icon: "🗡️",
