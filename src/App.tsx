@@ -63,7 +63,13 @@ import {
   computeReserveSum,
   settleFighterAfterRound,
 } from "./features/threeWheel/utils/combat";
-import { computeSpellCost, type SpellEffectPayload } from "./game/spellEngine";
+import {
+  computeSpellCost,
+  resolvePendingSpell,
+  type PendingSpellDescriptor,
+  type SpellEffectPayload,
+  type SpellTargetInstance,
+} from "./game/spellEngine";
 import { useSpellCasting } from "./game/hooks/useSpellCasting";
 
 // components
@@ -75,9 +81,16 @@ import HandDock from "./features/threeWheel/components/HandDock";
 import FirstRunCoach from "./features/threeWheel/components/FirstRunCoach";
 import HUDPanels from "./features/threeWheel/components/HUDPanels";
 import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
-import { getSpellDefinitions, type SpellDefinition, type SpellRuntimeState } from "./game/spells";
+import {
+  getLearnedSpellsForFighter,
+  getSpellDefinitions,
+  type SpellDefinition,
+  type SpellId,
+  type SpellRuntimeState,
+} from "./game/spells";
 import { countSymbolsFromCards, getVisibleSpellsForHand } from "./game/grimoire";
 import StSCard from "./components/StSCard";
+import { chooseCpuSpellResponse, type CpuSpellDecision } from "./game/ai/grimoireCpu";
 
 // ---- Local aliases/types/state helpers
 type AblyRealtime = InstanceType<typeof Realtime>;
@@ -286,6 +299,36 @@ export default function ThreeWheel_WinsOnly({
   const effectiveGameMode = activeGameModes.length > 0 ? activeGameModes.join("+") : "classic";
   const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
 
+  const [cpuResponseTick, setCpuResponseTick] = useState(0);
+
+  const applySpellEffectsWithAi = useCallback(
+    (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => {
+      applySpellEffects(payload, options);
+      if (
+        !isMultiplayer &&
+        isGrimoireMode &&
+        payload.caster === localLegacySide &&
+        remoteLegacySide !== localLegacySide
+      ) {
+        setCpuResponseTick((tick) => tick + 1);
+      }
+    },
+    [
+      applySpellEffects,
+      isGrimoireMode,
+      isMultiplayer,
+      localLegacySide,
+      remoteLegacySide,
+    ],
+  );
+
+  const handleApplySpellEffects = useCallback(
+    (payload: SpellEffectPayload) => {
+      applySpellEffectsWithAi(payload);
+    },
+    [applySpellEffectsWithAi],
+  );
+
   const localGrimoireSpellIds = useMemo<SpellId[]>(() => {
     try {
       return getProfileBundle().grimoire?.spellIds ?? [];
@@ -337,7 +380,7 @@ export default function ThreeWheel_WinsOnly({
     phase: basePhase,
     localSide: localLegacySide,
     localMana,
-    applySpellEffects,
+    applySpellEffects: handleApplySpellEffects,
     setManaPools,
     runtimeStateRef: spellRuntimeStateRef,
     closeGrimoire,
@@ -356,6 +399,179 @@ export default function ThreeWheel_WinsOnly({
 
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
+
+  const castCpuSpell = useCallback(
+    (decision: CpuSpellDecision) => {
+      if (isMultiplayer) return;
+      const cpuSide = remoteLegacySide;
+      if (cpuSide === localLegacySide) return;
+
+      const caster = cpuSide === "player" ? player : enemy;
+      const opponent = cpuSide === "player" ? enemy : player;
+
+      const availableMana = manaPools[cpuSide];
+      if (availableMana < decision.cost) return;
+
+      setManaPools((current) => {
+        const currentMana = current[cpuSide];
+        if (currentMana < decision.cost) return current;
+        const next = { ...current } as SideState<number>;
+        next[cpuSide] = currentMana - decision.cost;
+        return next;
+      });
+
+      let pending: PendingSpellDescriptor | null = {
+        side: cpuSide,
+        spell: decision.spell,
+        targets: [],
+        currentStage: 0,
+        spentMana: decision.cost,
+      };
+
+      let targetIndex = 0;
+
+      while (pending) {
+        const overrideTarget: SpellTargetInstance | undefined =
+          targetIndex < decision.targets.length
+            ? { ...decision.targets[targetIndex], stageIndex: pending.currentStage }
+            : undefined;
+
+        const result = resolvePendingSpell({
+          descriptor: pending,
+          caster,
+          opponent,
+          phase: phaseForLogic,
+          runtimeState: spellRuntimeStateRef.current,
+          targetOverride: overrideTarget,
+        });
+
+        if (result.outcome === "requiresTarget") {
+          if (overrideTarget) {
+            targetIndex += 1;
+            pending = result.pendingSpell;
+            continue;
+          }
+
+          setManaPools((current) => {
+            const next = { ...current } as SideState<number>;
+            next[cpuSide] = current[cpuSide] + decision.cost;
+            return next;
+          });
+          return;
+        }
+
+        if (result.outcome === "error") {
+          console.error("CPU spell failed", result.error);
+          setManaPools((current) => {
+            const next = { ...current } as SideState<number>;
+            next[cpuSide] = current[cpuSide] + decision.cost;
+            return next;
+          });
+          return;
+        }
+
+        if (result.manaRefund && result.manaRefund > 0) {
+          setManaPools((current) => {
+            const next = { ...current } as SideState<number>;
+            next[cpuSide] = current[cpuSide] + result.manaRefund!;
+            return next;
+          });
+        }
+
+        if (result.payload) {
+          applySpellEffectsWithAi(result.payload, { broadcast: false });
+        }
+
+        pending = null;
+      }
+    },
+    [
+      applySpellEffectsWithAi,
+      enemy,
+      isMultiplayer,
+      localLegacySide,
+      manaPools,
+      phaseForLogic,
+      player,
+      remoteLegacySide,
+      setManaPools,
+      spellRuntimeStateRef,
+    ],
+  );
+
+  const attemptCpuSpell = useCallback(() => {
+    if (isMultiplayer || !isGrimoireMode) return;
+    const cpuSide = remoteLegacySide;
+    if (cpuSide === localLegacySide) return;
+    if (phaseForLogic === "ended") return;
+
+    const caster = cpuSide === "player" ? player : enemy;
+    const opponent = cpuSide === "player" ? enemy : player;
+    const mana = manaPools[cpuSide];
+    if (mana <= 0) return;
+
+    const learned = getLearnedSpellsForFighter(caster);
+    if (!learned || learned.length === 0) return;
+
+    const spellbook: SpellId[] = learned.map((spell) => spell.id as SpellId);
+    if (spellbook.length === 0) return;
+
+    const handSymbols = countSymbolsFromCards(caster.hand);
+    const visibleSpellIds = getVisibleSpellsForHand(handSymbols, spellbook);
+    if (visibleSpellIds.length === 0) return;
+
+    const visibleSpells = getSpellDefinitions(visibleSpellIds);
+
+    const candidates = visibleSpells
+      .map((spell) => {
+        const allowedPhases = spell.allowedPhases ?? ["choose"];
+        if (!allowedPhases.includes(phaseForLogic)) return null;
+        const cost = computeSpellCost(spell, {
+          caster,
+          opponent,
+          phase: phaseForLogic,
+          runtimeState: spellRuntimeStateRef.current,
+        });
+        if (cost > mana) return null;
+        return { spell, cost };
+      })
+      .filter((candidate): candidate is { spell: SpellDefinition; cost: number } => Boolean(candidate));
+
+    if (candidates.length === 0) return;
+
+    const decision = chooseCpuSpellResponse({
+      casterSide: cpuSide,
+      caster,
+      opponent,
+      board: assign,
+      reserveSums,
+      initiative,
+      availableSpells: candidates,
+    });
+
+    if (!decision) return;
+
+    castCpuSpell(decision);
+  }, [
+    assign,
+    castCpuSpell,
+    enemy,
+    initiative,
+    isGrimoireMode,
+    isMultiplayer,
+    localLegacySide,
+    manaPools,
+    phaseForLogic,
+    player,
+    remoteLegacySide,
+    reserveSums,
+    spellRuntimeStateRef,
+  ]);
+
+  useEffect(() => {
+    if (cpuResponseTick === 0) return;
+    attemptCpuSpell();
+  }, [attemptCpuSpell, cpuResponseTick]);
 
   const localSpellIds = useMemo(() => {
     if (!isGrimoireMode) return [] as string[];
