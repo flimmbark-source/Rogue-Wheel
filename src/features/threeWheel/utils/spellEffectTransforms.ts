@@ -38,6 +38,10 @@ export type SpellEffectPayload = {
   wheelTokenAdjustments?: Array<{ wheelIndex: number; amount: number }>;
   reserveDrains?: Array<{ side: LegacySide; amount: number }>;
   cardAdjustments?: CardStatAdjustment[];
+  handAdjustments?: Array<{ side: LegacySide; cardId: string; numberDelta?: number }>;
+  handDiscards?: Array<{ side: LegacySide; cardId: string }>;
+  positionSwaps?: Array<{ side: LegacySide; laneA: number; laneB: number }>;
+  initiativeChallenges?: Array<{ side: LegacySide; lane: number; cardId: string; mode: "higher" | "lower" }>;
   chilledCards?: ChilledCardUpdate[];
   delayedEffects?: string[];
   initiative?: LegacySide | null;
@@ -56,7 +60,7 @@ type TargetLike = {
 };
 
 type RuntimeStateLike = {
-  lastFireballTarget?: TargetLike | null;
+  cardAdjustments?: unknown;
   chilledCards?: Record<string, unknown> | null;
   delayedEffects?: unknown;
   timeMomentum?: unknown;
@@ -186,22 +190,43 @@ export function collectRuntimeSpellEffects(
 ): RuntimeSpellEffectSummary {
   const summary: RuntimeSpellEffectSummary = {};
 
-  const target = runtimeState.lastFireballTarget;
-  if (target && typeof target === "object" && (target as TargetLike).type === "card") {
-    const cardId = (target as TargetLike).cardId;
-    if (typeof cardId === "string") {
-      const owner = ((): LegacySide => {
-        const ownerRaw = (target as TargetLike).owner;
-        if (ownerRaw === "ally") return caster;
-        return opponentOf(caster);
-      })();
-      summary.cardAdjustments = [
-        {
-          owner,
-          cardId,
-          numberDelta: -2,
-        },
-      ];
+  const adjustmentsRaw = runtimeState.cardAdjustments;
+  if (Array.isArray(adjustmentsRaw)) {
+    const adjustments: CardStatAdjustment[] = [];
+    for (const entry of adjustmentsRaw) {
+      if (!entry || typeof entry !== "object") continue;
+      const target = (entry as { target?: unknown }).target;
+      if (!target || typeof target !== "object") continue;
+      if ((target as TargetLike).type !== "card") continue;
+      const cardId = (target as TargetLike).cardId;
+      if (typeof cardId !== "string") continue;
+      const ownerRaw = (target as TargetLike).owner;
+      const owner = ownerRaw === "ally" ? caster : ownerRaw === "enemy" ? opponentOf(caster) : caster;
+
+      const numberDelta = (entry as { numberDelta?: unknown }).numberDelta;
+      const leftValueDelta = (entry as { leftValueDelta?: unknown }).leftValueDelta;
+      const rightValueDelta = (entry as { rightValueDelta?: unknown }).rightValueDelta;
+
+      const adj: CardStatAdjustment = {
+        owner,
+        cardId,
+      };
+
+      if (typeof numberDelta === "number" && Number.isFinite(numberDelta)) {
+        adj.numberDelta = numberDelta;
+      }
+      if (typeof leftValueDelta === "number" && Number.isFinite(leftValueDelta)) {
+        adj.leftValueDelta = leftValueDelta;
+      }
+      if (typeof rightValueDelta === "number" && Number.isFinite(rightValueDelta)) {
+        adj.rightValueDelta = rightValueDelta;
+      }
+
+      adjustments.push(adj);
+    }
+
+    if (adjustments.length > 0) {
+      summary.cardAdjustments = adjustments;
     }
   }
 

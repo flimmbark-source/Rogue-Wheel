@@ -223,7 +223,15 @@ export function useThreeWheelGame({
   const chanRef = useRef<AblyChannel | null>(null);
 
   const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
+  const playerRef = useRef(player);
+  useEffect(() => {
+    playerRef.current = player;
+  }, [player]);
   const [enemy, setEnemy] = useState<Fighter>(() => makeFighter("Shade Bandit"));
+  const enemyRef = useRef(enemy);
+  useEffect(() => {
+    enemyRef.current = enemy;
+  }, [enemy]);
   const [initiative, setInitiative] = useState<LegacySide>(() =>
     hostId ? hostLegacySide : localLegacySide
   );
@@ -930,6 +938,21 @@ export function useThreeWheelGame({
             roundStartTokensRef.current = nextTokens;
             snapshotTokens = nextTokens;
             tokensAdjusted = true;
+          },
+          updateFighter: (side, updater) => {
+            if (side === "player") {
+              setPlayer((prev) => {
+                const next = updater(prev);
+                playerRef.current = next;
+                return next;
+              });
+            } else {
+              setEnemy((prev) => {
+                const next = updater(prev);
+                enemyRef.current = next;
+                return next;
+              });
+            }
           },
         },
         options,
