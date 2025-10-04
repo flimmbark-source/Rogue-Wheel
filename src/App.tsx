@@ -15,7 +15,6 @@ import React, {
 import { Realtime } from "ably";
 
 
-
 /**
  * Three-Wheel Roguelike — Wins-Only, Low Mental Load (v2.4.17-fix1)
  * Single-file App.tsx (Vite React)
@@ -43,6 +42,7 @@ import {
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
 import { DEFAULT_GAME_MODE, normalizeGameMode } from "./gameModes";
+import type { ArchetypeId } from "./game/archetypes";
 import {
   makeFighter,
   drawOne,
@@ -74,6 +74,7 @@ import { useSpellCasting } from "./game/hooks/useSpellCasting";
 
 // components
 import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
+import { SpellDescription } from "./components/SpellDescription";
 
 import WheelPanel, { getWheelPanelLayout } from "./features/threeWheel/components/WheelPanel";
 
@@ -653,17 +654,16 @@ export default function ThreeWheel_WinsOnly({
     () => getWheelPanelLayout(wheelSize, lockedWheelSize),
     [wheelSize, lockedWheelSize],
   );
-  const wheelPanelContainerStyle = useMemo(
+  const wheelPanelContainerStyle = useMemo<React.CSSProperties>(
     () => ({
       width: wheelPanelLayout.panelWidth,
       background: "transparent",
       borderColor: "transparent",
       borderWidth: 2,
-      contain: "paint",
+      contain: "paint" as React.CSSProperties["contain"],
       backfaceVisibility: "hidden",
       transform: "translateZ(0)",
       isolation: "isolate",
-
     }),
     [wheelPanelLayout.panelWidth],
   );
@@ -872,209 +872,6 @@ export default function ThreeWheel_WinsOnly({
       setOnboardingStageState(updated.stage);
     }
   }, [dismissOnboardingHint, persistStage]);
-
-  // --- render helpers ---
-type SlotView = { side: LegacySide; card: Card | null; name: string };
-
-const renderWheelPanel = (i: number) => {
-  const pc = assign.player[i];
-  const ec = assign.enemy[i];
-
-  const leftSlot: SlotView  = { side: "player", card: pc, name: namesByLegacy.player };
-  const rightSlot: SlotView = { side: "enemy",  card: ec, name: namesByLegacy.enemy };
-
-  const ws = Math.round(lockedWheelSize ?? wheelSize);
-
-  const isLeftSelected  = !!leftSlot.card  && selectedCardId === leftSlot.card!.id;
-  const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card!.id;
-
-  const isPhaseChooseLike = phase === "choose" || phase === "spellTargeting";
-
-  const shouldShowLeftCard =
-    !!leftSlot.card && (leftSlot.side === localLegacySide || !isPhaseChooseLike);
-  const shouldShowRightCard =
-    !!rightSlot.card && (rightSlot.side === localLegacySide || !isPhaseChooseLike);
-
-  const onZoneDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (dragCardId && active[i]) setDragOverWheel(i);
-  };
-  const onZoneLeave = () => {
-    if (dragCardId) setDragOverWheel(null);
-  };
-  const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
-    if (!id || !active[i]) return;
-    const intendedSide = targetSide ?? localLegacySide;
-    if (intendedSide !== localLegacySide) {
-      setDragOverWheel(null);
-      setDragCardId(null);
-      return;
-    }
-
-    const isLocalPlayer = localLegacySide === "player";
-    const fromHand = (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === id);
-    const fromSlots = (isLocalPlayer ? assign.player : assign.enemy).find((c) => c && c.id === id) as
-      | Card
-      | undefined;
-    const card = fromHand || fromSlots || null;
-    if (card) assignToWheelLocal(i, card as Card);
-    setDragOverWheel(null);
-    setDragCardId(null);
-  };
-  const onZoneDrop = (e: React.DragEvent, targetSide?: LegacySide) => {
-    e.preventDefault();
-    handleDropCommon(e.dataTransfer.getData("text/plain") || dragCardId, targetSide);
-  };
-
-  const panelShadow =
-    "0 2px 8px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.04)";
-
-  return (
-    <div
-      className="relative rounded-xl border p-2 shadow flex-none"
-      style={{
-        width: panelW,
-        height: ws + EXTRA_H,
-        background: `linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(0,0,0,.14) 100%), ${THEME.panelBg}`,
-        borderColor: THEME.panelBorder,
-        borderWidth: 2,
-        boxShadow: panelShadow,
-        contain: "paint",
-        backfaceVisibility: "hidden",
-        transform: "translateZ(0)",
-        isolation: "isolate",
-      }}
-    >
-      {(phase === "roundEnd" || phase === "ended") && (
-        <>
-          <span
-            aria-label={`Wheel ${i + 1} player result`}
-            className="absolute top-1 left-1 rounded-full border"
-            style={{
-              width: 10,
-              height: 10,
-              background: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : "transparent",
-              borderColor: wheelHUD[i] === HUD_COLORS.player ? HUD_COLORS.player : THEME.panelBorder,
-              boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
-            }}
-          />
-          <span
-            aria-label={`Wheel ${i + 1} enemy result`}
-            className="absolute top-1 right-1 rounded-full border"
-            style={{
-              width: 10,
-              height: 10,
-              background: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : "transparent",
-              borderColor: wheelHUD[i] === HUD_COLORS.enemy ? HUD_COLORS.enemy : THEME.panelBorder,
-              boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
-            }}
-          />
-        </>
-      )}
-
-      <div className="flex items-center justify-center gap-2" style={{ height: ws + EXTRA_H }}>
-        {/* Left slot */}
-        <div
-          data-drop="slot"
-          data-idx={i}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, "player")}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (leftSlot.side !== localLegacySide) return;
-            if (selectedCardId) {
-              tapAssignIfSelected();
-            } else if (leftSlot.card) {
-              setSelectedCardId(leftSlot.card.id);
-            }
-          }}
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{
-            backgroundColor:
-              dragOverWheel === i || isLeftSelected ? "rgba(182,138,78,.12)" : THEME.slotBg,
-            borderColor:
-              dragOverWheel === i || isLeftSelected ? THEME.brass : THEME.slotBorder,
-            boxShadow: isLeftSelected ? "0 0 0 1px rgba(251,191,36,0.7)" : "none",
-          }}
-          aria-label={`Wheel ${i + 1} left slot`}
-        >
-          {shouldShowLeftCard ? (
-            renderSlotCard(leftSlot, isLeftSelected)
-          ) : (
-            <div className="text-[11px] opacity-80 text-center">
-              {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
-            </div>
-          )}
-        </div>
-
-        {/* Wheel */}
-        <div
-          data-drop="wheel"
-          data-idx={i}
-          className="relative flex-none flex items-center justify-center rounded-full overflow-hidden"
-          style={{ width: ws, height: ws }}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={onZoneDrop}
-          onClick={(e) => {
-            e.stopPropagation();
-            tapAssignIfSelected();
-          }}
-          aria-label={`Wheel ${i + 1}`}
-        >
-          <CanvasWheel ref={wheelRefs[i]} sections={wheelSections[i]} size={ws} />
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 rounded-full"
-            style={{
-              boxShadow:
-                dragOverWheel === i ? "0 0 0 2px rgba(251,191,36,0.7) inset" : "none",
-            }}
-          />
-        </div>
-
-        {/* Right slot */}
-        <div
-          className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
-          style={{
-            backgroundColor:
-              dragOverWheel === i || isRightSelected ? "rgba(182,138,78,.12)" : THEME.slotBg,
-            borderColor:
-              dragOverWheel === i || isRightSelected ? THEME.brass : THEME.slotBorder,
-            boxShadow: isRightSelected ? "0 0 0 1px rgba(251,191,36,0.7)" : "none",
-          }}
-          aria-label={`Wheel ${i + 1} right slot`}
-          data-drop="slot"
-          data-idx={i}
-          onDragOver={onZoneDragOver}
-          onDragEnter={onZoneDragOver}
-          onDragLeave={onZoneLeave}
-          onDrop={(e) => onZoneDrop(e, "enemy")}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (rightSlot.side !== localLegacySide) return;
-            if (selectedCardId) {
-              tapAssignIfSelected();
-            } else if (rightSlot.card) {
-              setSelectedCardId(rightSlot.card.id);
-            }
-          }}
-        >
-          {shouldShowRightCard ? (
-            renderSlotCard(rightSlot, isRightSelected)
-          ) : (
-            <div className="text-[11px] opacity-60 text-center">
-              {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
 
   const localResolveReady = resolveVotes[localLegacySide];
   const remoteResolveReady = resolveVotes[remoteLegacySide];
@@ -1330,13 +1127,17 @@ const renderWheelPanel = (i: number) => {
                         <span className="font-semibold">Grimoire - Symbols &amp; Mana</span>
                       </div>
                       <div>
-                        Each round your hand grants <span className="font-semibold">Arcana symbols</span> based on the loadout
-                        set on your profile. Spells appear in the Grimoire when your hand shows at least two of their required
-                        symbols (single-symbol spells only need that matching symbol).
+                        Visit your profile to assign up to ten <span className="font-semibold">Arcana symbols</span> (🔥, 🗡️, 👁️,
+                        🌙, 🐍). Those symbols seed your deck and determine which spells your archetype can learn.
                       </div>
                       <div>
-                        Spend <span className="font-semibold">Mana</span> to cast those spells during the phases shown in the
-                        Grimoire. Mana is earned after Resolve equal to half of your remaining reserve (rounded up).
+                        Each round your hand shows the symbols you drew. Multi-symbol spells appear when at least two of their
+                        listed icons are in hand; single-symbol spells need only one matching card.
+                      </div>
+                      <div>
+                        Tap the <span className="font-semibold">🔮 Mana</span> counter in the HUD to open the Grimoire. Cast
+                        spells during their listed phases and pay their Mana costs; after Resolve you earn Mana equal to half of
+                        your remaining reserve (rounded up).
                       </div>
                       <div>
                         Some spells ask you to pick a <span className="font-semibold">card</span> or{" "}
@@ -1453,7 +1254,7 @@ const renderWheelPanel = (i: number) => {
     </div>
 
     <div className="mt-1 space-y-0.5 text-[11px] leading-snug text-slate-300">
-      <div>{spell.description}</div>
+      <SpellDescription description={spell.description} />
     </div>
 
   </button>
@@ -1525,7 +1326,7 @@ const renderWheelPanel = (i: number) => {
       {spell.targetSummary ? (
         <div className="font-semibold text-slate-200">{spell.targetSummary}</div>
       ) : null}
-      <div>{spell.description}</div>
+      <SpellDescription description={spell.description} />
     </div>
 
   </button>

@@ -18,6 +18,10 @@ import {
   type LegacySide,
 } from "../utils/slotVisibility";
 
+export type { LegacySide } from "../utils/slotVisibility";
+
+type SlotView = { side: LegacySide; card: Card | null; name: string };
+
 type SideState<T> = Record<LegacySide, T>;
 
 interface Theme {
@@ -151,8 +155,8 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     ? activeStage.ownership
     : null;
 
-  const leftSlot = { side: "player" as const, card: playerCard, name: namesByLegacy.player };
-  const rightSlot = { side: "enemy" as const, card: enemyCard, name: namesByLegacy.enemy };
+  const leftSlot: SlotView = { side: "player", card: playerCard, name: namesByLegacy.player };
+  const rightSlot: SlotView = { side: "enemy", card: enemyCard, name: namesByLegacy.enemy };
 
   const { wheelDisplaySize: ws, panelWidth, panelHeight } = getWheelPanelLayout(
     wheelSize,
@@ -177,7 +181,8 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const previousTarget = pendingSpell?.targets[pendingSpell.targets.length - 1];
 
   const adjacencyAllows = (slotOwnership: SpellTargetOwnership | null, laneIndex: number): boolean => {
-    if (!activeStage?.adjacentToPrevious) return true;
+    if (!activeStage || activeStage.type !== "card") return true;
+    if (!activeStage.adjacentToPrevious) return true;
     if (!previousTarget || previousTarget.type !== "card") return false;
     if (typeof previousTarget.lane !== "number") return false;
     if (!slotOwnership) return false;
@@ -232,7 +237,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     (wheelScope === "any" || (wheelScope === "current" && isWheelActive)) &&
     wheelHasRequiredArcana();
 
-  const renderSlotCard = (slot: typeof leftSlot, isSlotSelected: boolean) => {
+  const renderSlotCard = (slot: SlotView, isSlotSelected: boolean) => {
     if (!slot.card) return null;
     const card = slot.card;
     const slotOwnership: SpellTargetOwnership = pendingSpell

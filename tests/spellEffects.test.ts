@@ -77,12 +77,16 @@ const opponentOf = (side: LegacySide): LegacySide => (side === "player" ? "enemy
   const runtimeState = {
     timeMomentum: 2,
     delayedEffects: ["Future surge charged."],
+    drawCards: 1,
   } as const;
   const caster: LegacySide = "enemy";
   const summary = collectRuntimeSpellEffects(runtimeState, caster);
   assert.equal(summary.initiative, caster);
   assert(summary.delayedEffects && summary.delayedEffects.length === 1);
   assert.equal(summary.delayedEffects![0], "Future surge charged.");
+  assert(summary.drawCards && summary.drawCards.length === 1);
+  assert.equal(summary.drawCards![0]!.side, caster);
+  assert.equal(summary.drawCards![0]!.count, 1);
 }
 
 // applySpellEffects mutates board, hand, and initiative based on payload fields.
@@ -112,7 +116,10 @@ const opponentOf = (side: LegacySide): LegacySide => (side === "player" ? "enemy
   const log: string[] = [];
   let playerFighter: Fighter = {
     name: "Caster",
-    deck: [],
+    deck: [
+      { id: "pd1", name: "Bolt", number: 3, tags: [] },
+      { id: "pd2", name: "Charm", number: 2, tags: [] },
+    ],
     hand: [
       { id: "ph1", name: "Spark", number: 1, tags: [] },
       { id: "ph2", name: "Guard", number: 5, tags: [] },
@@ -134,6 +141,7 @@ const opponentOf = (side: LegacySide): LegacySide => (side === "player" ? "enemy
     ],
     handAdjustments: [{ side: "player", cardId: "ph1", numberDelta: 2 }],
     handDiscards: [{ side: "enemy", cardId: "eh1" }],
+    drawCards: [{ side: "player", count: 3 }],
     positionSwaps: [{ side: "player", laneA: 0, laneB: 2 }],
     initiativeChallenges: [{ side: "player", lane: 1, cardId: "p1", mode: "higher" }],
     logMessages: ["Spell resolved."],
@@ -182,6 +190,10 @@ const opponentOf = (side: LegacySide): LegacySide => (side === "player" ? "enemy
   assert.equal(enemyFighter.hand.length, 0);
   assert.equal(enemyFighter.discard.length, 1);
   assert.equal(enemyFighter.discard[0]!.id, "eh1");
+  assert.equal(playerFighter.deck.length, 0);
+  assert.equal(playerFighter.hand.length, 4);
+  assert(playerFighter.hand.some((card) => card.id === "pd1"));
+  assert(playerFighter.hand.some((card) => card.id === "pd2"));
   assert.equal(initiative, "player");
   assert(log.includes("Spell resolved."));
   assert.deepEqual(tokens, [0, 0, 0]);

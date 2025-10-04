@@ -315,15 +315,25 @@ function HowToContent() {
           Configure your deck with arcana symbols to unlock spells, then spend <b>Mana</b> during a round to bend wheels in your
           favor.
         </p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>
+            <b>Profile loadout:</b> On the Profile screen assign up to ten <b>Arcana symbols</b> (🔥, 🗡️, 👁️, 🌙, 🐍). Each point seeds
+            matching cards into your deck and unlocks archetype spells tied to that mix.
+          </li>
+          <li>
+            <b>Round symbols:</b> Every hand grants symbols from the cards you draw. Multi-symbol spells appear once you show any
+            two of their listed icons; single-symbol spells need just one matching card.
+          </li>
+        </ul>
+        <p>
+          <b>How to cast spells</b>:
+        </p>
 
         <ol className="list-decimal pl-5 space-y-2">
+
+          <li><b>Open:</b> Tap the 🔮 <b>Mana</b> counter in the HUD to access your <b>Grimoire</b> (Esc also closes it).</li>
           <li>
-            <b>Prepare:</b> On the Profile screen assign up to ten <b>Arcana symbols</b> (🔥, 🗡️, 👁️, 🌙, 🐍). Your opening hand
-            each round reflects that loadout and determines which spells you know.
-          </li>
-          <li><b>Open:</b> Tap <b>Grimoire</b> to view your symbols, known spells, and current 🔹 <b>Mana</b>.</li>
-          <li>
-            <b>Cast:</b> Choose a spell that matches the <b>current phase</b> and whose <b>symbol and mana costs</b> you meet. If
+            <b>Cast:</b> Choose a spell that matches the <b>current phase</b> and whose <b>symbol and Mana costs</b> you meet. If
             it needs a target, you’ll see <i>Select a target…</i>.
           </li>
           <li>
@@ -332,7 +342,7 @@ function HowToContent() {
           </li>
           <li>
             <b>Refresh:</b> Effects apply immediately and mark the affected slots. After Resolve you gain Mana equal to half of
-            your reserve (rounded up) and your next draw may unlock a different mix of spells.
+            your remaining reserve (rounded up), and your next draw may unlock a different mix of spells.
           </li>
         </ol>
 
@@ -349,14 +359,14 @@ function HowToContent() {
           <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
             <div className="font-semibold">Controls</div>
             <ul className="mt-1 list-disc pl-5">
-              <li>Open/close Grimoire from the HUD (Esc also closes).</li>
+              <li>Tap the 🔮 Mana counter in the HUD to toggle the Grimoire (Esc also closes it).</li>
               <li>Click a spell to cast; then click its target if prompted.</li>
             </ul>
           </div>
           <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
             <div className="font-semibold">Mana & Availability</div>
             <p>
-              🔹 Mana is awarded after Resolve based on half of your remaining reserve (rounded up). Spells list their symbol
+              🔮 Mana is awarded after Resolve based on half of your remaining reserve (rounded up). Spells list their symbol
               badges and phases so you know when they’ll be usable.
             </p>
           </div>

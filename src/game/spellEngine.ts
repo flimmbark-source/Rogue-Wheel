@@ -82,6 +82,7 @@ const RUNTIME_CLEANUP_KEYS: Array<keyof SpellRuntimeState | string> = [
   "mirrorCopyEffects",
   "wheelTokenAdjustments",
   "reserveDrains",
+  "drawCards",
   "chilledCards",
   "delayedEffects",
   "timeMomentum",
@@ -328,6 +329,9 @@ export function resolvePendingSpell(params: ResolveSpellParams): SpellResolution
   if (reserveDrains && reserveDrains.length > 0) {
     effectPayload.reserveDrains = reserveDrains;
   }
+  if (runtimeSummary.drawCards && runtimeSummary.drawCards.length > 0) {
+    effectPayload.drawCards = runtimeSummary.drawCards;
+  }
   if (handAdjustments && handAdjustments.length > 0) {
     effectPayload.handAdjustments = handAdjustments;
   }
@@ -360,6 +364,7 @@ export function resolvePendingSpell(params: ResolveSpellParams): SpellResolution
     (effectPayload.mirrorCopyEffects?.length ?? 0) > 0 ||
     (effectPayload.wheelTokenAdjustments?.length ?? 0) > 0 ||
     (effectPayload.reserveDrains?.length ?? 0) > 0 ||
+    (effectPayload.drawCards?.length ?? 0) > 0 ||
     (effectPayload.cardAdjustments?.length ?? 0) > 0 ||
     (effectPayload.handAdjustments?.length ?? 0) > 0 ||
     (effectPayload.handDiscards?.length ?? 0) > 0 ||
@@ -468,6 +473,7 @@ export function applySpellEffects<CardT extends { id: string }>(
     mirrorCopyEffects,
     wheelTokenAdjustments,
     reserveDrains,
+    drawCards,
     cardAdjustments,
     handAdjustments,
     handDiscards,
@@ -669,6 +675,32 @@ export function applySpellEffects<CardT extends { id: string }>(
         const [removed] = nextHand.splice(index, 1);
         const nextDiscard = removed ? [...fighter.discard, removed] : [...fighter.discard];
         return { ...fighter, hand: nextHand, discard: nextDiscard };
+      });
+    });
+  }
+
+  if (drawCards?.length) {
+    drawCards.forEach((request) => {
+      if (!request) return;
+      const side = request.side;
+      const rawCount = request.count;
+      if (side !== "player" && side !== "enemy") return;
+      const normalizedCount =
+        typeof rawCount === "number" && Number.isFinite(rawCount)
+          ? Math.max(0, Math.floor(rawCount))
+          : 0;
+      if (normalizedCount <= 0) return;
+
+      updateFighter(side, (fighter) => {
+        const deckSize = fighter.deck.length;
+        if (deckSize <= 0) return fighter;
+        const drawAmount = Math.min(normalizedCount, deckSize);
+        if (drawAmount <= 0) return fighter;
+        const drawnCards = fighter.deck.slice(0, drawAmount);
+        if (drawnCards.length === 0) return fighter;
+        const nextDeck = fighter.deck.slice(drawAmount);
+        const nextHand = [...fighter.hand, ...drawnCards];
+        return { ...fighter, deck: nextDeck, hand: nextHand };
       });
     });
   }

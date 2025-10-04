@@ -5,6 +5,7 @@ import {
   type ArchetypeId,
 } from "../../../game/archetypes";
 import { getSpellDefinitions, type SpellDefinition } from "../../../game/spells";
+import { SpellDescription } from "../../../components/SpellDescription";
 
 export type LegacySide = "player" | "enemy";
 
@@ -122,15 +123,14 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
               <span className="font-semibold text-slate-100">{spell.name}</span>
             </button>
 
-            <div
+            <SpellDescription
               id={`${idPrefix}-spell-desc-${spell.id}`}
               className={`pl-4 text-[11px] leading-snug text-slate-300 transition-all duration-150 ease-out ${
                 isActive ? "max-h-32 opacity-100" : "max-h-0 overflow-hidden opacity-0"
               }`}
               aria-hidden={!isActive}
-            >
-              {spell.description}
-            </div>
+              description={spell.description}
+            />
           </li>
         );
       })}

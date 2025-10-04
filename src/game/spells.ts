@@ -1,29 +1,37 @@
-// game/spells.ts (merged)
+// game/spells.ts (merged, Arcana Read paradigm)
 
 import type { Arcana, Fighter, Phase } from "./types.js";
 import { ARCHETYPE_DEFINITIONS, DEFAULT_ARCHETYPE, type ArchetypeId as SpellArchetype } from "./archetypes.js";
 
 export type SpellTargetOwnership = "ally" | "enemy" | "any";
-
 export type SpellTargetLocation = "board" | "hand" | "any";
 
+/** NEW: per-spell requirement so it can be slotted into a player's grimoire */
+export type SpellRequirement = {
+  arcana: Arcana;       // which symbol track this spell belongs to
+  symbols: number;      // minimum symbols allocated on profile
+};
+
 export type SpellTargetStageDefinition =
-  | { type: "none"; label?: string }
-  | { type: "self"; automatic?: boolean; label?: string }
+  | { type: "none"; label?: string; optional?: boolean }
+  | { type: "self"; automatic?: boolean; label?: string; optional?: boolean }
   | {
       type: "card";
       ownership: SpellTargetOwnership;
       automatic?: boolean;
-      arcana?: Arcana | Arcana[];
+      arcana?: Arcana | Arcana[];  // may be used to constrain optional bonus picks
       location?: SpellTargetLocation;
       adjacentToPrevious?: boolean;
       label?: string;
+      /** NEW: if true, UI should allow skipping this stage (optional Arcana Read pick) */
+      optional?: boolean;
     }
   | {
       type: "wheel";
       scope: "current" | "any";
       requiresArcana?: Arcana | Arcana[];
       label?: string;
+      optional?: boolean;
     };
 
 export type SpellTargetDefinition =
@@ -38,9 +46,10 @@ export const spellTargetStageRequiresManualSelection = (
 ): boolean => {
   switch (stage.type) {
     case "card":
-      return stage.automatic !== true;
+      // If optional, UI may present a Skip option; still a manual selection stage.
+      return stage.automatic === true ? false : true;
     case "wheel":
-      return true;
+      return stage.optional === true ? true : true;
     default:
       return false;
   }
@@ -91,6 +100,8 @@ export type SpellRuntimeState = Record<string, unknown> & {
   positionSwaps?: RuntimeSwapRequest[];
   initiativeChallenges?: RuntimeInitiativeChallenge[];
   reserveDrains?: RuntimeReserveDrain[];
+  /** NEW: simple draw counter for effects that grant draws */
+  drawCards?: number;
 };
 
 export type SpellResolverContext = {
@@ -98,7 +109,7 @@ export type SpellResolverContext = {
   opponent: Fighter;
   phase: Phase;
   target?: SpellTargetInstance;
-  targets?: SpellTargetInstance[];
+  targets?: SpellTargetInstance[]; // sequence order, optional stages may be omitted
   state: SpellRuntimeState;
 };
 
@@ -119,6 +130,9 @@ export type SpellDefinition = {
   icon?: string;
   allowedPhases?: Phase[];
   targetSummary?: string;
+
+  /** NEW: requirement for profile grimoire slotting */
+  requirements: SpellRequirement[];
 };
 
 // ---------- helpers for registry ----------
@@ -227,364 +241,391 @@ const pushReserveDrain = (
   pushRuntimeArray(context, "reserveDrains", drain);
 };
 
+
 // ---------- registry (IDs MUST match archetypes SpellId union: camelCase) ----------
 const SPELL_REGISTRY: Record<string, SpellDefinition> = {
+  // 🔥 Fireball — base -2; +🔥: add value of selected 🔥 to the reduction; still escalates cost by streak
   fireball: {
-    id: "fireball",
-    name: "Fireball",
-    description: "Reduce an enemy card's value 2. Each successive cast costs +1 Mana.",
-    targetSummary: "Target: Enemy card",
-    cost: 2,
-    variableCost: (context) => {
-      const streak = (context.state.fireballStreak as number | undefined) ?? 0;
-      return context.state.fireballBaseCost === undefined
-        ? 2 + streak
-        : Number(context.state.fireballBaseCost);
-    },
-    icon: "🔥",
-    allowedPhases: ["roundEnd", "showEnemy"],
-    target: {
-      type: "card",
-      ownership: "enemy",
-      arcana: "fire",
-      location: "board",
-      label: "Enemy card",
-    },
-    resolver: (context) => {
-      const log = ensureLog(context);
-      log.push(`${context.caster.name} scorches ${describeTarget(context.target)} with a Fireball.`);
-      const streak = (context.state.fireballStreak as number | undefined) ?? 0;
-      context.state.fireballStreak = streak + 1;
-      if (context.target?.type === "card") {
-        pushCardAdjustment(context, { target: context.target, numberDelta: -2 });
-      }
-    },
+  id: "fireball",
+  name: "Fireball",
+  description: `Reduce an enemy by 2.
+                +🔥: Add on the value of a 🔥 in play.`,
+  targetSummary: "Target: Enemy card (+optional 🔥)",
+  cost: 2,
+  variableCost: (context) => {
+    const streak = (context.state.fireballStreak as number | undefined) ?? 0;
+    return context.state.fireballBaseCost === undefined
+      ? 2 + streak
+      : Number(context.state.fireballBaseCost);
   },
+  icon: "🔥",
+  allowedPhases: ["roundEnd", "showEnemy"],
+  target: {
+    type: "sequence",
+    stages: [
+      { type: "card", ownership: "enemy", location: "board", label: "Enemy card" },
+      { type: "card", ownership: "ally", location: "any", arcana: "fire", label: "Optional 🔥 card", optional: true },
+    ],
+  },
+  resolver: (context) => {
+    const log = ensureLog(context);
+    const [foe, bonus] = context.targets ?? [];
+    log.push(`${context.caster.name} scorches ${describeTarget(foe)} with a Fireball.`);
+    const streak = (context.state.fireballStreak as number | undefined) ?? 0;
+    context.state.fireballStreak = streak + 1;
+    if (foe?.type === "card") {
+      const bonusVal = bonus?.type === "card" ? (bonus.cardValue ?? 0) : 0;
+      pushCardAdjustment(context, { target: foe, numberDelta: -(2 + bonusVal) });
+    }
+  },
+  requirements: [{ arcana: "fire", symbols: 1 }],
+},
 
+  // 🗡️ Ice Shard — freeze; +🗡️: prevents initiative gain by that card this round
   iceShard: {
     id: "iceShard",
     name: "Ice Shard",
-    description: "Freeze a card's value for the round.",
-    targetSummary: "Target: Enemy card",
+    description: `Freeze an enemy’s value this round.
+                  +🗡️: That card can't win INIT.`,
+    targetSummary: "Target: Enemy card (+optional 🗡️)",
     cost: 1,
     icon: "🗡️",
     allowedPhases: ["roundEnd", "showEnemy"],
     target: {
-      type: "card",
-      ownership: "enemy",
-      arcana: "blade",
-      location: "board",
-      label: "Enemy card",
+      type: "sequence",
+      stages: [
+        { type: "card", ownership: "enemy", location: "board", label: "Enemy card" },
+        { type: "card", ownership: "ally", location: "any", arcana: "blade", label: "Optional 🗡️ card", optional: true },
+      ],
     },
     resolver: (context) => {
       const log = ensureLog(context);
-      log.push(`${context.caster.name} encases ${describeTarget(context.target)} in razor ice.`);
+      const [foe, blade] = context.targets ?? [];
+      log.push(`${context.caster.name} encases ${describeTarget(foe)} in razor ice.`);
       const chilled = (context.state.chilledCards as Record<string, number> | undefined) ?? {};
-      if (context.target?.type === "card") {
-        chilled[context.target.cardId] = (chilled[context.target.cardId] ?? 0) + 1;
+      if (foe?.type === "card") {
+        chilled[foe.cardId] = (chilled[foe.cardId] ?? 0) + 1;
+        if (blade?.type === "card") {
+          const key = "initBlock:" + foe.cardId;
+          (context.state as any)[key] = true;
+        }
       }
       context.state.chilledCards = chilled;
     },
+    requirements: [{ arcana: "blade", symbols: 1 }],
   },
 
+  // 👁️ Mirror Image — copy opposing; +👁️: add value of a selected 👁️ from reserve
   mirrorImage: {
     id: "mirrorImage",
     name: "Mirror Image",
-    description: "Target card copies the opposing value.",
-    targetSummary: "Target: Ally card",
+    description: `Copy the opposing value to a card in play.
+                  +👁️: Add the value of a 👁️ in reserve.`,
+    targetSummary: "Target: Ally card (+optional 👁️ from reserve)",
     cost: 4,
     icon: "👁️",
     allowedPhases: ["roundEnd", "showEnemy"],
     target: {
-      type: "card",
-      ownership: "ally",
-      arcana: "eye",
-      location: "board",
-      label: "Your card",
+      type: "sequence",
+      stages: [
+        { type: "card", ownership: "ally", location: "board", label: "Your card" },
+        { type: "card", ownership: "ally", location: "hand", arcana: "eye", label: "Optional 👁️ in reserve", optional: true },
+      ],
     },
     resolver: (context) => {
       const log = ensureLog(context);
-      log.push(
-        `${context.caster.name} twists ${describeTarget(
-          context.target,
-        )} into an uncanny reflection of its foe.`,
-      );
-      if (context.target?.type === "card") {
-        const effects =
-          (context.state.mirrorCopyEffects as
-            | { targetCardId: string; mode: "opponent"; caster: string }[]
-            | undefined) ?? [];
-        effects.push({
-          targetCardId: context.target.cardId,
-          mode: "opponent",
-          caster: context.caster.name,
-        });
-        context.state.mirrorCopyEffects = effects;
-      }
+      const [ally, eyeReserve] = context.targets ?? [];
+      if (ally?.type !== "card") return;
+      log.push(`${context.caster.name} reflects ${describeTarget(ally)} into its foe.`);
+      const effects =
+        (context.state.mirrorCopyEffects as
+          | { targetCardId: string; mode: "opponent"; caster: string }[]
+          | undefined) ?? [];
+      effects.push({ targetCardId: ally.cardId, mode: "opponent", caster: context.caster.name });
+      context.state.mirrorCopyEffects = effects;
+      const bonusVal = eyeReserve?.type === "card" ? (eyeReserve.cardValue ?? 0) : 0;
+      if (bonusVal !== 0) pushCardAdjustment(context, { target: ally, numberDelta: bonusVal });
     },
+    requirements: [{ arcana: "eye", symbols: 1 }],
   },
 
+  // 🌒 Arcane Shift — move token; +🌒 adds selected 🌒 value
   arcaneShift: {
     id: "arcaneShift",
     name: "Arcane Shift",
-    description: "Advance a wheel by 1 space.",
-    targetSummary: "Target: Wheel",
+    description: `Advance a wheel by 1.
+                  +🌒: Add the value of a 🌒 in play.`,
+    targetSummary: "Target: Active wheel (+optional 🌒)",
     cost: 3,
     icon: "🌒",
     allowedPhases: ["roundEnd", "showEnemy", "anim"],
     target: {
-      type: "wheel",
-      scope: "current",
-      requiresArcana: "moon",
-      label: "Wheel",
+      type: "sequence",
+      stages: [
+        { type: "wheel", scope: "current", label: "Wheel" },
+        { type: "card", ownership: "ally", location: "any", arcana: "moon", label: "Optional 🌒 card", optional: true },
+      ],
     },
     resolver: (context) => {
       const log = ensureLog(context);
-      log.push(`${context.caster.name} empowers ${describeTarget(context.target)} with arcane momentum.`);
+      const [wheel, moon] = context.targets ?? [];
+      log.push(`${context.caster.name} empowers ${describeTarget(wheel)} with arcane momentum.`);
+      const amount = 1 + (moon?.type === "card" ? (moon.cardValue ?? 0) : 0);
       const adjustments =
         (context.state.wheelTokenAdjustments as
           | { target: SpellTargetInstance; amount: number; caster: string }[]
           | undefined) ?? [];
-      adjustments.push({
-        target: context.target ?? { type: "none" },
-        amount: 1,
-        caster: context.caster.name,
-      });
+      adjustments.push({ target: wheel ?? { type: "none" }, amount, caster: context.caster.name });
       context.state.wheelTokenAdjustments = adjustments;
     },
+    requirements: [{ arcana: "moon", symbols: 1 }],
   },
 
+  // 🐍 Hex — drain 2; +🐍 add selected 🐍 value
   hex: {
     id: "hex",
     name: "Hex",
-    description: "Remove 2 reserve from foe.",
-    targetSummary: "Target: Enemy card",
-    cost: 4,
-    icon: "🐍",
-    allowedPhases: ["roundEnd", "showEnemy"],
-    target: {
-      type: "card",
-      ownership: "enemy",
-      arcana: "serpent",
-      location: "board",
-      label: "Enemy card",
-    },
-    resolver: (context) => {
-      const log = ensureLog(context);
-      log.push(`${context.caster.name} drains their foe's reserves with a wicked hex.`);
-      if (context.target?.type === "card") {
-        pushReserveDrain(context, {
-          target: context.target,
-          amount: 2,
-          caster: context.caster.name,
-        });
-      }
-    },
-  },
-
-  timeTwist: {
-    id: "timeTwist",
-    name: "Time Twist",
-    description: "Discard a card in hand to gain initiative.",
-    targetSummary: "Target: A card in hand",
-    cost: 5,
-    icon: "⏳",
-    allowedPhases: ["choose", "roundEnd"],
-    target: {
-      type: "card",
-      ownership: "ally",
-      arcana: ["eye", "moon"],
-      location: "hand",
-      label: "Your Reserve card",
-    },
-    resolver: (context) => {
-      const log = ensureLog(context);
-      log.push(`${context.caster.name} bends time around themselves.`);
-      const momentum = (context.state.timeMomentum as number | undefined) ?? 0;
-      context.state.timeMomentum = momentum + 1;
-      const delayed = (context.state.delayedEffects as string[] | undefined) ?? [];
-      delayed.push(`${context.caster.name} banks a future surge.`);
-      context.state.delayedEffects = delayed;
-      if (context.target?.type === "card") {
-        pushHandDiscard(context, { target: context.target });
-      }
-    },
-  },
-
-  kindle: {
-    id: "kindle",
-    name: "Kindle",
-    description: "Increase a card by +2. If it rests in reserve, remove 2 reserve from foe.",
-    targetSummary: "Target: Ally card",
-    cost: 2,
-    icon: "🔥",
-    allowedPhases: ["choose", "roundEnd", "showEnemy"],
-    target: {
-      type: "card",
-      ownership: "ally",
-      arcana: "fire",
-      location: "any",
-      label: "Your card",
-    },
-    resolver: (context) => {
-      const log = ensureLog(context);
-      log.push(`${context.caster.name} fans the flames of ${describeTarget(context.target)}.`);
-      if (context.target?.type !== "card") return;
-      const location = context.target.location ?? "board";
-      if (location === "hand") {
-        pushHandAdjustment(context, { target: context.target, numberDelta: 2 });
-        const opponentTarget: SpellTargetInstance = {
-          type: "card",
-          cardId: context.target.cardId,
-          owner: context.target.owner === "ally" ? "enemy" : "ally",
-        };
-        pushReserveDrain(context, {
-          target: opponentTarget,
-          amount: 2,
-          caster: context.caster.name,
-        });
-      } else {
-        pushCardAdjustment(context, { target: context.target, numberDelta: 2 });
-      }
-    },
-  },
-
-  suddenStrike: {
-    id: "suddenStrike",
-    name: "Sudden Strike",
-    description: "Both you and your foe must reveal a card. If the opposing card is lower, seize initiative.",
-    targetSummary: "Target: Your card",
-    cost: 3,
-    icon: "🗡️",
-    allowedPhases: ["roundEnd", "showEnemy"],
-    target: {
-      type: "card",
-      ownership: "ally",
-      arcana: "blade",
-      location: "board",
-      label: "Your card",
-    },
-    resolver: (context) => {
-      const log = ensureLog(context);
-      log.push(`${context.caster.name} lashes out with a sudden strike from ${describeTarget(context.target)}.`);
-      if (context.target?.type === "card") {
-        pushInitiativeChallenge(context, {
-          target: context.target,
-          mode: "higher",
-          caster: context.caster.name,
-        });
-      }
-    },
-  },
-
-  leech: {
-    id: "leech",
-    name: "Leech",
-    description: "Drain value from an adjacent card into target card.",
-    targetSummary: "Targets: Ally card then adjacent card",
+    description: `Drain 2 from opponent’s reserve.
+                  +🐍: Add on the value of a 🐍 in play.`,
+    targetSummary: "Target: Enemy card (+optional 🐍)",
     cost: 4,
     icon: "🐍",
     allowedPhases: ["roundEnd", "showEnemy"],
     target: {
       type: "sequence",
       stages: [
-        {
-          type: "card",
-          ownership: "ally",
-          arcana: "serpent",
-          location: "board",
-          label: "Your card",
-        },
-        {
-          type: "card",
-          ownership: "any",
-          location: "board",
-          adjacentToPrevious: true,
-          label: "Adjacent card",
-        },
+        { type: "card", ownership: "enemy", location: "board", label: "Enemy card" },
+        { type: "card", ownership: "ally", location: "any", arcana: "serpent", label: "Optional 🐍 card", optional: true },
       ],
     },
     resolver: (context) => {
-      const [primary, secondary] = context.targets ?? [];
+      const log = ensureLog(context);
+      const [foe, snake] = context.targets ?? [];
+      log.push(`${context.caster.name} drains their foe’s reserve with a wicked hex.`);
+      if (foe?.type === "card") {
+        const add = snake?.type === "card" ? (snake.cardValue ?? 0) : 0;
+        pushReserveDrain(context, { target: foe, amount: 2 + add, caster: context.caster.name });
+      }
+    },
+    requirements: [{ arcana: "serpent", symbols: 1 }],
+  },
+
+  // ⏳ Time Twist — discard to INIT; +👁️ draw if 👁️
+  timeTwist: {
+    id: "timeTwist",
+    name: "Time Twist",
+    description: `Discard a reserve card to gain initiative.
+                  +👁️: If it was 👁️, draw 1.`,
+    targetSummary: "Target: Your reserve card",
+    cost: 5,
+    icon: "⏳",
+    allowedPhases: ["choose", "roundEnd"],
+    target: { type: "card", ownership: "ally", location: "hand", label: "Discard from reserve" },
+    resolver: (context) => {
+      const log = ensureLog(context);
+      log.push(`${context.caster.name} bends time around themselves.`);
+      const momentum = (context.state.timeMomentum as number | undefined) ?? 0;
+      context.state.timeMomentum = momentum + 1;
+      if (context.target?.type === "card") {
+        if (context.target.arcana === "eye") {
+          context.state.drawCards = (context.state.drawCards ?? 0) + 1;
+        }
+        pushHandDiscard(context, { target: context.target });
+      }
+    },
+    requirements: [{ arcana: "eye", symbols: 1 }],
+  },
+
+  // 🔥 Kindle — +2; +🔥 add selected 🔥 value (works on hand or board)
+  kindle: {
+    id: "kindle",
+    name: "Kindle",
+    description: `Increase a card in play or reserve by 2.
+                  +🔥: Add on the value of a 🔥 in play.`,
+    targetSummary: "Target: Your card (+optional 🔥)",
+    cost: 2,
+    icon: "🔥",
+    allowedPhases: ["choose", "roundEnd", "showEnemy"],
+    target: {
+      type: "sequence",
+      stages: [
+        { type: "card", ownership: "ally", location: "any", label: "Your card" },
+        { type: "card", ownership: "ally", location: "any", arcana: "fire", label: "Optional 🔥 card", optional: true }, // <- fixed ownership typo
+      ],
+    },
+    resolver: (context) => {
+      const log = ensureLog(context);
+      const [tgt, bonus] = context.targets ?? [];
+      log.push(`${context.caster.name} fans the flames of ${describeTarget(tgt)}.`);
+      if (tgt?.type !== "card") return;
+      const bonusVal = bonus?.type === "card" ? (bonus.cardValue ?? 0) : 0;
+      if ((tgt.location ?? "board") === "hand") {
+        pushHandAdjustment(context, { target: tgt, numberDelta: 2 + bonusVal });
+      } else {
+        pushCardAdjustment(context, { target: tgt, numberDelta: 2 + bonusVal });
+      }
+    },
+    requirements: [{ arcana: "fire", symbols: 1 }],
+  },
+
+  // 🗡️ Sudden Strike — INIT if higher; +🗡️ also on tie (only if target itself is 🗡️)
+  suddenStrike: {
+    id: "suddenStrike",
+    name: "Sudden Strike",
+    description: `If foe’s card is lower, gain Initiative.
+                  +🗡️: Also gain INIT on tie if this is 🗡️.`,
+    targetSummary: "Target: Your committed card",
+    cost: 6,
+    icon: "🗡️",
+    allowedPhases: ["roundEnd", "showEnemy"],
+    target: { type: "card", ownership: "ally", location: "board", label: "Your card" },
+    resolver: (context) => {
+      const log = ensureLog(context);
+      const tgt = context.target;
+      log.push(`${context.caster.name} lashes out with a sudden strike from ${describeTarget(tgt)}.`);
+      if (tgt?.type === "card") {
+        pushInitiativeChallenge(context, { target: tgt, mode: "higher", caster: context.caster.name });
+        // +🗡️ applies only if the targeted card is blade
+        if (tgt.arcana === "blade") {
+          const key = "edgeTieWin:" + tgt.cardId;
+          (context.state as any)[key] = true;
+        }
+      }
+    },
+    requirements: [{ arcana: "blade", symbols: 1 }],
+  },
+
+  // 🐍 Leech — move adjacent value; +🐍 drain reserve by selected 🐍 value
+  leech: {
+    id: "leech",
+    name: "Leech",
+    description: `Transfer value to the target from an adjacent card.
+                  +🐍: Drain opponent's reserve equal to a 🐍 in play.`,
+    targetSummary: "Targets: Your card → adjacent (+optional 🐍)",
+    cost: 4,
+    icon: "🐍",
+    allowedPhases: ["roundEnd", "showEnemy"],
+    target: {
+      type: "sequence",
+      stages: [
+        { type: "card", ownership: "ally", location: "board", label: "Your card" },
+        { type: "card", ownership: "any", location: "board", adjacentToPrevious: true, label: "Adjacent card" },
+        { type: "card", ownership: "ally", location: "any", arcana: "serpent", label: "Optional 🐍 card", optional: true },
+      ],
+    },
+    resolver: (context) => {
+      const [primary, secondary, snake] = context.targets ?? [];
       const amount = secondary?.type === "card" ? secondary.cardValue ?? 0 : 0;
       if (!primary || primary.type !== "card" || !secondary || secondary.type !== "card") return;
       if (amount !== 0) {
         pushCardAdjustment(context, { target: primary, numberDelta: amount });
         pushCardAdjustment(context, { target: secondary, numberDelta: -amount });
       }
+      const bonus = snake?.type === "card" ? (snake.cardValue ?? 0) : 0;
+      if (bonus > 0) {
+        // pick a reasonable foe target contextually; engine may refine this
+        const foeTarget: SpellTargetInstance = { type: "card", cardId: primary.cardId, owner: "enemy" };
+        pushReserveDrain(context, { target: foeTarget, amount: bonus, caster: context.caster.name });
+      }
       const log = ensureLog(context);
       log.push(`${context.caster.name} siphons power between ${describeTarget(primary)} and its neighbor.`);
     },
+    requirements: [{ arcana: "serpent", symbols: 2 }],
   },
 
+  // 🗡️ Crosscut — reveal reserves; drain by difference; +🗡️: boost 🗡️ card by diff
   crosscut: {
     id: "crosscut",
     name: "Crosscut",
-    description: "Both you and your foe reveal a reserve card. Compare the revealed cards and drain foe's reserve by their difference.",
-    targetSummary: "Targets: Card in hand, then opposing card",
-    cost: 3,
+    description: `Both players reveal a reserve. Drain opponent reserve equal to the value difference.
+                  +🗡️: Increase a 🗡️ card in play by the difference.`,
+    targetSummary: "Targets: Your reserve (+optional 🗡️ in play)",
+    cost: 4,
     icon: "🗡️",
     allowedPhases: ["choose", "roundEnd"],
     target: {
       type: "sequence",
       stages: [
-        {
-          type: "card",
-          ownership: "ally",
-          arcana: "blade",
-          location: "hand",
-          label: "Your reserve card",
-        },
-        {
-          type: "card",
-          ownership: "enemy",
-          location: "board",
-          label: "Opponent's card",
-        },
+        { type: "card", ownership: "ally", location: "hand", label: "Your reserve card" },
+        { type: "card", ownership: "ally", location: "board", arcana: "blade", label: "🗡️ card in play", optional: true },
       ],
     },
     resolver: (context) => {
-      const [primary, foe] = context.targets ?? [];
-      if (!primary || primary.type !== "card" || !foe || foe.type !== "card") return;
-      const attacker = primary.cardValue ?? 0;
-      const defender = foe.cardValue ?? 0;
-      const difference = attacker - defender;
+      const [primary, blade] = context.targets ?? [];
+      if (!primary || primary.type !== "card") return;
+
+      const casterReserveValue =
+        typeof primary.cardValue === "number"
+          ? primary.cardValue
+          : (() => {
+              const found = context.caster.hand.find((card) => card.id === primary.cardId);
+              if (!found) return 0;
+              if (typeof found.number === "number" && Number.isFinite(found.number)) return found.number;
+              if (typeof found.leftValue === "number" && Number.isFinite(found.leftValue)) return found.leftValue;
+              if (typeof found.rightValue === "number" && Number.isFinite(found.rightValue)) return found.rightValue;
+              return 0;
+            })();
+
+      const opponentCard = context.opponent.hand[0] ?? null;
+      const opponentValue = opponentCard
+        ? typeof opponentCard.number === "number" && Number.isFinite(opponentCard.number)
+          ? opponentCard.number
+          : typeof opponentCard.leftValue === "number" && Number.isFinite(opponentCard.leftValue)
+            ? opponentCard.leftValue
+            : typeof opponentCard.rightValue === "number" && Number.isFinite(opponentCard.rightValue)
+              ? opponentCard.rightValue
+              : 0
+        : 0;
+
       const log = ensureLog(context);
-      log.push(`${context.caster.name} reveals a crosscut, comparing ${describeTarget(primary)} to ${describeTarget(foe)}.`);
+
+      if (!opponentCard) {
+        log.push(
+          `${context.caster.name} reveals ${describeTarget(primary)} with Crosscut, but ${context.opponent.name} has no reserve to reveal.`,
+        );
+        return;
+      }
+
+      const foeTarget: SpellTargetInstance = {
+        type: "card",
+        cardId: opponentCard.id,
+        cardName: opponentCard.name,
+        arcana: opponentCard.arcana,
+        owner: "enemy",
+        location: "hand",
+        cardValue: opponentValue,
+      };
+
+      const difference = Math.abs(casterReserveValue - opponentValue);
+      log.push(
+        `${context.caster.name} crosscuts ${describeTarget(primary)} against ${describeTarget(foeTarget)}, revealing a difference of ${difference}.`,
+      );
+
       if (difference > 0) {
-        pushReserveDrain(context, {
-          target: foe,
-          amount: difference,
-          caster: context.caster.name,
-        });
+        pushReserveDrain(context, { target: foeTarget, amount: difference, caster: context.caster.name });
+        if (blade && blade.type === "card") {
+          pushCardAdjustment(context, { target: blade, numberDelta: difference });
+        }
       }
     },
+    requirements: [{ arcana: "blade", symbols: 2 }],
   },
 
+  // 🔥 Offering — discard → add its value; +🔥 double if 🔥
   offering: {
     id: "offering",
     name: "Offering",
-    description: "Sacrifice a reserve card to increase a card by its value.",
-    targetSummary: "Targets: Ally card, then your reserve card",
+    description: `Discard a reserve to increase a card in play by its value.
+                  +🔥: Double the increase if the reserve card was 🔥.`,
+    targetSummary: "Targets: Your committed → reserve to discard",
     cost: 4,
     icon: "🔥",
     allowedPhases: ["choose", "roundEnd"],
     target: {
       type: "sequence",
       stages: [
-        {
-          type: "card",
-          ownership: "ally",
-          arcana: "fire",
-          location: "board",
-          label: "Your card",
-        },
-        {
-          type: "card",
-          ownership: "ally",
-          location: "hand",
-          label: "Reserve to sacrifice",
-        },
+        { type: "card", ownership: "ally", location: "board", label: "Your committed card" },
+        { type: "card", ownership: "ally", location: "hand", label: "Reserve to discard" },
       ],
     },
     resolver: (context) => {
@@ -593,50 +634,53 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       const value = fuel.cardValue ?? 0;
       const log = ensureLog(context);
       log.push(`${context.caster.name} offers ${describeTarget(fuel)} to empower ${describeTarget(flame)}.`);
-      if (value !== 0) {
-        pushCardAdjustment(context, { target: flame, numberDelta: value });
-      }
+      const gain = fuel.arcana === "fire" ? value * 2 : value;
+      if (gain !== 0) pushCardAdjustment(context, { target: flame, numberDelta: gain });
       pushHandDiscard(context, { target: fuel });
     },
+    requirements: [{ arcana: "fire", symbols: 2 }],
   },
 
+  // 🌒 Phantom — swap two committed; +🌒 instead swap a 🌒 committed with reserve
   phantom: {
     id: "phantom",
     name: "Phantom",
-    description: "Swap a card with another of your cards.",
-    targetSummary: "Targets: 🌒 card and another ally card",
+    description: `Swap two cards in play.
+                  +🌒: Instead, swap a 🌒 in play with one in reserve.`,
+    targetSummary: "Targets: Two committed (+optional 🌒 committed → reserve)",
     cost: 3,
     icon: "🌒",
     allowedPhases: ["roundEnd", "showEnemy"],
     target: {
       type: "sequence",
       stages: [
-        {
-          type: "card",
-          ownership: "ally",
-          arcana: "moon",
-          location: "board",
-          label: "Your card",
-        },
-        {
-          type: "card",
-          ownership: "ally",
-          location: "board",
-          label: "Another committed card",
-        },
+        { type: "card", ownership: "ally", location: "board", label: "Committed card A" },
+        { type: "card", ownership: "ally", location: "board", label: "Committed card B" },
+        { type: "card", ownership: "ally", location: "hand", arcana: "moon", label: "Optional 🌒 in reserve", optional: true },
       ],
     },
     resolver: (context) => {
-      const [first, second] = context.targets ?? [];
-      if (!first || first.type !== "card" || !second || second.type !== "card") return;
+      const [a, b, moonReserve] = context.targets ?? [];
+      if (!a || a.type !== "card" || !b || b.type !== "card") return;
       const log = ensureLog(context);
-      log.push(`${context.caster.name} phases ${describeTarget(first)} with ${describeTarget(second)}.`);
-      pushSwapRequest(context, {
-        first,
-        second,
-        caster: context.caster.name,
-      });
+
+      if (moonReserve?.type === "card") {
+        if (a.arcana === "moon") {
+          log.push(`${context.caster.name} phases ${describeTarget(a)} with ${describeTarget(moonReserve)} from reserve.`);
+          pushSwapRequest(context, { first: a, second: moonReserve, caster: context.caster.name });
+          return;
+        }
+        if (b.arcana === "moon") {
+          log.push(`${context.caster.name} phases ${describeTarget(b)} with ${describeTarget(moonReserve)} from reserve.`);
+          pushSwapRequest(context, { first: b, second: moonReserve, caster: context.caster.name });
+          return;
+        }
+      }
+
+      log.push(`${context.caster.name} phases ${describeTarget(a)} with ${describeTarget(b)}.`);
+      pushSwapRequest(context, { first: a, second: b, caster: context.caster.name });
     },
+    requirements: [{ arcana: "moon", symbols: 2 }],
   },
 };
 
