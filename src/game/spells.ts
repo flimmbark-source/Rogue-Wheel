@@ -43,20 +43,27 @@ const normalizeTarget = (target: SpellTargetDefinition): SpellTargetStageDefinit
 
 export const spellTargetStageRequiresManualSelection = (
   stage: SpellTargetStageDefinition,
+  existingTarget?: SpellTargetInstance | null,
 ): boolean => {
   switch (stage.type) {
     case "card":
-      // If optional, UI may present a Skip option; still a manual selection stage.
-      return stage.automatic === true ? false : true;
+      if (stage.automatic === true) return false;
+      if (stage.optional && existingTarget && existingTarget.type === "none") {
+        return false;
+      }
+      return true;
     case "wheel":
-      return stage.optional === true ? true : true;
+      if (stage.optional && existingTarget && existingTarget.type === "none") {
+        return false;
+      }
+      return true;
     default:
       return false;
   }
 };
 
 export const spellTargetRequiresManualSelection = (target: SpellTargetDefinition): boolean => {
-  return normalizeTarget(target).some(spellTargetStageRequiresManualSelection);
+  return normalizeTarget(target).some((stage) => spellTargetStageRequiresManualSelection(stage));
 };
 
 export const getSpellTargetStage = (

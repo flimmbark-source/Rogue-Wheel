@@ -40,6 +40,7 @@ export type UseSpellCastingResult = {
     selection: { side: LegacySide; lane: number | null; card: Card; location: SpellTargetLocation },
   ) => void;
   handleWheelTargetSelect: (wheelIndex: number) => void;
+  handleOptionalStageSkip: () => void;
 };
 
 const enqueueMicrotask = (task: () => void) => {
@@ -323,6 +324,12 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
     [handleResolvePendingSpell, isWheelActive, localSide, pendingSpell],
   );
 
+  const handleOptionalStageSkip = useCallback(() => {
+    if (!pendingSpell) return;
+    if (pendingSpell.side !== localSide) return;
+    handleResolvePendingSpell(pendingSpell);
+  }, [handleResolvePendingSpell, localSide, pendingSpell]);
+
   const awaitingSpellTarget = useMemo(() => {
     if (!pendingSpell) return false;
     const stage = getSpellTargetStage(pendingSpell.spell.target, pendingSpell.currentStage);
@@ -344,5 +351,6 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
     handlePendingSpellCancel,
     handleSpellTargetSelect,
     handleWheelTargetSelect,
+    handleOptionalStageSkip,
   };
 }
