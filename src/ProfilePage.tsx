@@ -379,6 +379,9 @@ export default function ProfilePage() {
 
 function renderSpellListItem(spell: SpellDefinition) {
   const requirementEntries = getRequirementEntriesForSpell(spell.id);
+  const summary = spell.targetSummary
+    ? spell.targetSummary.replace(/^\s*Targets?:\s*/i, "")
+    : null;
   return (
     <li key={spell.id} className="rounded-xl border border-white/10 bg-slate-900/80 p-3">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -402,9 +405,9 @@ function renderSpellListItem(spell: SpellDefinition) {
           )}
         </div>
       </div>
-      {spell.targetSummary ? (
+      {summary ? (
         <div className="mt-1 text-[0.7rem] uppercase tracking-wide text-emerald-200/70">
-          {spell.targetSummary}
+          {summary}
         </div>
       ) : null}
       <SpellDescription
