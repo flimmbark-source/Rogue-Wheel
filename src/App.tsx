@@ -74,6 +74,7 @@ import { useSpellCasting } from "./game/hooks/useSpellCasting";
 
 // components
 import CanvasWheel, { type WheelHandle } from "./components/CanvasWheel";
+import { SpellDescription } from "./components/SpellDescription";
 
 import WheelPanel, { getWheelPanelLayout } from "./features/threeWheel/components/WheelPanel";
 
@@ -1249,7 +1250,7 @@ export default function ThreeWheel_WinsOnly({
     </div>
 
     <div className="mt-1 space-y-0.5 text-[11px] leading-snug text-slate-300">
-      <div>{spell.description}</div>
+      <SpellDescription description={spell.description} />
     </div>
 
   </button>
@@ -1321,7 +1322,7 @@ export default function ThreeWheel_WinsOnly({
       {spell.targetSummary ? (
         <div className="font-semibold text-slate-200">{spell.targetSummary}</div>
       ) : null}
-      <div>{spell.description}</div>
+      <SpellDescription description={spell.description} />
     </div>
 
   </button>

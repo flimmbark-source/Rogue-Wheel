@@ -285,7 +285,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   iceShard: {
     id: "iceShard",
     name: "Ice Shard",
-    description: "Freeze an enemy card’s value this round. +🗡️: That card can’t gain initiative.",
+    description: `Freeze an enemy card’s value this round.
++🗡️: That card can’t gain initiative.`,
     targetSummary: "Target: Enemy card (+optional 🗡️)",
     cost: 1,
     icon: "🗡️",
@@ -318,7 +319,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   mirrorImage: {
     id: "mirrorImage",
     name: "Mirror Image",
-    description: "Copy the opposing card’s value. +👁️: Add the value of a 👁️ card from your reserve.",
+    description: `Copy the opposing card’s value.
++👁️: Add the value of a 👁️ card from your reserve.`,
     targetSummary: "Target: Ally card (+optional 👁️ from reserve)",
     cost: 4,
     icon: "👁️",
@@ -351,7 +353,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   arcaneShift: {
     id: "arcaneShift",
     name: "Arcane Shift",
-    description: "Advance a wheel by 1. +🌒: Add the value of a 🌒 card.",
+    description: `Advance a wheel by 1.
++🌒: Add the value of a 🌒 card.`,
     targetSummary: "Target: Active wheel (+optional 🌒)",
     cost: 3,
     icon: "🌒",
@@ -382,7 +385,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   hex: {
     id: "hex",
     name: "Hex",
-    description: "Drain 2 from the opponent’s reserve. +🐍: Add the value of a 🐍 card.",
+    description: `Drain 2 from the opponent’s reserve.
++🐍: Add the value of a 🐍 card.`,
     targetSummary: "Target: Enemy card (+optional 🐍)",
     cost: 4,
     icon: "🐍",
@@ -410,7 +414,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   timeTwist: {
     id: "timeTwist",
     name: "Time Twist",
-    description: "Discard a reserve card to gain initiative. +👁️: If the card was 👁️, draw 1.",
+    description: `Discard a reserve card to gain initiative.
++👁️: If the card was 👁️, draw 1.`,
     targetSummary: "Target: Your reserve card",
     cost: 5,
     icon: "⏳",
@@ -435,7 +440,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   kindle: {
     id: "kindle",
     name: "Kindle",
-    description: "Increase a card by 2. +🔥: Add the value of a 🔥 card.",
+    description: `Increase a card by 2.
++🔥: Add the value of a 🔥 card.`,
     targetSummary: "Target: Your card (+optional 🔥)",
     cost: 2,
     icon: "🔥",
@@ -466,7 +472,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   suddenStrike: {
     id: "suddenStrike",
     name: "Sudden Strike",
-    description: "If the opposing card is lower, gain initiative. +🗡️: Also gain initiative on a tie.",
+    description: `If the opposing card is lower, gain initiative.
++🗡️: Also gain initiative on a tie.`,
     targetSummary: "Target: Your committed card",
     cost: 3,
     icon: "🗡️",
@@ -492,7 +499,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   leech: {
     id: "leech",
     name: "Leech",
-    description: "Transfer value from an adjacent card to your own. +🐍: Also drain reserve equal to a 🐍 card’s value.",
+    description: `Transfer value from an adjacent card to your own.
++🐍: Also drain reserve equal to a 🐍 card’s value.`,
     targetSummary: "Targets: Your card → adjacent (+optional 🐍)",
     cost: 4,
     icon: "🐍",
@@ -529,7 +537,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   crosscut: {
     id: "crosscut",
     name: "Crosscut",
-    description: "Reveal a reserve against an opposing card; drain their reserve by the positive difference. +🗡️: Gain initiative if you drained.",
+    description: `Reveal a reserve against an opposing card; drain their reserve by the positive difference.
++🗡️: Gain initiative if you drained.`,
     targetSummary: "Targets: Your reserve → opposing committed",
     cost: 3,
     icon: "🗡️",
@@ -562,7 +571,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   offering: {
     id: "offering",
     name: "Offering",
-    description: "Discard a reserve to increase a card by its value. +🔥: Double it if the card was 🔥.",
+    description: `Discard a reserve to increase a card by its value.
++🔥: Double it if the card was 🔥.`,
     targetSummary: "Targets: Your committed → reserve to discard",
     cost: 4,
     icon: "🔥",
@@ -591,7 +601,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   phantom: {
     id: "phantom",
     name: "Phantom",
-    description: "Swap two committed cards. +🌒: Swap a 🌒 committed card with one in reserve instead.",
+    description: `Swap two committed cards.
++🌒: Swap a 🌒 committed card with one in reserve instead.`,
     targetSummary: "Targets: Two committed (+optional 🌒 committed → reserve)",
     cost: 3,
     icon: "🌒",

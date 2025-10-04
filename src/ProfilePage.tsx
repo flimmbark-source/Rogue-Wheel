@@ -18,6 +18,7 @@ import {
   setGrimoireSymbols,
 } from "./player/profileStore";
 import LoadingScreen from "./components/LoadingScreen";
+import { SpellDescription } from "./components/SpellDescription";
 import { ARCANA_EMOJI } from "./game/arcana";
 import { GRIMOIRE_SYMBOL_ORDER, MAX_GRIMOIRE_SYMBOLS, symbolsTotal, GRIMOIRE_SPELL_REQUIREMENTS } from "./game/grimoire";
 import type { Arcana } from "./game/types";
@@ -406,7 +407,10 @@ function renderSpellListItem(spell: SpellDefinition) {
           {spell.targetSummary}
         </div>
       ) : null}
-      <div className="mt-2 text-xs leading-relaxed text-white/70">{spell.description}</div>
+      <SpellDescription
+        className="mt-2 text-xs leading-relaxed text-white/70"
+        description={spell.description}
+      />
     </li>
   );
 }
