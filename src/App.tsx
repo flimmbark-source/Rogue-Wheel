@@ -632,7 +632,12 @@ export default function ThreeWheel_WinsOnly({
 
   useEffect(() => {
     if (cpuResponseTick === 0) return;
-    attemptCpuSpell();
+    const timeout = window.setTimeout(() => {
+      attemptCpuSpell();
+    }, 2000);
+    return () => {
+      window.clearTimeout(timeout);
+    };
   }, [attemptCpuSpell, cpuResponseTick]);
 
   useEffect(() => {
