@@ -537,8 +537,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   crosscut: {
     id: "crosscut",
     name: "Crosscut",
-    description: `Both you and an opponent reveal a reserve.
-                  Drain reserve equal to the difference between the cards.
+    description: `Both players reveal a reserve. Drain opponent reserve equal to the value difference.
                   +🗡️: Increase a 🗡️ card in play by the difference.`,
     targetSummary: "Targets: Your reserve (+optional 🗡️ in play)",
     cost: 4,
