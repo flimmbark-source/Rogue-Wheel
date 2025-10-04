@@ -85,6 +85,7 @@ import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
 import {
   getLearnedSpellsForFighter,
   getSpellDefinitions,
+  getSpellTargetStage,
   type SpellDefinition,
   type SpellId,
   type SpellRuntimeState,
@@ -974,22 +975,46 @@ export default function ThreeWheel_WinsOnly({
     .join(" ");
   const grimoireAttrValue = isGrimoireMode ? "true" : "false";
   const isAwaitingSpellTarget = Boolean(awaitingSpellTarget);
+  const activeTargetStage = pendingSpell
+    ? getSpellTargetStage(pendingSpell.spell.target, pendingSpell.currentStage)
+    : null;
+  const activeTargetStageLabel = pendingSpell
+    ? activeTargetStage?.label ??
+      (pendingSpell.spell.target.type === "sequence"
+        ? `Target #${pendingSpell.currentStage + 1}`
+        : null)
+    : null;
   const targetingPrompt = pendingSpell
     ? (() => {
-        const target = pendingSpell.spell.target;
-        if (target.type === "wheel") {
-          return "Tap a wheel to continue.";
+        if (!activeTargetStage) {
+          return "Select a valid target.";
         }
-        if (target.type === "card") {
-          if (target.ownership === "ally") {
-            return "Tap one of your cards to continue.";
+        switch (activeTargetStage.type) {
+          case "wheel":
+            return activeTargetStage.scope === "any"
+              ? "Select any wheel."
+              : "Select the current wheel.";
+          case "card": {
+            const ownerText =
+              activeTargetStage.ownership === "ally"
+                ? "an ally card"
+                : activeTargetStage.ownership === "enemy"
+                ? "an enemy card"
+                : "a card";
+            const locationText =
+              activeTargetStage.location === "board"
+                ? "on the board"
+                : activeTargetStage.location === "hand"
+                ? "in reserve"
+                : null;
+            const locationSuffix = locationText ? ` ${locationText}` : "";
+            return `Select ${ownerText}${locationSuffix}.`;
           }
-          if (target.ownership === "enemy") {
-            return "Tap an enemy card to continue.";
-          }
-          return "Tap a card that matches the spell's requirement to continue.";
+          case "self":
+            return "Confirm to target yourself.";
+          default:
+            return "Select a valid target.";
         }
-        return "Tap a valid target to continue.";
       })()
     : "";
   const hudAccentColor = HUD_COLORS[localLegacySide];
@@ -1043,7 +1068,7 @@ export default function ThreeWheel_WinsOnly({
           <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-sky-500/60 bg-slate-900/95 px-3 py-2 shadow-2xl">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[13px] font-semibold text-slate-100">
-                Select a target for {pendingSpell.spell.name}
+                Select {activeTargetStageLabel ?? "a target"} for {pendingSpell.spell.name}
               </div>
               <button
                 type="button"
