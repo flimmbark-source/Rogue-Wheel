@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useThreeWheelGame } from "./features/threeWheel/hooks/useThreeWheelGame";
 import React, {
   useMemo,
@@ -255,6 +255,7 @@ export default function ThreeWheel_WinsOnly({
     isPtrDragging,
     ptrDragCard,
     lockedWheelSize,
+    log,
   } = state;
 
   const {
@@ -355,6 +356,51 @@ export default function ThreeWheel_WinsOnly({
 
   const [showGrimoire, setShowGrimoire] = useState(false);
   const closeGrimoire = useCallback(() => setShowGrimoire(false), [setShowGrimoire]);
+
+  const [spellBanner, setSpellBanner] = useState<string | null>(null);
+  const spellBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestLogEntry = log.length > 0 ? log[0] : null;
+
+  useEffect(() => {
+    if (!latestLogEntry) {
+      setSpellBanner(null);
+      if (spellBannerTimeoutRef.current) {
+        clearTimeout(spellBannerTimeoutRef.current);
+        spellBannerTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    setSpellBanner(latestLogEntry);
+    if (spellBannerTimeoutRef.current) {
+      clearTimeout(spellBannerTimeoutRef.current);
+    }
+
+    const timeoutId = setTimeout(() => {
+      setSpellBanner(null);
+      if (spellBannerTimeoutRef.current === timeoutId) {
+        spellBannerTimeoutRef.current = null;
+      }
+    }, 2400);
+
+    spellBannerTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (spellBannerTimeoutRef.current === timeoutId) {
+        spellBannerTimeoutRef.current = null;
+      }
+    };
+  }, [latestLogEntry]);
+
+  useEffect(() => {
+    return () => {
+      if (spellBannerTimeoutRef.current) {
+        clearTimeout(spellBannerTimeoutRef.current);
+        spellBannerTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const localHandCards = localLegacySide === "player" ? player.hand : enemy.hand;
   const localHandSymbols = useMemo(() => countSymbolsFromCards(localHandCards), [localHandCards]);
@@ -946,15 +992,16 @@ export default function ThreeWheel_WinsOnly({
         return "Tap a valid target to continue.";
       })()
     : "";
+  const hudAccentColor = HUD_COLORS[localLegacySide];
 
   useEffect(() => {
-  if (isAwaitingSpellTarget) {
-    setShowGrimoire(false);
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
+    if (isAwaitingSpellTarget) {
+      setShowGrimoire(false);
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     }
-  }
-}, [isAwaitingSpellTarget]);
+  }, [isAwaitingSpellTarget]);
 
   return (
     <div
@@ -967,6 +1014,30 @@ export default function ThreeWheel_WinsOnly({
       data-local-mana={localMana}
       data-awaiting-spell-target={isAwaitingSpellTarget ? "true" : "false"}
     >
+      <AnimatePresence>
+        {spellBanner ? (
+          <motion.div
+            key={spellBanner}
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.24, ease: "easeOut" }}
+            className="pointer-events-none fixed inset-x-0 top-8 z-[85] flex justify-center px-3"
+          >
+            <div
+              className="pointer-events-none w-full max-w-md rounded-2xl border px-5 py-3 text-center text-[14px] font-semibold tracking-wide text-slate-100 shadow-[0_18px_40px_rgba(8,15,32,0.55)]"
+              style={{
+                borderColor: hudAccentColor,
+                background: "rgba(15, 23, 42, 0.92)",
+                color: hudAccentColor,
+              }}
+            >
+              {spellBanner}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       {isAwaitingSpellTarget && pendingSpell ? (
         <div className="pointer-events-none fixed inset-x-0 top-20 z-[90] flex justify-center px-3">
           <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-sky-500/60 bg-slate-900/95 px-3 py-2 shadow-2xl">
