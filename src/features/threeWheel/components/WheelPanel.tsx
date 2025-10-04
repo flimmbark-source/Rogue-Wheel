@@ -221,6 +221,8 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     pendingSpell?.spell.id === "mirrorImage" &&
     pendingSpell.side === localLegacySide;
 
+  const revealBoardDuringSpell = awaitingSpellTarget && pendingSpell?.side === localLegacySide;
+
   const shouldShowLeftCard =
     shouldShowSlotCard({
       hasCard: !!leftSlot.card,
@@ -228,6 +230,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       localLegacySide,
       isPhaseChooseLike,
       slotTargetable: leftSlotTargetable,
+      revealBoardDuringSpell,
     }) || (revealOpposingCardDuringMirror && leftSlot.side !== localLegacySide);
   const shouldShowRightCard =
     shouldShowSlotCard({
@@ -236,6 +239,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       localLegacySide,
       isPhaseChooseLike,
       slotTargetable: rightSlotTargetable,
+      revealBoardDuringSpell,
     }) || (revealOpposingCardDuringMirror && rightSlot.side !== localLegacySide);
 
   const wheelScope = activeStage?.type === "wheel" ? activeStage.scope : null;

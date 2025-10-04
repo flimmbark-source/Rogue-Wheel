@@ -6,6 +6,7 @@ interface ShouldShowSlotCardArgs {
   localLegacySide: LegacySide;
   isPhaseChooseLike: boolean;
   slotTargetable: boolean;
+  revealBoardDuringSpell: boolean;
 }
 
 export const shouldShowSlotCard = ({
@@ -14,9 +15,11 @@ export const shouldShowSlotCard = ({
   localLegacySide,
   isPhaseChooseLike,
   slotTargetable,
+  revealBoardDuringSpell,
 }: ShouldShowSlotCardArgs): boolean => {
   if (!hasCard) return false;
   if (slotSide === localLegacySide) return true;
+  if (revealBoardDuringSpell) return true;
   if (!isPhaseChooseLike) return true;
   return slotTargetable;
 };

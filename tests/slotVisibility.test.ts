@@ -17,6 +17,7 @@ assert.equal(
     localLegacySide: player,
     isPhaseChooseLike: isChooseLikePhase("choose"),
     slotTargetable: false,
+    revealBoardDuringSpell: false,
   }),
   false,
   "Enemy slots should remain hidden during a normal choose phase",
@@ -30,6 +31,7 @@ assert.equal(
     localLegacySide: player,
     isPhaseChooseLike: isChooseLikePhase("spellTargeting"),
     slotTargetable: true,
+    revealBoardDuringSpell: false,
   }),
   true,
   "Targetable enemy slots should stay visible while selecting spell targets",
@@ -43,9 +45,24 @@ assert.equal(
     localLegacySide: player,
     isPhaseChooseLike: isChooseLikePhase("spellTargeting"),
     slotTargetable: false,
+    revealBoardDuringSpell: false,
   }),
   true,
   "Friendly slots should remain visible whenever a card is present",
+);
+
+// All board cards are revealed while the local player is casting a spell.
+assert.equal(
+  shouldShowSlotCard({
+    hasCard: true,
+    slotSide: enemy,
+    localLegacySide: player,
+    isPhaseChooseLike: isChooseLikePhase("spellTargeting"),
+    slotTargetable: false,
+    revealBoardDuringSpell: true,
+  }),
+  true,
+  "Enemy slots should be revealed when the local player is casting a spell",
 );
 
 console.log("slotVisibility tests passed");
