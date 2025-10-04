@@ -96,7 +96,7 @@ const createInitialAssignments = (): AssignmentState<TestCard> => ({
   assert.equal(reserveState?.player, 0);
   assert.equal(laneChillStacks.player[0], 0);
   assert.equal(initiative, initialInitiative);
-  assert.equal(logs.length, 0);
+  assert.deepEqual(logs, ["Player mirrored Valiant on lane 1 against their foe."]);
 }
 
 // Hex drains the opponent's reserve before reveal, flipping the ReserveSum outcome.
@@ -182,7 +182,7 @@ const createInitialAssignments = (): AssignmentState<TestCard> => ({
   assert.equal(adjustedEnemyReserve, 3);
   assert.equal(reserveWinner, "player");
   assert.equal(initiative, initialInitiative);
-  assert.equal(logs.length, 0);
+  assert.deepEqual(logs, ["Player drained 2 from the foe's reserve."]);
 }
 
 console.log("mirrorImageResolution tests passed");

@@ -3,6 +3,11 @@ export type LegacySide = "player" | "enemy";
 export type CardStatAdjustment = {
   owner: LegacySide;
   cardId: string;
+  cardName?: string;
+  lane?: number | null;
+  cardValue?: number | null;
+  leftValue?: number | null;
+  rightValue?: number | null;
   numberDelta?: number;
   leftValueDelta?: number;
   rightValueDelta?: number;
@@ -12,6 +17,8 @@ export type ChilledCardUpdate = {
   owner: LegacySide;
   cardId: string;
   stacks: number;
+  cardName?: string;
+  lane?: number | null;
 };
 
 export type LaneChillStacks = {
@@ -34,19 +41,67 @@ type AssignmentState<CardT extends CardLike> = {
 
 export type SpellEffectPayload = {
   caster: LegacySide;
-  mirrorCopyEffects?: Array<{ targetCardId: string; mode?: string }>;
-  wheelTokenAdjustments?: Array<{ wheelIndex: number; amount: number }>;
-  reserveDrains?: Array<{ side: LegacySide; amount: number }>;
-  drawCards?: Array<{ side: LegacySide; count: number }>;
+  casterName?: string;
+  mirrorCopyEffects?: Array<{
+    targetCardId: string;
+    mode?: string;
+    cardName?: string;
+    lane?: number | null;
+  }>;
+  wheelTokenAdjustments?: Array<{
+    wheelIndex: number;
+    amount: number;
+    casterName?: string;
+  }>;
+  reserveDrains?: Array<{
+    side: LegacySide;
+    amount: number;
+    cardId?: string;
+    cardName?: string;
+    lane?: number | null;
+    casterName?: string;
+  }>;
+  drawCards?: Array<{ side: LegacySide; count: number; casterName?: string }>;
   cardAdjustments?: CardStatAdjustment[];
-  handAdjustments?: Array<{ side: LegacySide; cardId: string; numberDelta?: number }>;
-  handDiscards?: Array<{ side: LegacySide; cardId: string }>;
-  positionSwaps?: Array<{ side: LegacySide; laneA: number; laneB: number }>;
-  initiativeChallenges?: Array<{ side: LegacySide; lane: number; cardId: string; mode: "higher" | "lower" }>;
+  handAdjustments?: Array<{
+    side: LegacySide;
+    cardId: string;
+    cardName?: string;
+    numberDelta?: number;
+    cardValue?: number | null;
+  }>;
+  handDiscards?: Array<{ side: LegacySide; cardId: string; cardName?: string }>;
+  positionSwaps?: Array<{
+    side: LegacySide;
+    laneA: number;
+    laneB: number;
+    cardA?: {
+      cardId?: string;
+      cardName?: string;
+      lane?: number | null;
+      cardValue?: number | null;
+      location?: string | null;
+    };
+    cardB?: {
+      cardId?: string;
+      cardName?: string;
+      lane?: number | null;
+      cardValue?: number | null;
+      location?: string | null;
+    };
+    casterName?: string;
+  }>;
+  initiativeChallenges?: Array<{
+    side: LegacySide;
+    lane: number;
+    cardId: string;
+    cardName?: string;
+    mode: "higher" | "lower";
+    casterName?: string;
+  }>;
   chilledCards?: ChilledCardUpdate[];
   delayedEffects?: string[];
   initiative?: LegacySide | null;
-  logMessages?: string[];
 };
 
 export type RuntimeSpellEffectSummary = Pick<
@@ -208,10 +263,18 @@ export function collectRuntimeSpellEffects(
       const numberDelta = (entry as { numberDelta?: unknown }).numberDelta;
       const leftValueDelta = (entry as { leftValueDelta?: unknown }).leftValueDelta;
       const rightValueDelta = (entry as { rightValueDelta?: unknown }).rightValueDelta;
+      const laneRaw = (target as { lane?: unknown }).lane;
+      const lane = Number.isInteger(laneRaw) ? (laneRaw as number) : null;
+      const cardName = (target as { cardName?: unknown }).cardName;
+      const cardValue = (target as { cardValue?: unknown }).cardValue;
+      const leftValue = (target as { leftValue?: unknown }).leftValue;
+      const rightValue = (target as { rightValue?: unknown }).rightValue;
 
       const adj: CardStatAdjustment = {
         owner,
         cardId,
+        cardName: typeof cardName === "string" ? cardName : undefined,
+        lane,
       };
 
       if (typeof numberDelta === "number" && Number.isFinite(numberDelta)) {
@@ -222,6 +285,15 @@ export function collectRuntimeSpellEffects(
       }
       if (typeof rightValueDelta === "number" && Number.isFinite(rightValueDelta)) {
         adj.rightValueDelta = rightValueDelta;
+      }
+      if (typeof cardValue === "number" && Number.isFinite(cardValue)) {
+        adj.cardValue = cardValue;
+      }
+      if (typeof leftValue === "number" && Number.isFinite(leftValue)) {
+        adj.leftValue = leftValue;
+      }
+      if (typeof rightValue === "number" && Number.isFinite(rightValue)) {
+        adj.rightValue = rightValue;
       }
 
       adjustments.push(adj);
