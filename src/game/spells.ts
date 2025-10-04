@@ -248,8 +248,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   fireball: {
   id: "fireball",
   name: "Fireball",
-  description: `Reduce an enemy by 2.
-                +🔥: Add on the value of a 🔥 in play.`,
+  description: `Damage a card by 2.
+                +🔥: Boost by the value of a 🔥 in play.`,
   targetSummary: "Target: Enemy card (+optional 🔥)",
   cost: 2,
   variableCost: (context) => {
@@ -285,8 +285,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   iceShard: {
     id: "iceShard",
     name: "Ice Shard",
-    description: `Freeze an enemy’s value this round.
-                  +🗡️: That card can't win INIT.`,
+    description: `Freeze a card's value.
+                  +🗡️: That card can't win Initiative.`,
     targetSummary: "Target: Enemy card (+optional 🗡️)",
     cost: 1,
     icon: "🗡️",
@@ -319,8 +319,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   mirrorImage: {
     id: "mirrorImage",
     name: "Mirror Image",
-    description: `Copy the opposing value to a card in play.
-                  +👁️: Add the value of a 👁️ in reserve.`,
+    description: `Copy a card's opposing value.
+                  +👁️: Increase the card by the value of a 👁️ in reserve.`,
     targetSummary: "Target: Ally card (+optional 👁️ from reserve)",
     cost: 4,
     icon: "👁️",
@@ -354,7 +354,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "arcaneShift",
     name: "Arcane Shift",
     description: `Advance a wheel by 1.
-                  +🌒: Add the value of a 🌒 in play.`,
+                  +🌒: Boost it by the value of a 🌒 in play.`,
     targetSummary: "Target: Active wheel (+optional 🌒)",
     cost: 3,
     icon: "🌒",
@@ -386,7 +386,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "hex",
     name: "Hex",
     description: `Drain 2 from opponent’s reserve.
-                  +🐍: Add on the value of a 🐍 in play.`,
+                  +🐍: Boost by value of a 🐍 in play.`,
     targetSummary: "Target: Enemy card (+optional 🐍)",
     cost: 4,
     icon: "🐍",
@@ -441,7 +441,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "kindle",
     name: "Kindle",
     description: `Increase a card in play or reserve by 2.
-                  +🔥: Add on the value of a 🔥 in play.`,
+                  +🔥: Boost by the value of a 🔥 in play.`,
     targetSummary: "Target: Your card (+optional 🔥)",
     cost: 2,
     icon: "🔥",
@@ -472,8 +472,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   suddenStrike: {
     id: "suddenStrike",
     name: "Sudden Strike",
-    description: `If foe’s card is lower, gain Initiative.
-                  +🗡️: Also gain INIT on tie if this is 🗡️.`,
+    description: `Select a card in play. Gain Initiative if opposing card is lower.
+                  +🗡️: Also gain Initiative on tie if target is 🗡️.`,
     targetSummary: "Target: Your committed card",
     cost: 6,
     icon: "🗡️",
@@ -616,7 +616,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "offering",
     name: "Offering",
     description: `Discard a reserve to increase a card in play by its value.
-                  +🔥: Double the increase if the reserve card was 🔥.`,
+                  +🔥: Boost x2 if the reserve card was 🔥.`,
     targetSummary: "Targets: Your committed → reserve to discard",
     cost: 4,
     icon: "🔥",
