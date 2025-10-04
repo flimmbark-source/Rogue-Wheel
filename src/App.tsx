@@ -584,22 +584,27 @@ export default function ThreeWheel_WinsOnly({
 
     const visibleSpells = getSpellDefinitions(visibleSpellIds);
 
-    const candidates = visibleSpells
-      .map((spell) => {
-        const allowedPhases = spell.allowedPhases ?? ["choose"];
-        if (!allowedPhases.includes(phaseForLogic)) return null;
-        const cost = computeSpellCost(spell, {
-          caster,
-          opponent,
-          phase: phaseForLogic,
-          runtimeState: spellRuntimeStateRef.current,
-        });
-        if (cost > mana) return null;
-        return { spell, cost };
-      })
-      .filter((candidate): candidate is { spell: SpellDefinition; cost: number } => Boolean(candidate));
+    const affordableSpells: Array<{ spell: SpellDefinition; cost: number }> = [];
+    const deferredSpells: Array<{ spell: SpellDefinition; cost: number }> = [];
 
-    if (candidates.length === 0) return;
+    visibleSpells.forEach((spell) => {
+      const allowedPhases = spell.allowedPhases ?? ["choose"];
+      if (!allowedPhases.includes(phaseForLogic)) return;
+      const cost = computeSpellCost(spell, {
+        caster,
+        opponent,
+        phase: phaseForLogic,
+        runtimeState: spellRuntimeStateRef.current,
+      });
+      const entry = { spell, cost };
+      if (cost <= mana) {
+        affordableSpells.push(entry);
+      } else {
+        deferredSpells.push(entry);
+      }
+    });
+
+    if (affordableSpells.length === 0) return;
 
     const decision = chooseCpuSpellResponse({
       casterSide: cpuSide,
@@ -608,10 +613,27 @@ export default function ThreeWheel_WinsOnly({
       board: assign,
       reserveSums,
       initiative,
-      availableSpells: candidates,
+      availableSpells: affordableSpells,
     });
 
     if (!decision) return;
+
+    if (deferredSpells.length > 0) {
+      const minDeferredCost = deferredSpells.reduce(
+        (lowest, entry) => Math.min(lowest, entry.cost),
+        Number.POSITIVE_INFINITY,
+      );
+      if (Number.isFinite(minDeferredCost)) {
+        const cheapThreshold = Math.min(2, Math.max(0, minDeferredCost - 1));
+        if (
+          cheapThreshold > 0 &&
+          decision.cost <= cheapThreshold &&
+          mana - decision.cost < minDeferredCost
+        ) {
+          return;
+        }
+      }
+    }
 
     castCpuSpell(decision);
   }, [
