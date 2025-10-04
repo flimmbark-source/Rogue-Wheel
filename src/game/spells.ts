@@ -533,14 +533,14 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     requirements: [{ arcana: "serpent", symbols: 2 }],
   },
 
-  // 🗡️ Crosscut — reveal reserve vs foe; drain (diff>0); +🗡️: gain INIT if you drained
+  // 🗡️ Crosscut — reveal reserves; drain by difference; +🗡️: boost 🗡️ card by diff
   crosscut: {
     id: "crosscut",
     name: "Crosscut",
-    description: `Both you an opponent reveal a reserve.
-                  Drain reserve equal to difference between the cards.
-                  +🗡️: Gain Initiative if you drained.`,
-    targetSummary: "Targets: Your reserve → opposing committed",
+    description: `Both you and an opponent reveal a reserve.
+                  Drain reserve equal to the difference between the cards.
+                  +🗡️: Increase a 🗡️ card in play by the difference.`,
+    targetSummary: "Targets: Your reserve (+optional 🗡️ in play)",
     cost: 4,
     icon: "🗡️",
     allowedPhases: ["choose", "roundEnd"],
@@ -548,21 +548,65 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       type: "sequence",
       stages: [
         { type: "card", ownership: "ally", location: "hand", label: "Your reserve card" },
-        { type: "card", ownership: "enemy", location: "board", label: "Opponent's card" },
+        { type: "card", ownership: "ally", location: "board", arcana: "blade", label: "🗡️ card in play", optional: true },
       ],
     },
     resolver: (context) => {
-      const [primary, foe] = context.targets ?? [];
-      if (!primary || primary.type !== "card" || !foe || foe.type !== "card") return;
-      const attacker = primary.cardValue ?? 0;
-      const defender = foe.cardValue ?? 0;
-      const difference = attacker - defender;
+      const [primary, blade] = context.targets ?? [];
+      if (!primary || primary.type !== "card") return;
+
+      const casterReserveValue =
+        typeof primary.cardValue === "number"
+          ? primary.cardValue
+          : (() => {
+              const found = context.caster.hand.find((card) => card.id === primary.cardId);
+              if (!found) return 0;
+              if (typeof found.number === "number" && Number.isFinite(found.number)) return found.number;
+              if (typeof found.leftValue === "number" && Number.isFinite(found.leftValue)) return found.leftValue;
+              if (typeof found.rightValue === "number" && Number.isFinite(found.rightValue)) return found.rightValue;
+              return 0;
+            })();
+
+      const opponentCard = context.opponent.hand[0] ?? null;
+      const opponentValue = opponentCard
+        ? typeof opponentCard.number === "number" && Number.isFinite(opponentCard.number)
+          ? opponentCard.number
+          : typeof opponentCard.leftValue === "number" && Number.isFinite(opponentCard.leftValue)
+            ? opponentCard.leftValue
+            : typeof opponentCard.rightValue === "number" && Number.isFinite(opponentCard.rightValue)
+              ? opponentCard.rightValue
+              : 0
+        : 0;
+
       const log = ensureLog(context);
-      log.push(`${context.caster.name} reveals a crosscut, comparing ${describeTarget(primary)} to ${describeTarget(foe)}.`);
+
+      if (!opponentCard) {
+        log.push(
+          `${context.caster.name} reveals ${describeTarget(primary)} with Crosscut, but ${context.opponent.name} has no reserve to reveal.`,
+        );
+        return;
+      }
+
+      const foeTarget: SpellTargetInstance = {
+        type: "card",
+        cardId: opponentCard.id,
+        cardName: opponentCard.name,
+        arcana: opponentCard.arcana,
+        owner: "enemy",
+        location: "hand",
+        cardValue: opponentValue,
+      };
+
+      const difference = Math.abs(casterReserveValue - opponentValue);
+      log.push(
+        `${context.caster.name} crosscuts ${describeTarget(primary)} against ${describeTarget(foeTarget)}, revealing a difference of ${difference}.`,
+      );
+
       if (difference > 0) {
-        pushReserveDrain(context, { target: foe, amount: difference, caster: context.caster.name });
-        const key = "crosscutInitiative:" + (primary.cardId ?? "self");
-        (context.state as any)[key] = true;
+        pushReserveDrain(context, { target: foeTarget, amount: difference, caster: context.caster.name });
+        if (blade && blade.type === "card") {
+          pushCardAdjustment(context, { target: blade, numberDelta: difference });
+        }
       }
     },
     requirements: [{ arcana: "blade", symbols: 2 }],
