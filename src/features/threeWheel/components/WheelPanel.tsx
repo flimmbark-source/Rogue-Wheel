@@ -191,19 +191,23 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     return Math.abs(previousTarget.lane - laneIndex) === 1;
   };
 
-  const leftSlotTargetable =
-    awaitingCardTarget &&
-    !!leftSlot.card &&
-    (pendingOwnership === "any" || pendingOwnership === leftSlotOwnership) &&
-    (stageLocation === "any" || stageLocation === "board") &&
-    adjacencyAllows(leftSlotOwnership, index);
+  const stageAllowsBoardSelection = stageLocation === "any" || stageLocation === "board";
 
-  const rightSlotTargetable =
-    awaitingCardTarget &&
-    !!rightSlot.card &&
-    (pendingOwnership === "any" || pendingOwnership === rightSlotOwnership) &&
-    (stageLocation === "any" || stageLocation === "board") &&
-    adjacencyAllows(rightSlotOwnership, index);
+  const slotIsTargetable = (
+    slot: SlotView,
+    slotOwnership: SpellTargetOwnership | null,
+  ): boolean => {
+    if (!awaitingCardTarget) return false;
+    if (!slot.card) return false;
+    if (!slotOwnership) return false;
+    if (!stageAllowsBoardSelection) return false;
+    if (pendingOwnership && pendingOwnership !== "any" && pendingOwnership !== slotOwnership) return false;
+    return adjacencyAllows(slotOwnership, index);
+  };
+
+  const leftSlotTargetable = slotIsTargetable(leftSlot, leftSlotOwnership);
+
+  const rightSlotTargetable = slotIsTargetable(rightSlot, rightSlotOwnership);
 
   const isPhaseChooseLike = isChooseLikePhase(phase);
 
@@ -237,27 +241,20 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     (wheelScope === "any" || (wheelScope === "current" && isWheelActive)) &&
     wheelHasRequiredArcana();
 
-  const renderSlotCard = (slot: SlotView, isSlotSelected: boolean) => {
+  const renderSlotCard = (
+    slot: SlotView,
+    isSlotSelected: boolean,
+    slotTargetable: boolean,
+  ) => {
     if (!slot.card) return null;
     const card = slot.card;
-    const slotOwnership: SpellTargetOwnership = pendingSpell
-      ? slot.side === pendingSpell.side
-        ? "ally"
-        : "enemy"
-      : "ally";
-
-    const isSlotTargetable =
-      awaitingSpellTarget &&
-      !!slot.card &&
-      (pendingOwnership === "any" || pendingOwnership === slotOwnership);
-
     const canInteractNormally =
       !awaitingSpellTarget && slot.side === localLegacySide && phase === "choose" && isWheelActive;
 
-    const cardInteractable = canInteractNormally || isSlotTargetable;
+    const cardInteractable = canInteractNormally || slotTargetable;
 
     const handlePick = () => {
-      if (isSlotTargetable && slot.card) {
+      if (slotTargetable && slot.card) {
         onSpellTargetSelect?.({ side: slot.side, lane: index, card: slot.card, location: "board" });
         return;
       }
@@ -301,8 +298,8 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onPointerDown={handlePointerDown}
-        className={isSlotTargetable ? "ring-2 ring-sky-400" : undefined}
-        spellTargetable={isSlotTargetable}
+        className={slotTargetable ? "ring-2 ring-sky-400" : undefined}
+        spellTargetable={slotTargetable}
       />
     );
   };
@@ -456,7 +453,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         aria-label={`Wheel ${index + 1} left slot`}
       >
         {shouldShowLeftCard ? (
-          renderSlotCard(leftSlot, isLeftSelected)
+          renderSlotCard(leftSlot, isLeftSelected, leftSlotTargetable)
         ) : (
           <div className="text-[11px] opacity-80 text-center">
             {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
@@ -552,7 +549,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         }}
       >
         {shouldShowRightCard ? (
-          renderSlotCard(rightSlot, isRightSelected)
+          renderSlotCard(rightSlot, isRightSelected, rightSlotTargetable)
         ) : (
           <div className="text-[11px] opacity-60 text-center">
             {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
