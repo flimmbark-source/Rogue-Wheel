@@ -111,8 +111,13 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
 
   const activeStage = pendingSpell ? getSpellTargetStage(pendingSpell.spell.target, pendingSpell.currentStage) : null;
 
+  const activeStageSelection = pendingSpell?.targets?.[pendingSpell.currentStage];
+
   const awaitingManualTarget = Boolean(
-    isAwaitingSpellTarget && pendingSpell && activeStage && spellTargetStageRequiresManualSelection(activeStage),
+    isAwaitingSpellTarget &&
+      pendingSpell &&
+      activeStage &&
+      spellTargetStageRequiresManualSelection(activeStage, activeStageSelection),
   );
 
   const awaitingCardTarget = awaitingManualTarget && activeStage?.type === "card";

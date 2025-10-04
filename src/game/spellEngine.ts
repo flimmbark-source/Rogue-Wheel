@@ -120,9 +120,18 @@ export function resolvePendingSpell(params: ResolveSpellParams): SpellResolution
     stageIndex += 1;
   }
 
+  const overrideProvided = targetOverride !== undefined;
+
   while (stageIndex < stages.length) {
     const stage = stages[stageIndex];
-    if (spellTargetStageRequiresManualSelection(stage)) break;
+    let existingTarget = pendingTargets[stageIndex];
+
+    if (!overrideProvided && stage.optional && !existingTarget) {
+      existingTarget = { type: "none", stageIndex };
+      pendingTargets[stageIndex] = existingTarget;
+    }
+
+    if (spellTargetStageRequiresManualSelection(stage, existingTarget)) break;
     if (stage.type === "self") {
       pendingTargets[stageIndex] = { type: "self", stageIndex };
       stageIndex += 1;
@@ -130,6 +139,10 @@ export function resolvePendingSpell(params: ResolveSpellParams): SpellResolution
     }
     if (stage.type === "none") {
       pendingTargets[stageIndex] = { type: "none", stageIndex };
+      stageIndex += 1;
+      continue;
+    }
+    if (stage.optional && pendingTargets[stageIndex]?.type === "none") {
       stageIndex += 1;
       continue;
     }

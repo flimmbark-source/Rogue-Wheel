@@ -434,6 +434,7 @@ export default function ThreeWheel_WinsOnly({
     handlePendingSpellCancel,
     handleSpellTargetSelect,
     handleWheelTargetSelect,
+    handleOptionalStageSkip,
   } = useSpellCasting({
     caster: casterFighter,
     opponent: opponentFighter,
@@ -1070,13 +1071,24 @@ export default function ThreeWheel_WinsOnly({
               <div className="text-[13px] font-semibold text-slate-100">
                 Select {activeTargetStageLabel ?? "a target"} for {pendingSpell.spell.name}
               </div>
-              <button
-                type="button"
-                onClick={() => handlePendingSpellCancel(true)}
-                className="rounded border border-slate-600 px-2.5 py-1 text-[11px] text-slate-200 transition hover:border-slate-400 hover:text-white"
-              >
-                Cancel spell
-              </button>
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  type="button"
+                  onClick={() => handlePendingSpellCancel(true)}
+                  className="rounded border border-slate-600 px-2.5 py-1 text-[11px] text-slate-200 transition hover:border-slate-400 hover:text-white"
+                >
+                  Cancel spell
+                </button>
+                {activeTargetStage?.optional ? (
+                  <button
+                    type="button"
+                    onClick={handleOptionalStageSkip}
+                    className="rounded border border-slate-600 px-2.5 py-1 text-[11px] text-slate-200 transition hover:border-slate-400 hover:text-white"
+                  >
+                    Skip optional target
+                  </button>
+                ) : null}
+              </div>
             </div>
             <div className="mt-2 text-[11px] leading-snug text-slate-300">
               {targetingPrompt}
