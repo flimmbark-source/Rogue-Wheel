@@ -100,7 +100,6 @@ export type SpellTargetInstance =
   | { type: "wheel"; wheelId: string; label?: string; stageIndex?: number };
 
 export type SpellRuntimeState = Record<string, unknown> & {
-  log?: string[];
   cardAdjustments?: RuntimeCardAdjustment[];
   handAdjustments?: RuntimeHandAdjustment[];
   handDiscards?: RuntimeHandDiscard[];
@@ -143,25 +142,6 @@ export type SpellDefinition = {
 };
 
 // ---------- helpers for registry ----------
-const ensureLog = (context: SpellResolverContext) => {
-  if (!Array.isArray(context.state.log)) context.state.log = [];
-  return context.state.log!;
-};
-
-const describeTarget = (target?: SpellTargetInstance): string => {
-  if (!target) return "the void";
-  switch (target.type) {
-    case "card":
-      return target.cardName ?? `card ${target.cardId}`;
-    case "wheel":
-      return target.label ?? `wheel ${target.wheelId}`;
-    case "self":
-      return "the caster";
-    default:
-      return "the field";
-  }
-};
-
 type RuntimeCardAdjustment = {
   target: SpellTargetInstance;
   numberDelta?: number;
@@ -274,11 +254,9 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       { type: "card", ownership: "ally", location: "any", arcana: "fire", label: "Optional 🔥 card", optional: true },
     ],
   },
-  resolver: (context) => {
-    const log = ensureLog(context);
-    const [foe, bonus] = context.targets ?? [];
-    log.push(`${context.caster.name} scorches ${describeTarget(foe)} with a Fireball.`);
-    const streak = (context.state.fireballStreak as number | undefined) ?? 0;
+    resolver: (context) => {
+      const [foe, bonus] = context.targets ?? [];
+      const streak = (context.state.fireballStreak as number | undefined) ?? 0;
     context.state.fireballStreak = streak + 1;
     if (foe?.type === "card") {
       const bonusVal = bonus?.type === "card" ? (bonus.cardValue ?? 0) : 0;
@@ -306,9 +284,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ],
     },
     resolver: (context) => {
-      const log = ensureLog(context);
       const [foe, blade] = context.targets ?? [];
-      log.push(`${context.caster.name} encases ${describeTarget(foe)} in razor ice.`);
       const chilled = (context.state.chilledCards as Record<string, number> | undefined) ?? {};
       if (foe?.type === "card") {
         chilled[foe.cardId] = (chilled[foe.cardId] ?? 0) + 1;
@@ -340,15 +316,19 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ],
     },
     resolver: (context) => {
-      const log = ensureLog(context);
       const [ally, eyeReserve] = context.targets ?? [];
       if (ally?.type !== "card") return;
-      log.push(`${context.caster.name} reflects ${describeTarget(ally)} into its foe.`);
       const effects =
         (context.state.mirrorCopyEffects as
-          | { targetCardId: string; mode: "opponent"; caster: string }[]
+          | { targetCardId: string; mode: "opponent"; caster: string; cardName?: string; lane?: number | null }[]
           | undefined) ?? [];
-      effects.push({ targetCardId: ally.cardId, mode: "opponent", caster: context.caster.name });
+      effects.push({
+        targetCardId: ally.cardId,
+        mode: "opponent",
+        caster: context.caster.name,
+        cardName: ally.cardName,
+        lane: typeof ally.lane === "number" ? ally.lane : null,
+      });
       context.state.mirrorCopyEffects = effects;
       const bonusVal = eyeReserve?.type === "card" ? (eyeReserve.cardValue ?? 0) : 0;
       if (bonusVal !== 0) pushCardAdjustment(context, { target: ally, numberDelta: bonusVal });
@@ -374,9 +354,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ],
     },
     resolver: (context) => {
-      const log = ensureLog(context);
       const [wheel, moon] = context.targets ?? [];
-      log.push(`${context.caster.name} empowers ${describeTarget(wheel)} with arcane momentum.`);
       const amount = 1 + (moon?.type === "card" ? (moon.cardValue ?? 0) : 0);
       const adjustments =
         (context.state.wheelTokenAdjustments as
@@ -406,9 +384,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ],
     },
     resolver: (context) => {
-      const log = ensureLog(context);
       const [foe, snake] = context.targets ?? [];
-      log.push(`${context.caster.name} drains their foe’s reserve with a wicked hex.`);
       if (foe?.type === "card") {
         const add = snake?.type === "card" ? (snake.cardValue ?? 0) : 0;
         pushReserveDrain(context, { target: foe, amount: 2 + add, caster: context.caster.name });
@@ -429,8 +405,6 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     allowedPhases: ["choose", "roundEnd"],
     target: { type: "card", ownership: "ally", location: "hand", label: "Discard from reserve" },
     resolver: (context) => {
-      const log = ensureLog(context);
-      log.push(`${context.caster.name} bends time around themselves.`);
       const momentum = (context.state.timeMomentum as number | undefined) ?? 0;
       context.state.timeMomentum = momentum + 1;
       if (context.target?.type === "card") {
@@ -461,9 +435,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       ],
     },
     resolver: (context) => {
-      const log = ensureLog(context);
       const [tgt, bonus] = context.targets ?? [];
-      log.push(`${context.caster.name} fans the flames of ${describeTarget(tgt)}.`);
       if (tgt?.type !== "card") return;
       const bonusVal = bonus?.type === "card" ? (bonus.cardValue ?? 0) : 0;
       if ((tgt.location ?? "board") === "hand") {
@@ -487,9 +459,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     allowedPhases: ["roundEnd", "showEnemy"],
     target: { type: "card", ownership: "ally", location: "board", label: "Your card" },
     resolver: (context) => {
-      const log = ensureLog(context);
       const tgt = context.target;
-      log.push(`${context.caster.name} lashes out with a sudden strike from ${describeTarget(tgt)}.`);
       if (tgt?.type === "card") {
         pushInitiativeChallenge(context, { target: tgt, mode: "higher", caster: context.caster.name });
         // +🗡️ applies only if the targeted card is blade
@@ -534,8 +504,6 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
         const foeTarget: SpellTargetInstance = { type: "card", cardId: primary.cardId, owner: "enemy" };
         pushReserveDrain(context, { target: foeTarget, amount: bonus, caster: context.caster.name });
       }
-      const log = ensureLog(context);
-      log.push(`${context.caster.name} siphons power between ${describeTarget(primary)} and its neighbor.`);
     },
     requirements: [{ arcana: "serpent", symbols: 2 }],
   },
@@ -584,12 +552,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
               : 0
         : 0;
 
-      const log = ensureLog(context);
-
       if (!opponentCard) {
-        log.push(
-          `${context.caster.name} reveals ${describeTarget(primary)} with Crosscut, but ${context.opponent.name} has no reserve to reveal.`,
-        );
         return;
       }
 
@@ -604,9 +567,6 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       };
 
       const difference = Math.abs(casterReserveValue - opponentValue);
-      log.push(
-        `${context.caster.name} crosscuts ${describeTarget(primary)} against ${describeTarget(foeTarget)}, revealing a difference of ${difference}.`,
-      );
 
       if (difference > 0) {
         pushReserveDrain(context, { target: foeTarget, amount: difference, caster: context.caster.name });
@@ -639,8 +599,6 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       const [flame, fuel] = context.targets ?? [];
       if (!flame || flame.type !== "card" || !fuel || fuel.type !== "card") return;
       const value = fuel.cardValue ?? 0;
-      const log = ensureLog(context);
-      log.push(`${context.caster.name} offers ${describeTarget(fuel)} to empower ${describeTarget(flame)}.`);
       const gain = fuel.arcana === "fire" ? value * 2 : value;
       if (gain !== 0) pushCardAdjustment(context, { target: flame, numberDelta: gain });
       pushHandDiscard(context, { target: fuel });
@@ -669,22 +627,18 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     resolver: (context) => {
       const [a, b, moonReserve] = context.targets ?? [];
       if (!a || a.type !== "card" || !b || b.type !== "card") return;
-      const log = ensureLog(context);
 
       if (moonReserve?.type === "card") {
         if (a.arcana === "moon") {
-          log.push(`${context.caster.name} phases ${describeTarget(a)} with ${describeTarget(moonReserve)} from reserve.`);
           pushSwapRequest(context, { first: a, second: moonReserve, caster: context.caster.name });
           return;
         }
         if (b.arcana === "moon") {
-          log.push(`${context.caster.name} phases ${describeTarget(b)} with ${describeTarget(moonReserve)} from reserve.`);
           pushSwapRequest(context, { first: b, second: moonReserve, caster: context.caster.name });
           return;
         }
       }
 
-      log.push(`${context.caster.name} phases ${describeTarget(a)} with ${describeTarget(b)}.`);
       pushSwapRequest(context, { first: a, second: b, caster: context.caster.name });
     },
     requirements: [{ arcana: "moon", symbols: 2 }],

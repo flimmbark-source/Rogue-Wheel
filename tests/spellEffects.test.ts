@@ -135,6 +135,7 @@ const opponentOf = (side: LegacySide): LegacySide => (side === "player" ? "enemy
 
   const payload: SpellEffectPayload = {
     caster: "player",
+    casterName: "Caster",
     cardAdjustments: [
       { owner: "player", cardId: "p1", numberDelta: 2 },
       { owner: "enemy", cardId: "e1", numberDelta: -1 },
@@ -144,7 +145,6 @@ const opponentOf = (side: LegacySide): LegacySide => (side === "player" ? "enemy
     drawCards: [{ side: "player", count: 3 }],
     positionSwaps: [{ side: "player", laneA: 0, laneB: 2 }],
     initiativeChallenges: [{ side: "player", lane: 1, cardId: "p1", mode: "higher" }],
-    logMessages: ["Spell resolved."],
   };
 
   applySpellEffects<Card>(payload, {
@@ -195,7 +195,15 @@ const opponentOf = (side: LegacySide): LegacySide => (side === "player" ? "enemy
   assert(playerFighter.hand.some((card) => card.id === "pd1"));
   assert(playerFighter.hand.some((card) => card.id === "pd2"));
   assert.equal(initiative, "player");
-  assert(log.includes("Spell resolved."));
+  assert.deepEqual(log, [
+    "Caster boosted Oracle by 2 (now 6).",
+    "Caster dealt 1 to Ghoul (now 2).",
+    "Caster boosted reserve card Spark by 2 (now 3).",
+    "Caster discarded Shade from reserve.",
+    "Caster drew 2 cards.",
+    "Caster swapped lane 1 (Striker 3) with lane 3 (Wisp 2).",
+    "Caster's Oracle on lane 2 overpowered the foe (6 vs 2) to seize initiative.",
+  ]);
   assert.deepEqual(tokens, [0, 0, 0]);
   assert.deepEqual(reserveSums, { player: 5, enemy: 5 });
   assert.deepEqual(chillStacks, { player: [0, 0, 0], enemy: [0, 0, 0] });
