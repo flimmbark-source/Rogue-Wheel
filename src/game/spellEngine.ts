@@ -418,7 +418,7 @@ export type SpellEffectApplicationContext<CardT> = {
   updateTokens: (updater: (prev: [number, number, number]) => [number, number, number]) => void;
   updateLaneChillStacks: (updater: (prev: LaneChillStacks) => LaneChillStacks) => void;
   setInitiative: (side: LegacySide) => void;
-  appendLog: (message: string) => void;
+  appendLog: (message: string, options?: { type?: "general" | "spell" }) => void;
   initiative: LegacySide;
   isMultiplayer: boolean;
   broadcastEffects?: (payload: SpellEffectPayload) => void;
@@ -792,7 +792,7 @@ export function applySpellEffects<CardT extends { id: string }>(
   if (Array.isArray(logMessages)) {
     logMessages.forEach((entry) => {
       if (typeof entry === "string" && entry.trim().length > 0) {
-        appendLog(entry);
+        appendLog(entry, { type: "spell" });
       }
     });
   }
@@ -800,7 +800,7 @@ export function applySpellEffects<CardT extends { id: string }>(
   if (Array.isArray(delayedEffects)) {
     delayedEffects.forEach((entry) => {
       if (typeof entry === "string" && entry.trim().length > 0) {
-        appendLog(entry);
+        appendLog(entry, { type: "spell" });
       }
     });
   }

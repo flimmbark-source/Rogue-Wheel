@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useThreeWheelGame } from "./features/threeWheel/hooks/useThreeWheelGame";
+import { useThreeWheelGame, type GameLogEntry } from "./features/threeWheel/hooks/useThreeWheelGame";
 import React, {
   useMemo,
   useRef,
@@ -358,13 +358,13 @@ export default function ThreeWheel_WinsOnly({
   const [showGrimoire, setShowGrimoire] = useState(false);
   const closeGrimoire = useCallback(() => setShowGrimoire(false), [setShowGrimoire]);
 
-  const [spellBanner, setSpellBanner] = useState<string | null>(null);
+  const [spellBannerEntry, setSpellBannerEntry] = useState<GameLogEntry | null>(null);
   const spellBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latestLogEntry = log.length > 0 ? log[0] : null;
+  const latestSpellEntry = log.find((entry) => entry.type === "spell") ?? null;
 
   useEffect(() => {
-    if (!latestLogEntry) {
-      setSpellBanner(null);
+    if (!latestSpellEntry) {
+      setSpellBannerEntry(null);
       if (spellBannerTimeoutRef.current) {
         clearTimeout(spellBannerTimeoutRef.current);
         spellBannerTimeoutRef.current = null;
@@ -372,13 +372,15 @@ export default function ThreeWheel_WinsOnly({
       return;
     }
 
-    setSpellBanner(latestLogEntry);
+    setSpellBannerEntry(latestSpellEntry);
     if (spellBannerTimeoutRef.current) {
       clearTimeout(spellBannerTimeoutRef.current);
     }
 
     const timeoutId = setTimeout(() => {
-      setSpellBanner(null);
+      setSpellBannerEntry((current) =>
+        current && current.id === latestSpellEntry.id ? null : current,
+      );
       if (spellBannerTimeoutRef.current === timeoutId) {
         spellBannerTimeoutRef.current = null;
       }
@@ -392,7 +394,7 @@ export default function ThreeWheel_WinsOnly({
         spellBannerTimeoutRef.current = null;
       }
     };
-  }, [latestLogEntry]);
+  }, [latestSpellEntry]);
 
   useEffect(() => {
     return () => {
@@ -1041,9 +1043,9 @@ export default function ThreeWheel_WinsOnly({
       data-awaiting-spell-target={isAwaitingSpellTarget ? "true" : "false"}
     >
       <AnimatePresence>
-        {spellBanner ? (
+        {spellBannerEntry ? (
           <motion.div
-            key={spellBanner}
+            key={spellBannerEntry.id}
             initial={{ opacity: 0, y: -16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -16 }}
@@ -1058,7 +1060,7 @@ export default function ThreeWheel_WinsOnly({
                 color: hudAccentColor,
               }}
             >
-              {spellBanner}
+              {spellBannerEntry.message}
             </div>
           </motion.div>
         ) : null}

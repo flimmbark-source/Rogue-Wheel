@@ -76,6 +76,24 @@ type AnteState = {
   odds: Record<LegacySide, number>;
 };
 
+export type GameLogEntryType = "general" | "spell";
+
+export type GameLogEntry = {
+  id: string;
+  message: string;
+  type: GameLogEntryType;
+};
+
+let logIdCounter = 0;
+const createLogEntry = (
+  message: string,
+  type: GameLogEntryType = "general",
+): GameLogEntry => ({
+  id: `log-${Date.now().toString(36)}-${(logIdCounter++).toString(36)}`,
+  message,
+  type,
+});
+
 export type ThreeWheelGameState = {
   player: Fighter;
   enemy: Fighter;
@@ -106,7 +124,7 @@ export type ThreeWheelGameState = {
   reserveSums: null | { player: number; enemy: number };
   isPtrDragging: boolean;
   ptrDragCard: Card | null;
-  log: string[];
+  log: GameLogEntry[];
 };
 
 export type ThreeWheelGameDerived = {
@@ -617,10 +635,11 @@ export function useThreeWheelGame({
   const [reserveSums, setReserveSums] = useState<null | { player: number; enemy: number }>(null);
 
   const START_LOG = "A Shade Bandit eyes your purse...";
-  const [log, setLog] = useState<string[]>([START_LOG]);
+  const [log, setLog] = useState<GameLogEntry[]>(() => [createLogEntry(START_LOG)]);
 
-  const appendLog = useCallback((s: string) => {
-    setLog((prev) => [s, ...prev].slice(0, 60));
+  const appendLog = useCallback((message: string, options?: { type?: GameLogEntryType }) => {
+    const entry = createLogEntry(message, options?.type ?? "general");
+    setLog((prev) => [entry, ...prev].slice(0, 60));
   }, []);
 
   const canReveal = useMemo(() => {
@@ -1501,7 +1520,7 @@ export function useThreeWheelGame({
     setReserveSums(null);
     setWheelHUD([null, null, null]);
 
-    setLog([START_LOG]);
+    setLog([createLogEntry(START_LOG)]);
 
     wheelRngRef.current = createSeededRng(seed);
     setWheelSections(generateWheelSet());
