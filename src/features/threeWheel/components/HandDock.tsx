@@ -30,6 +30,7 @@ interface HandDockProps {
   assignToWheelLocal: (laneIndex: number, card: Card) => void;
   setDragCardId: (value: string | null) => void;
   startPointerDrag: (card: Card, e: React.PointerEvent<HTMLButtonElement>) => void;
+  startTouchDrag: (card: Card, e: React.TouchEvent<HTMLButtonElement>) => void;
   isPtrDragging: boolean;
   ptrDragCard: Card | null;
   ptrPos: React.MutableRefObject<{ x: number; y: number }>;
@@ -62,6 +63,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     assignToWheelLocal,
     setDragCardId,
     startPointerDrag,
+    startTouchDrag,
     isPtrDragging,
     ptrDragCard,
     ptrPos,
@@ -222,6 +224,10 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                   onPointerDown={(e) => {
                     if (awaitingManualTarget) return;
                     startPointerDrag(card, e);
+                  }}
+                  onTouchStart={(e) => {
+                    if (awaitingManualTarget) return;
+                    startTouchDrag(card, e);
                   }}
                   aria-pressed={isSelected}
                   aria-label={`Select ${card.name}`}

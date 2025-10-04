@@ -283,6 +283,7 @@ export default function ThreeWheel_WinsOnly({
     setDragCardId,
     setDragOverWheel,
     startPointerDrag,
+    startTouchDrag,
     assignToWheelLocal,
     handleRevealClick,
     handleNextClick: handleNextClickBase,
@@ -1523,6 +1524,7 @@ export default function ThreeWheel_WinsOnly({
                 theme={THEME}
                 initiativeOverride={initiativeOverride}
                 startPointerDrag={startPointerDrag}
+                startTouchDrag={startTouchDrag}
                 wheelHudColor={wheelHUD[i]}
                 pendingSpell={pendingSpell}
                 onSpellTargetSelect={handleSpellTargetSelect}
@@ -1549,6 +1551,7 @@ export default function ThreeWheel_WinsOnly({
         assignToWheelLocal={assignToWheelLocal}
         setDragCardId={setDragCardId}
         startPointerDrag={startPointerDrag}
+        startTouchDrag={startTouchDrag}
         isPtrDragging={isPtrDragging}
         ptrDragCard={ptrDragCard}
         ptrPos={ptrPos}

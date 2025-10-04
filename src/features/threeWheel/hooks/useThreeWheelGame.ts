@@ -6,7 +6,7 @@ import {
   useState,
   startTransition,
 } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from "react";
 import { Realtime } from "ably";
 
 import {
@@ -156,6 +156,7 @@ export type ThreeWheelGameActions = {
   setDragCardId: React.Dispatch<React.SetStateAction<string | null>>;
   setDragOverWheel: (index: number | null) => void;
   startPointerDrag: (card: Card, event: ReactPointerEvent) => void;
+  startTouchDrag: (card: Card, event: ReactTouchEvent<HTMLButtonElement>) => void;
   assignToWheelLocal: (index: number, card: Card) => void;
   handleRevealClick: () => void;
   handleNextClick: () => void;
@@ -473,6 +474,14 @@ export function useThreeWheelGame({
   const [isPtrDragging, setIsPtrDragging] = useState(false);
   const [ptrDragCard, setPtrDragCard] = useState<Card | null>(null);
   const ptrPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const supportsPointerEventsRef = useRef<boolean>(
+    typeof window === "undefined" ? true : "PointerEvent" in window,
+  );
+
+  useEffect(() => {
+    supportsPointerEventsRef.current = typeof window === "undefined" ? true : "PointerEvent" in window;
+  }, []);
 
   const addTouchDragCss = useCallback((on: boolean) => {
     const root = document.documentElement;
@@ -1659,6 +1668,76 @@ export function useThreeWheelGame({
     [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, setDragOverWheel]
   );
 
+  const startTouchDrag = useCallback(
+    (card: Card, e: ReactTouchEvent<HTMLButtonElement>) => {
+      if (supportsPointerEventsRef.current) return;
+      if (phaseRef.current !== "choose") return;
+      if (e.touches.length === 0) return;
+
+      const touch = e.touches[0];
+      const identifier = touch.identifier;
+
+      const updatePosition = (clientX: number, clientY: number) => {
+        ptrPos.current = { x: clientX, y: clientY };
+        const t = getDropTargetAt(clientX, clientY);
+        setDragOverWheel(t && (t.kind === "wheel" || t.kind === "slot") ? t.idx : null);
+      };
+
+      const getTouchById = (list: TouchList) => {
+        for (let i = 0; i < list.length; i++) {
+          const item = list.item(i);
+          if (item && item.identifier === identifier) return item;
+        }
+        return null;
+      };
+
+      e.stopPropagation();
+      e.preventDefault();
+
+      setSelectedCardId(card.id);
+      setDragCardId(card.id);
+      setPtrDragCard(card);
+      setIsPtrDragging(true);
+      addTouchDragCss(true);
+      updatePosition(touch.clientX, touch.clientY);
+
+      const onMove = (ev: TouchEvent) => {
+        const next = getTouchById(ev.touches);
+        if (!next) return;
+        updatePosition(next.clientX, next.clientY);
+        ev.preventDefault();
+      };
+
+      const onEnd = (ev: TouchEvent) => {
+        const ended = getTouchById(ev.changedTouches);
+        if (!ended) return;
+        const t = getDropTargetAt(ended.clientX, ended.clientY);
+        if (t && active[t.idx]) {
+          assignToWheelLocal(t.idx, card);
+        }
+        cleanup();
+      };
+
+      const onCancel = () => cleanup();
+
+      function cleanup() {
+        window.removeEventListener("touchmove", onMove, { capture: true } as any);
+        window.removeEventListener("touchend", onEnd, { capture: true } as any);
+        window.removeEventListener("touchcancel", onCancel, { capture: true } as any);
+        setIsPtrDragging(false);
+        setPtrDragCard(null);
+        setDragOverWheel(null);
+        setDragCardId(null);
+        addTouchDragCss(false);
+      }
+
+      window.addEventListener("touchmove", onMove, { passive: false, capture: true });
+      window.addEventListener("touchend", onEnd, { passive: false, capture: true });
+      window.addEventListener("touchcancel", onCancel, { passive: false, capture: true });
+    },
+    [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, setDragOverWheel, supportsPointerEventsRef]
+  );
+
   const state: ThreeWheelGameState = {
     player,
     enemy,
@@ -1721,6 +1800,7 @@ export function useThreeWheelGame({
     setDragCardId,
     setDragOverWheel,
     startPointerDrag,
+    startTouchDrag,
     assignToWheelLocal,
     handleRevealClick,
     handleNextClick,
