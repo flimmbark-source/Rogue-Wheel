@@ -37,6 +37,7 @@ export type SpellEffectPayload = {
   mirrorCopyEffects?: Array<{ targetCardId: string; mode?: string }>;
   wheelTokenAdjustments?: Array<{ wheelIndex: number; amount: number }>;
   reserveDrains?: Array<{ side: LegacySide; amount: number }>;
+  drawCards?: Array<{ side: LegacySide; count: number }>;
   cardAdjustments?: CardStatAdjustment[];
   handAdjustments?: Array<{ side: LegacySide; cardId: string; numberDelta?: number }>;
   handDiscards?: Array<{ side: LegacySide; cardId: string }>;
@@ -50,7 +51,7 @@ export type SpellEffectPayload = {
 
 export type RuntimeSpellEffectSummary = Pick<
   SpellEffectPayload,
-  "cardAdjustments" | "chilledCards" | "delayedEffects" | "initiative"
+  "cardAdjustments" | "chilledCards" | "delayedEffects" | "drawCards" | "initiative"
 >;
 
 type TargetLike = {
@@ -64,6 +65,7 @@ type RuntimeStateLike = {
   chilledCards?: Record<string, unknown> | null;
   delayedEffects?: unknown;
   timeMomentum?: unknown;
+  drawCards?: unknown;
   [key: string]: unknown;
 };
 
@@ -253,6 +255,18 @@ export function collectRuntimeSpellEffects(
     if (delayed.length > 0) {
       summary.delayedEffects = delayed;
     }
+  }
+
+  const drawCardsRaw = runtimeState.drawCards;
+  const drawCount =
+    typeof drawCardsRaw === "number"
+      ? drawCardsRaw
+      : typeof drawCardsRaw === "string"
+      ? Number.parseInt(drawCardsRaw, 10)
+      : 0;
+  if (Number.isFinite(drawCount) && drawCount > 0) {
+    const normalized = Math.max(1, Math.floor(drawCount));
+    summary.drawCards = [{ side: caster, count: normalized }];
   }
 
   const momentum = runtimeState.timeMomentum;
