@@ -214,9 +214,12 @@ export function useThreeWheelGame({
     enemy: players.right.color ?? "#d946ef",
   } as const;
 
+  const playerName = players.left.name || "Wanderer";
+  const enemyName = players.right.name || "Shade Bandit";
+
   const namesByLegacy: Record<LegacySide, string> = {
-    player: players.left.name,
-    enemy: players.right.name,
+    player: playerName,
+    enemy: enemyName,
   };
 
   const winGoal =
@@ -240,16 +243,24 @@ export function useThreeWheelGame({
   const ablyRef = useRef<AblyRealtime | null>(null);
   const chanRef = useRef<AblyChannel | null>(null);
 
-  const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
+  const [player, setPlayer] = useState<Fighter>(() => makeFighter(playerName));
   const playerRef = useRef(player);
   useEffect(() => {
     playerRef.current = player;
   }, [player]);
-  const [enemy, setEnemy] = useState<Fighter>(() => makeFighter("Shade Bandit"));
+  const [enemy, setEnemy] = useState<Fighter>(() => makeFighter(enemyName));
   const enemyRef = useRef(enemy);
   useEffect(() => {
     enemyRef.current = enemy;
   }, [enemy]);
+
+  useEffect(() => {
+    setPlayer((prev) => (prev.name === playerName ? prev : { ...prev, name: playerName }));
+  }, [playerName]);
+
+  useEffect(() => {
+    setEnemy((prev) => (prev.name === enemyName ? prev : { ...prev, name: enemyName }));
+  }, [enemyName]);
   const [initiative, setInitiative] = useState<LegacySide>(() =>
     hostId ? hostLegacySide : localLegacySide
   );
@@ -634,7 +645,7 @@ export function useThreeWheelGame({
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [reserveSums, setReserveSums] = useState<null | { player: number; enemy: number }>(null);
 
-  const START_LOG = "A Shade Bandit eyes your purse...";
+  const START_LOG = `A ${enemyName} eyes your purse...`;
   const [log, setLog] = useState<GameLogEntry[]>(() => [createLogEntry(START_LOG)]);
 
   const appendLog = useCallback((message: string, options?: { type?: GameLogEntryType }) => {
@@ -1492,8 +1503,8 @@ export function useThreeWheelGame({
     setFreezeLayout(false);
     setLockedWheelSize(null);
 
-    setPlayer(() => makeFighter("Wanderer"));
-    setEnemy(() => makeFighter("Shade Bandit"));
+    setPlayer(() => makeFighter(playerName));
+    setEnemy(() => makeFighter(enemyName));
 
     setInitiative(hostId ? hostLegacySide : localLegacySide);
 
@@ -1530,8 +1541,10 @@ export function useThreeWheelGame({
     clearResolveVotes,
     generateWheelSet,
     hostId,
+    enemyName,
     hostLegacySide,
     localLegacySide,
+    playerName,
     seed,
     setAssign,
     setDragCardId,
