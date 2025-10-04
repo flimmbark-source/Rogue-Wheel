@@ -1085,7 +1085,7 @@ export default function ThreeWheel_WinsOnly({
                     onClick={handleOptionalStageSkip}
                     className="rounded border border-slate-600 px-2.5 py-1 text-[11px] text-slate-200 transition hover:border-slate-400 hover:text-white"
                   >
-                    Skip optional target
+                    Skip
                   </button>
                 ) : null}
               </div>
