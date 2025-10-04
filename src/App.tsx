@@ -1127,13 +1127,17 @@ export default function ThreeWheel_WinsOnly({
                         <span className="font-semibold">Grimoire - Symbols &amp; Mana</span>
                       </div>
                       <div>
-                        Each round your hand grants <span className="font-semibold">Arcana symbols</span> based on the loadout
-                        set on your profile. Spells appear in the Grimoire when your hand shows at least two of their required
-                        symbols (single-symbol spells only need that matching symbol).
+                        Visit your profile to assign up to ten <span className="font-semibold">Arcana symbols</span> (🔥, 🗡️, 👁️,
+                        🌙, 🐍). Those symbols seed your deck and determine which spells your archetype can learn.
                       </div>
                       <div>
-                        Spend <span className="font-semibold">Mana</span> to cast those spells during the phases shown in the
-                        Grimoire. Mana is earned after Resolve equal to half of your remaining reserve (rounded up).
+                        Each round your hand shows the symbols you drew. Multi-symbol spells appear when at least two of their
+                        listed icons are in hand; single-symbol spells need only one matching card.
+                      </div>
+                      <div>
+                        Tap the <span className="font-semibold">🔮 Mana</span> counter in the HUD to open the Grimoire. Cast
+                        spells during their listed phases and pay their Mana costs; after Resolve you earn Mana equal to half of
+                        your remaining reserve (rounded up).
                       </div>
                       <div>
                         Some spells ask you to pick a <span className="font-semibold">card</span> or{" "}
