@@ -275,7 +275,7 @@ export default function ThreeWheel_WinsOnly({
     canReveal,
   } = derived;
 
-  const { wheelRefs } = refs;
+  const { wheelRefs, ptrPos } = refs;
 
   const {
     setHandClearance,

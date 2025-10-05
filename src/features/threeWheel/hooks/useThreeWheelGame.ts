@@ -147,6 +147,7 @@ export type ThreeWheelGameDerived = {
 
 export type ThreeWheelGameRefs = {
   wheelRefs: Array<React.MutableRefObject<WheelHandle | null>>;
+  ptrPos: React.MutableRefObject<{ x: number; y: number }>;
 };
 
 export type ThreeWheelGameActions = {
@@ -1721,6 +1722,7 @@ export function useThreeWheelGame({
 
   const refs: ThreeWheelGameRefs = {
     wheelRefs,
+    ptrPos,
   };
 
   const actions: ThreeWheelGameActions = {
