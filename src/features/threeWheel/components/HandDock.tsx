@@ -30,10 +30,8 @@ interface HandDockProps {
   assignToWheelLocal: (laneIndex: number, card: Card) => void;
   setDragCardId: (value: string | null) => void;
   startPointerDrag: (card: Card, e: React.PointerEvent<HTMLButtonElement>) => void;
-  startTouchDrag: (card: Card, e: React.TouchEvent<HTMLButtonElement>) => void;
   isPtrDragging: boolean;
   ptrDragCard: Card | null;
-  ptrDragType: "pointer" | "touch" | null;
   ptrPos: React.MutableRefObject<{ x: number; y: number }>;
   onMeasure?: (px: number) => void;
   pendingSpell: {
@@ -64,10 +62,8 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     assignToWheelLocal,
     setDragCardId,
     startPointerDrag,
-    startTouchDrag,
     isPtrDragging,
     ptrDragCard,
-    ptrDragType,
     ptrPos,
     onMeasure,
     pendingSpell,
@@ -76,7 +72,6 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
   }, forwardedRef) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
     const ghostRef = useRef<HTMLDivElement | null>(null);
-    const ghostOffsetRef = useRef<{ x: number; y: number }>({ x: 48, y: 64 });
     const handleDockRef = useCallback(
       (node: HTMLDivElement | null) => {
         dockRef.current = node;
@@ -127,8 +122,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
         if (x !== prevX || y !== prevY) {
           prevX = x;
           prevY = y;
-          const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
-          el.style.transform = `translate(${x - offsetX}px, ${y - offsetY}px)`;
+          el.style.transform = `translate(${x - 48}px, ${y - 64}px)`;
         }
         rafId = window.requestAnimationFrame(syncPosition);
       };
@@ -140,40 +134,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
           window.cancelAnimationFrame(rafId);
         }
       };
-    }, [isPtrDragging, ptrDragType, ptrPos]);
-
-    useEffect(() => {
-      if (ptrDragType === "touch") {
-        ghostOffsetRef.current = { x: 0, y: 0 };
-      } else if (ptrDragType === "pointer") {
-        ghostOffsetRef.current = { x: 48, y: 64 };
-      }
-
-      if (!isPtrDragging) return;
-      const el = ghostRef.current;
-      if (!el) return;
-      const { x, y } = ptrPos.current;
-      const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
-      el.style.transform = `translate(${x - offsetX}px, ${y - offsetY}px)`;
-    }, [isPtrDragging, ptrDragType, ptrPos]);
-
-    useEffect(() => {
-      if (!isPtrDragging) return;
-      if (ptrDragType !== "touch") return;
-      const el = ghostRef.current;
-      if (!el) return;
-
-      const cardEl = el.querySelector("button");
-      const rect = cardEl?.getBoundingClientRect();
-      const defaultHalfWidth = 0;
-      const defaultHalfHeight = 0;
-      const halfWidth = rect?.width ? rect.width / 2 : defaultHalfWidth;
-      const halfHeight = rect?.height ? rect.height / 2 : defaultHalfHeight;
-
-      ghostOffsetRef.current = { x: halfWidth, y: halfHeight };
-      const { x, y } = ptrPos.current;
-      el.style.transform = `translate(${x - halfWidth}px, ${y - halfHeight}px)`;
-    }, [isPtrDragging, ptrDragType, ptrPos]);
+    }, [isPtrDragging, ptrPos]);
 
     const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
@@ -291,10 +252,6 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                       if (awaitingManualTarget) return;
                       startPointerDrag(card, e);
                     }}
-                    onTouchStart={(e) => {
-                      if (awaitingManualTarget) return;
-                      startTouchDrag(card, e);
-                    }}
                     aria-pressed={isSelected}
                     aria-label={`Select ${card.name}`}
                   />
@@ -310,12 +267,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
               position: "fixed",
               left: 0,
               top: 0,
-              transform: (() => {
-                const baseX = ptrPos.current.x;
-                const baseY = ptrPos.current.y;
-                const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
-                return `translate(${baseX - offsetX}px, ${baseY - offsetY}px)`;
-              })(),
+              transform: `translate(${ptrPos.current.x - 48}px, ${ptrPos.current.y - 64}px)`,
               pointerEvents: "none",
               zIndex: 9999,
             }}
