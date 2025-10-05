@@ -9,26 +9,26 @@
  */
 
 :root {
-  --app-min-height: 100vh;
+  --app-min-height: 75vh;
 }
 
 @supports (height: 100svh) {
   :root {
-    --app-min-height: 100svh;
+    --app-min-height: 75svh;
   }
 }
 
 @supports (height: 100dvh) {
   :root {
-    --app-min-height: 100dvh;
+    --app-min-height: 75dvh;
   }
 }
 
 html,
 body,
 #root {
-  min-height: 100vh;
-  min-height: var(--app-min-height, 100vh);
+  min-height: 75vh;
+  min-height: var(--app-min-height, 75vh);
   width: 100%;
 }
 
