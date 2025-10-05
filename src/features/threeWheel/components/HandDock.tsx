@@ -29,6 +29,12 @@ interface HandDockProps {
   assign: { player: (Card | null)[]; enemy: (Card | null)[] };
   assignToWheelLocal: (laneIndex: number, card: Card) => void;
   setDragCardId: (value: string | null) => void;
+  startPointerDrag: (card: Card, e: React.PointerEvent<HTMLButtonElement>) => void;
+  startTouchDrag: (card: Card, e: React.TouchEvent<HTMLButtonElement>) => void;
+  isPtrDragging: boolean;
+  ptrDragCard: Card | null;
+  ptrDragType: "pointer" | "touch" | null;
+  ptrPos: React.MutableRefObject<{ x: number; y: number }>;
   onMeasure?: (px: number) => void;
   pendingSpell: {
     side: LegacySide;
@@ -57,12 +63,20 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     assign,
     assignToWheelLocal,
     setDragCardId,
+    startPointerDrag,
+    startTouchDrag,
+    isPtrDragging,
+    ptrDragCard,
+    ptrDragType,
+    ptrPos,
     onMeasure,
     pendingSpell,
     isAwaitingSpellTarget,
     onSpellTargetSelect,
   }, forwardedRef) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
+    const ghostRef = useRef<HTMLDivElement | null>(null);
+    const ghostOffsetRef = useRef<{ x: number; y: number }>({ x: 48, y: 64 });
     const handleDockRef = useCallback(
       (node: HTMLDivElement | null) => {
         dockRef.current = node;
@@ -98,6 +112,68 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
         window.removeEventListener("orientationchange", compute);
       };
     }, [onMeasure]);
+
+    useEffect(() => {
+      if (!isPtrDragging) return;
+      const el = ghostRef.current;
+      if (!el) return;
+
+      let rafId: number | null = null;
+      let prevX = NaN;
+      let prevY = NaN;
+
+      const syncPosition = () => {
+        const { x, y } = ptrPos.current;
+        if (x !== prevX || y !== prevY) {
+          prevX = x;
+          prevY = y;
+          const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
+          el.style.transform = `translate(${x - offsetX}px, ${y - offsetY}px)`;
+        }
+        rafId = window.requestAnimationFrame(syncPosition);
+      };
+
+      syncPosition();
+
+      return () => {
+        if (rafId !== null) {
+          window.cancelAnimationFrame(rafId);
+        }
+      };
+    }, [isPtrDragging, ptrDragType, ptrPos]);
+
+    useEffect(() => {
+      if (ptrDragType === "touch") {
+        ghostOffsetRef.current = { x: 0, y: 0 };
+      } else if (ptrDragType === "pointer") {
+        ghostOffsetRef.current = { x: 48, y: 64 };
+      }
+
+      if (!isPtrDragging) return;
+      const el = ghostRef.current;
+      if (!el) return;
+      const { x, y } = ptrPos.current;
+      const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
+      el.style.transform = `translate(${x - offsetX}px, ${y - offsetY}px)`;
+    }, [isPtrDragging, ptrDragType, ptrPos]);
+
+    useEffect(() => {
+      if (!isPtrDragging) return;
+      if (ptrDragType !== "touch") return;
+      const el = ghostRef.current;
+      if (!el) return;
+
+      const cardEl = el.querySelector("button");
+      const rect = cardEl?.getBoundingClientRect();
+      const defaultHalfWidth = 0;
+      const defaultHalfHeight = 0;
+      const halfWidth = rect?.width ? rect.width / 2 : defaultHalfWidth;
+      const halfHeight = rect?.height ? rect.height / 2 : defaultHalfHeight;
+
+      ghostOffsetRef.current = { x: halfWidth, y: halfHeight };
+      const { x, y } = ptrPos.current;
+      el.style.transform = `translate(${x - halfWidth}px, ${y - halfHeight}px)`;
+    }, [isPtrDragging, ptrDragType, ptrPos]);
 
     const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
@@ -211,6 +287,14 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                       e.dataTransfer.effectAllowed = "move";
                     }}
                     onDragEnd={() => setDragCardId(null)}
+                    onPointerDown={(e) => {
+                      if (awaitingManualTarget) return;
+                      startPointerDrag(card, e);
+                    }}
+                    onTouchStart={(e) => {
+                      if (awaitingManualTarget) return;
+                      startTouchDrag(card, e);
+                    }}
                     aria-pressed={isSelected}
                     aria-label={`Select ${card.name}`}
                   />
@@ -218,7 +302,30 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
               </div>
             );
           })}
-        </div>
+      </div>
+        {isPtrDragging && ptrDragCard && (
+          <div
+            ref={ghostRef}
+            style={{
+              position: "fixed",
+              left: 0,
+              top: 0,
+              transform: (() => {
+                const baseX = ptrPos.current.x;
+                const baseY = ptrPos.current.y;
+                const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
+                return `translate(${baseX - offsetX}px, ${baseY - offsetY}px)`;
+              })(),
+              pointerEvents: "none",
+              zIndex: 9999,
+            }}
+            aria-hidden
+          >
+            <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
+              <StSCard card={ptrDragCard} />
+            </div>
+          </div>
+        )}
       </div>
     );
   });
