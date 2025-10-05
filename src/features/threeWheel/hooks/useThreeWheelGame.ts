@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  startTransition,
-} from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { Realtime } from "ably";
 
 import {
@@ -122,8 +114,6 @@ export type ThreeWheelGameState = {
   dragOverWheel: number | null;
   selectedCardId: string | null;
   reserveSums: null | { player: number; enemy: number };
-  isPtrDragging: boolean;
-  ptrDragCard: Card | null;
   log: GameLogEntry[];
 };
 
@@ -155,7 +145,6 @@ export type ThreeWheelGameActions = {
   setSelectedCardId: React.Dispatch<React.SetStateAction<string | null>>;
   setDragCardId: React.Dispatch<React.SetStateAction<string | null>>;
   setDragOverWheel: (index: number | null) => void;
-  startPointerDrag: (card: Card, event: ReactPointerEvent) => void;
   assignToWheelLocal: (index: number, card: Card) => void;
   handleRevealClick: () => void;
   handleNextClick: () => void;
@@ -468,46 +457,6 @@ export function useThreeWheelGame({
     const DESKTOP_MAX = 220;
     const maxAllowed = isMobile ? MOBILE_MAX : DESKTOP_MAX;
     return Math.max(MIN_WHEEL, Math.min(maxAllowed, raw, MAX_WHEEL));
-  }, []);
-
-  const [isPtrDragging, setIsPtrDragging] = useState(false);
-  const [ptrDragCard, setPtrDragCard] = useState<Card | null>(null);
-  const ptrPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-
-  const supportsPointerEventsRef = useRef<boolean>(
-    typeof window === "undefined" ? true : "PointerEvent" in window,
-  );
-
-  useEffect(() => {
-    supportsPointerEventsRef.current = typeof window === "undefined" ? true : "PointerEvent" in window;
-  }, []);
-
-  const addTouchDragCss = useCallback((on: boolean) => {
-    const root = document.documentElement;
-    if (on) {
-      (root as any).__prevTouchAction = root.style.touchAction;
-      (root as any).__prevOverscroll = root.style.overscrollBehavior;
-      root.style.touchAction = "none";
-      root.style.overscrollBehavior = "contain";
-    } else {
-      root.style.touchAction = (root as any).__prevTouchAction ?? "";
-      root.style.overscrollBehavior = (root as any).__prevOverscroll ?? "";
-      delete (root as any).__prevTouchAction;
-      delete (root as any).__prevOverscroll;
-    }
-  }, []);
-
-  const getDropTargetAt = useCallback((x: number, y: number): { kind: "wheel" | "slot"; idx: number } | null => {
-    let el = document.elementFromPoint(x, y) as HTMLElement | null;
-    while (el) {
-      const d = (el as HTMLElement).dataset;
-      if (d.drop && d.idx) {
-        if (d.drop === "wheel") return { kind: "wheel", idx: Number(d.idx) };
-        if (d.drop === "slot") return { kind: "slot", idx: Number(d.idx) };
-      }
-      el = el.parentElement;
-    }
-    return null;
   }, []);
 
   const [wheelSize, setWheelSize] = useState<number>(() =>
@@ -1620,55 +1569,6 @@ export function useThreeWheelGame({
     onExit?.();
   }, [onExit]);
 
-  const startPointerDrag = useCallback(
-    (card: Card, e: ReactPointerEvent) => {
-      if (phaseRef.current !== "choose") return;
-      if (e.pointerType === "mouse") return;
-      if (e.pointerType === "touch") return;
-      e.preventDefault();
-      e.currentTarget.setPointerCapture?.(e.pointerId);
-      setSelectedCardId(card.id);
-      setDragCardId(card.id);
-      setPtrDragCard(card);
-      setIsPtrDragging(true);
-      addTouchDragCss(true);
-      ptrPos.current = { x: e.clientX, y: e.clientY };
-
-      const onMove = (ev: PointerEvent) => {
-        ptrPos.current = { x: ev.clientX, y: ev.clientY };
-        const t = getDropTargetAt(ev.clientX, ev.clientY);
-        setDragOverWheel(t && (t.kind === "wheel" || t.kind === "slot") ? t.idx : null);
-        ev.preventDefault?.();
-      };
-
-      const onUp = (ev: PointerEvent) => {
-        const t = getDropTargetAt(ev.clientX, ev.clientY);
-        if (t && active[t.idx]) {
-          assignToWheelLocal(t.idx, card);
-        }
-        cleanup();
-      };
-
-      const onCancel = () => cleanup();
-
-      function cleanup() {
-        window.removeEventListener("pointermove", onMove, { capture: true } as any);
-        window.removeEventListener("pointerup", onUp, { capture: true } as any);
-        window.removeEventListener("pointercancel", onCancel, { capture: true } as any);
-        setIsPtrDragging(false);
-        setPtrDragCard(null);
-        setDragOverWheel(null);
-        setDragCardId(null);
-        addTouchDragCss(false);
-      }
-
-      window.addEventListener("pointermove", onMove, { passive: false, capture: true });
-      window.addEventListener("pointerup", onUp, { passive: false, capture: true });
-      window.addEventListener("pointercancel", onCancel, { passive: false, capture: true });
-    },
-    [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, setDragOverWheel]
-  );
-
   const state: ThreeWheelGameState = {
     player,
     enemy,
@@ -1697,8 +1597,6 @@ export function useThreeWheelGame({
     dragOverWheel,
     selectedCardId,
     reserveSums,
-    isPtrDragging,
-    ptrDragCard,
     log,
   };
 
@@ -1730,7 +1628,6 @@ export function useThreeWheelGame({
     setSelectedCardId,
     setDragCardId,
     setDragOverWheel,
-    startPointerDrag,
     assignToWheelLocal,
     handleRevealClick,
     handleNextClick,
