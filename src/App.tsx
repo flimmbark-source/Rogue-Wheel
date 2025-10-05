@@ -276,7 +276,7 @@ export default function ThreeWheel_WinsOnly({
     canReveal,
   } = derived;
 
-  const { wheelRefs, ptrPos } = refs;
+  const { wheelRefs, ptrPos, ptrDragOffset } = refs;
 
   const {
     setHandClearance,
@@ -1579,6 +1579,7 @@ export default function ThreeWheel_WinsOnly({
         ptrDragCard={ptrDragCard}
         ptrDragType={ptrDragType}
         ptrPos={ptrPos}
+        ptrDragOffset={ptrDragOffset}
         onMeasure={setHandClearance}
         pendingSpell={pendingSpell}
         isAwaitingSpellTarget={isAwaitingSpellTarget}
