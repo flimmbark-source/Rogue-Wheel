@@ -1625,6 +1625,8 @@ export function useThreeWheelGame({
     (card: Card, e: ReactPointerEvent) => {
       if (phaseRef.current !== "choose") return;
       if (e.pointerType === "mouse") return;
+      if (e.pointerType === "touch") return;
+      e.preventDefault();
       e.currentTarget.setPointerCapture?.(e.pointerId);
       setSelectedCardId(card.id);
       setDragCardId(card.id);
@@ -1670,7 +1672,6 @@ export function useThreeWheelGame({
 
   const startTouchDrag = useCallback(
     (card: Card, e: ReactTouchEvent<HTMLButtonElement>) => {
-      if (supportsPointerEventsRef.current) return;
       if (phaseRef.current !== "choose") return;
       if (e.touches.length === 0) return;
 
@@ -1735,7 +1736,7 @@ export function useThreeWheelGame({
       window.addEventListener("touchend", onEnd, { passive: false, capture: true });
       window.addEventListener("touchcancel", onCancel, { passive: false, capture: true });
     },
-    [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, setDragOverWheel, supportsPointerEventsRef]
+    [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, setDragOverWheel]
   );
 
   const state: ThreeWheelGameState = {

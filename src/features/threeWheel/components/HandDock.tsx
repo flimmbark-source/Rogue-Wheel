@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { motion } from "framer-motion";
+import { createPortal } from "react-dom";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter } from "../../../game/types";
 import type { LegacySide } from "./WheelPanel";
@@ -73,6 +74,9 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     onSpellTargetSelect,
   }, forwardedRef) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
+    const ghostRef = useRef<HTMLDivElement | null>(null);
+    const ghostCardRef = useRef<HTMLDivElement | null>(null);
+    const ghostOffsetRef = useRef<{ x: number; y: number }>({ x: 48, y: 64 });
     const handleDockRef = useCallback(
       (node: HTMLDivElement | null) => {
         dockRef.current = node;
@@ -84,179 +88,245 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
       },
       [forwardedRef],
     );
-  const [liftPx, setLiftPx] = useState<number>(18);
+    const [liftPx, setLiftPx] = useState<number>(18);
 
-  useEffect(() => {
-    const compute = () => {
-      const root = dockRef.current;
-      if (!root) return;
-      const sample = root.querySelector("[data-hand-card]") as HTMLElement | null;
-      if (!sample) return;
-      const h = sample.getBoundingClientRect().height || 96;
-      const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
-      setLiftPx(nextLift);
-      const clearance = Math.round(h + nextLift + 12);
-      onMeasure?.(clearance);
-    };
+    useEffect(() => {
+      const compute = () => {
+        const root = dockRef.current;
+        if (!root) return;
+        const sample = root.querySelector("[data-hand-card]") as HTMLElement | null;
+        if (!sample) return;
+        const h = sample.getBoundingClientRect().height || 96;
+        const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
+        setLiftPx(nextLift);
+        const clearance = Math.round(h + nextLift + 12);
+        onMeasure?.(clearance);
+      };
 
-    compute();
-    window.addEventListener("resize", compute);
-    window.addEventListener("orientationchange", compute);
+      compute();
+      window.addEventListener("resize", compute);
+      window.addEventListener("orientationchange", compute);
 
-    return () => {
-      window.removeEventListener("resize", compute);
-      window.removeEventListener("orientationchange", compute);
-    };
-  }, [onMeasure]);
+      return () => {
+        window.removeEventListener("resize", compute);
+        window.removeEventListener("orientationchange", compute);
+      };
+    }, [onMeasure]);
 
-  const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
+    useEffect(() => {
+      if (!isPtrDragging) return;
+      const el = ghostRef.current;
+      if (!el) return;
 
-  const activeStage = pendingSpell ? getSpellTargetStage(pendingSpell.spell.target, pendingSpell.currentStage) : null;
+      let rafId: number | null = null;
+      let prevX = NaN;
+      let prevY = NaN;
 
-  const activeStageSelection = pendingSpell?.targets?.[pendingSpell.currentStage];
+      const syncPosition = () => {
+        const { x, y } = ptrPos.current;
+        const offset = ghostOffsetRef.current;
+        const nextX = x - offset.x;
+        const nextY = y - offset.y;
 
-  const awaitingManualTarget = Boolean(
-    isAwaitingSpellTarget &&
-      pendingSpell &&
-      activeStage &&
-      spellTargetStageRequiresManualSelection(activeStage, activeStageSelection),
-  );
+        if (nextX !== prevX || nextY !== prevY) {
+          prevX = nextX;
+          prevY = nextY;
+          el.style.transform = `translate3d(${nextX}px, ${nextY}px, 0)`;
+        }
+        rafId = window.requestAnimationFrame(syncPosition);
+      };
 
-  const awaitingCardTarget = awaitingManualTarget && activeStage?.type === "card";
+      syncPosition();
 
-  const overlayStyle = useMemo<React.CSSProperties>(() => {
-    const bottom = "calc(env(safe-area-inset-bottom, 0px) + -30px)";
-    const measuredWidth = wheelPanelBounds?.width ?? wheelPanelWidth;
+      return () => {
+        if (rafId !== null) {
+          window.cancelAnimationFrame(rafId);
+        }
+      };
+    }, [isPtrDragging, ptrPos]);
 
-    const style: React.CSSProperties = {
-      bottom,
-      left: "50%",
-      transform: "translateX(-50%)",
-    };
+    useEffect(() => {
+      if (!isPtrDragging) return;
+      const container = ghostRef.current;
+      const cardEl = ghostCardRef.current;
+      if (!container || !cardEl) return;
 
-    if (typeof measuredWidth === "number") {
-      style.width = measuredWidth;
-    }
+      const updateOffsets = () => {
+        const rect = cardEl.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        ghostOffsetRef.current = { x: rect.width / 2, y: rect.height / 2 };
+        container.style.transform = `translate3d(${ptrPos.current.x - ghostOffsetRef.current.x}px, ${ptrPos.current.y - ghostOffsetRef.current.y}px, 0)`;
+      };
 
-    if (wheelPanelBounds) {
-      const centerX = wheelPanelBounds.left + wheelPanelBounds.width / 2;
-      style.left = `${centerX}px`;
-    }
+      updateOffsets();
 
-    return style;
-  }, [wheelPanelBounds, wheelPanelWidth]);
+      if (typeof ResizeObserver === "undefined") {
+        return;
+      }
 
-  const stageLocation = activeStage?.type === "card" ? activeStage.location ?? "board" : null;
+      const observer = new ResizeObserver(() => updateOffsets());
+      observer.observe(cardEl);
 
-  return (
-    <div
-      ref={handleDockRef}
-      className="fixed bottom-0 z-40 pointer-events-none select-none"
-      style={overlayStyle}
-      data-awaiting-spell-target={awaitingCardTarget ? "true" : "false"}
-    >
+      return () => {
+        observer.disconnect();
+      };
+    }, [isPtrDragging, ptrDragCard, ptrPos]);
+
+    const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
+
+    const activeStage = pendingSpell ? getSpellTargetStage(pendingSpell.spell.target, pendingSpell.currentStage) : null;
+
+    const activeStageSelection = pendingSpell?.targets?.[pendingSpell.currentStage];
+
+    const awaitingManualTarget = Boolean(
+      isAwaitingSpellTarget &&
+        pendingSpell &&
+        activeStage &&
+        spellTargetStageRequiresManualSelection(activeStage, activeStageSelection),
+    );
+
+    const awaitingCardTarget = awaitingManualTarget && activeStage?.type === "card";
+
+    const overlayStyle = useMemo<React.CSSProperties>(() => {
+      const bottom = "calc(env(safe-area-inset-bottom, 0px) + -30px)";
+      const measuredWidth = wheelPanelBounds?.width ?? wheelPanelWidth;
+
+      const style: React.CSSProperties = {
+        bottom,
+        left: "50%",
+        transform: "translateX(-50%)",
+      };
+
+      if (typeof measuredWidth === "number") {
+        style.width = measuredWidth;
+      }
+
+      if (wheelPanelBounds) {
+        const centerX = wheelPanelBounds.left + wheelPanelBounds.width / 2;
+        style.left = `${centerX}px`;
+      }
+
+      return style;
+    }, [wheelPanelBounds, wheelPanelWidth]);
+
+    const stageLocation = activeStage?.type === "card" ? activeStage.location ?? "board" : null;
+
+    return (
       <div
-        className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5"
-        style={{
-          width: typeof wheelPanelWidth === "number" ? wheelPanelWidth : undefined,
-          maxWidth: "min(100vw, 1400px)",
-        }}
+        ref={handleDockRef}
+        className="fixed bottom-0 z-40 pointer-events-none select-none"
+        style={overlayStyle}
+        data-awaiting-spell-target={awaitingCardTarget ? "true" : "false"}
       >
-        {localFighter.hand.map((card, idx) => {
-          const isSelected = selectedCardId === card.id;
-          const cardSelectable = awaitingCardTarget && (stageLocation === "any" || stageLocation === "hand");
-          return (
-            <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
-              <motion.div
-                data-hand-card
-                initial={false}
-                animate={{
-                  y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx,
-                  opacity: 1,
-                  scale: isSelected ? 1.06 : 1,
-                }}
-                whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }}
-                transition={{ type: "spring", stiffness: 320, damping: 22 }}
-                className={`drop-shadow-xl ${isSelected ? "ring-2 ring-amber-300" : ""}`}
-              >
-                <StSCard
-                  data-hand-card
-                  className="pointer-events-auto"
-                  card={card}
-                  selected={isSelected}
-                  disabled={awaitingManualTarget && !cardSelectable}
-                  onPick={() => {
-                    if (cardSelectable) {
-                      const side = localLegacySide;
-                      onSpellTargetSelect?.({ side, lane: null, card, location: "hand" });
-                      return;
-                    }
-                    if (awaitingManualTarget) return;
-                    if (!selectedCardId) {
-                      setSelectedCardId(card.id);
-                      return;
-                    }
-
-                    if (selectedCardId === card.id) {
-                      setSelectedCardId(null);
-                      return;
-                    }
-
-                    const lane = localLegacySide === "player" ? assign.player : assign.enemy;
-                    const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
-                    if (slotIdx !== -1) {
-                      assignToWheelLocal(slotIdx, card);
-                      return;
-                    }
-
-                    setSelectedCardId(card.id);
-                  }}
-                  draggable={!awaitingManualTarget}
-                  onDragStart={(e) => {
-                    if (awaitingManualTarget) return;
-                    setDragCardId(card.id);
-                    try {
-                      e.dataTransfer.setData("text/plain", card.id);
-                    } catch {}
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragEnd={() => setDragCardId(null)}
-                  onPointerDown={(e) => {
-                    if (awaitingManualTarget) return;
-                    startPointerDrag(card, e);
-                  }}
-                  onTouchStart={(e) => {
-                    if (awaitingManualTarget) return;
-                    startTouchDrag(card, e);
-                  }}
-                  aria-pressed={isSelected}
-                  aria-label={`Select ${card.name}`}
-                />
-              </motion.div>
-            </div>
-          );
-        })}
-      </div>
-      {isPtrDragging && ptrDragCard && (
         <div
+          className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5"
           style={{
-            position: "fixed",
-            left: 0,
-            top: 0,
-            transform: `translate(${ptrPos.current.x - 48}px, ${ptrPos.current.y - 64}px)`,
-            pointerEvents: "none",
-            zIndex: 9999,
+            width: typeof wheelPanelWidth === "number" ? wheelPanelWidth : undefined,
+            maxWidth: "min(100vw, 1400px)",
           }}
-          aria-hidden
         >
-          <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
-            <StSCard card={ptrDragCard} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-});
+          {localFighter.hand.map((card, idx) => {
+            const isSelected = selectedCardId === card.id;
+            const cardSelectable = awaitingCardTarget && (stageLocation === "any" || stageLocation === "hand");
+            return (
+              <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
+                <motion.div
+                  data-hand-card
+                  initial={false}
+                  animate={{
+                    y: isSelected ? -Math.max(8, liftPx - 10) : -liftPx,
+                    opacity: 1,
+                    scale: isSelected ? 1.06 : 1,
+                  }}
+                  whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }}
+                  transition={{ type: "spring", stiffness: 320, damping: 22 }}
+                  className={`drop-shadow-xl ${isSelected ? "ring-2 ring-amber-300" : ""}`}
+                >
+                  <StSCard
+                    data-hand-card
+                    className="pointer-events-auto"
+                    card={card}
+                    selected={isSelected}
+                    disabled={awaitingManualTarget && !cardSelectable}
+                    onPick={() => {
+                      if (cardSelectable) {
+                        const side = localLegacySide;
+                        onSpellTargetSelect?.({ side, lane: null, card, location: "hand" });
+                        return;
+                      }
+                      if (awaitingManualTarget) return;
+                      if (!selectedCardId) {
+                        setSelectedCardId(card.id);
+                        return;
+                      }
+
+                      if (selectedCardId === card.id) {
+                        setSelectedCardId(null);
+                        return;
+                      }
+
+                      const lane = localLegacySide === "player" ? assign.player : assign.enemy;
+                      const slotIdx = lane.findIndex((c) => c?.id === selectedCardId);
+                      if (slotIdx !== -1) {
+                        assignToWheelLocal(slotIdx, card);
+                        return;
+                      }
+
+                      setSelectedCardId(card.id);
+                    }}
+                    draggable={!awaitingManualTarget}
+                    onDragStart={(e) => {
+                      if (awaitingManualTarget) return;
+                      setDragCardId(card.id);
+                      try {
+                        e.dataTransfer.setData("text/plain", card.id);
+                      } catch {}
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragEnd={() => setDragCardId(null)}
+                    onPointerDown={(e) => {
+                      if (awaitingManualTarget) return;
+                      startPointerDrag(card, e);
+                    }}
+                    onTouchStart={(e) => {
+                      if (awaitingManualTarget) return;
+                      startTouchDrag(card, e);
+                    }}
+                    aria-pressed={isSelected}
+                    aria-label={`Select ${card.name}`}
+                  />
+                </motion.div>
+              </div>
+            );
+          })}
+      </div>
+        {isPtrDragging && ptrDragCard && typeof document !== "undefined"
+          ? createPortal(
+              <div
+                ref={ghostRef}
+                style={{
+                  position: "fixed",
+                  left: 0,
+                  top: 0,
+                  transform: `translate3d(${ptrPos.current.x - ghostOffsetRef.current.x}px, ${ptrPos.current.y - ghostOffsetRef.current.y}px, 0)`,
+                  pointerEvents: "none",
+                  zIndex: 9999,
+                }}
+                aria-hidden
+              >
+                <div
+                  ref={ghostCardRef}
+                  style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}
+                >
+                  <StSCard card={ptrDragCard} />
+                </div>
+              </div>,
+              document.body,
+            )
+          : null}
+      </div>
+    );
+  });
 
 HandDock.displayName = "HandDock";
 
