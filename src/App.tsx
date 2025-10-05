@@ -1514,7 +1514,7 @@ export default function ThreeWheel_WinsOnly({
 
       {/* Wheels center */}
       <div
-        className="relative z-0 flex h-full items-center justify-center -translate-y-4 sm:-translate-y-6 lg:-translate-y-8"
+        className="relative z-0 flex h-full items-center justify-center -translate-y-[24px] sm:-translate-y-6 lg:-translate-y-8"
         style={{ paddingBottom: handClearance }}
       >
         <div
