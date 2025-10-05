@@ -261,7 +261,7 @@ export const SPELL_DESCRIPTIONS = {
   suddenStrike: `Duel. If you win, gain Initiative\n–🗡️: Win on tie.`,
   offering: `Discard a card. Fortify by its value\n–🔥: Double if 🔥.`,
   crosscut: `Duel. Drain by difference\n–🗡️: If tied, gain Initiative.`,
-  phantom: `Swap a card with another in play\n+🌒: With a reserve.`,
+  phantom: `Swap a card with another in play\n-🌒: With a reserve.`,
 } as const satisfies Record<string, string>;
 
 // ---------- registry (IDs MUST match archetypes SpellId union: camelCase) ----------
