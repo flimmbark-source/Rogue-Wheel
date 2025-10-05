@@ -1062,8 +1062,11 @@ export default function ThreeWheel_WinsOnly({
 
   return (
     <div
-      className={`h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2 ${rootModeClassName}`}
-      style={{ gridTemplateRows: "auto auto 1fr auto" }}
+      className={`min-h-[80svh] w-full max-w-full overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2 ${rootModeClassName}`}
+      style={{
+        gridTemplateRows: "auto auto 1fr auto",
+        minHeight: "var(--app-min-height, 80svh)",
+      }}
       data-game-mode={effectiveGameMode}
       data-mana-enabled={grimoireAttrValue}
       data-spells-enabled={grimoireAttrValue}
