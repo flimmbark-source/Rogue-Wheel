@@ -6,7 +6,7 @@ import {
   useState,
   startTransition,
 } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from "react";
 import { Realtime } from "ably";
 
 import {
@@ -76,6 +76,24 @@ type AnteState = {
   odds: Record<LegacySide, number>;
 };
 
+export type GameLogEntryType = "general" | "spell";
+
+export type GameLogEntry = {
+  id: string;
+  message: string;
+  type: GameLogEntryType;
+};
+
+let logIdCounter = 0;
+const createLogEntry = (
+  message: string,
+  type: GameLogEntryType = "general",
+): GameLogEntry => ({
+  id: `log-${Date.now().toString(36)}-${(logIdCounter++).toString(36)}`,
+  message,
+  type,
+});
+
 export type ThreeWheelGameState = {
   player: Fighter;
   enemy: Fighter;
@@ -106,7 +124,8 @@ export type ThreeWheelGameState = {
   reserveSums: null | { player: number; enemy: number };
   isPtrDragging: boolean;
   ptrDragCard: Card | null;
-  log: string[];
+  ptrDragType: "pointer" | "touch" | null;
+  log: GameLogEntry[];
 };
 
 export type ThreeWheelGameDerived = {
@@ -138,6 +157,7 @@ export type ThreeWheelGameActions = {
   setDragCardId: React.Dispatch<React.SetStateAction<string | null>>;
   setDragOverWheel: (index: number | null) => void;
   startPointerDrag: (card: Card, event: ReactPointerEvent) => void;
+  startTouchDrag: (card: Card, event: ReactTouchEvent<HTMLButtonElement>) => void;
   assignToWheelLocal: (index: number, card: Card) => void;
   handleRevealClick: () => void;
   handleNextClick: () => void;
@@ -196,9 +216,12 @@ export function useThreeWheelGame({
     enemy: players.right.color ?? "#d946ef",
   } as const;
 
+  const playerName = players.left.name || "Wanderer";
+  const enemyName = players.right.name || "Shade Bandit";
+
   const namesByLegacy: Record<LegacySide, string> = {
-    player: players.left.name,
-    enemy: players.right.name,
+    player: playerName,
+    enemy: enemyName,
   };
 
   const winGoal =
@@ -222,16 +245,24 @@ export function useThreeWheelGame({
   const ablyRef = useRef<AblyRealtime | null>(null);
   const chanRef = useRef<AblyChannel | null>(null);
 
-  const [player, setPlayer] = useState<Fighter>(() => makeFighter("Wanderer"));
+  const [player, setPlayer] = useState<Fighter>(() => makeFighter(playerName));
   const playerRef = useRef(player);
   useEffect(() => {
     playerRef.current = player;
   }, [player]);
-  const [enemy, setEnemy] = useState<Fighter>(() => makeFighter("Shade Bandit"));
+  const [enemy, setEnemy] = useState<Fighter>(() => makeFighter(enemyName));
   const enemyRef = useRef(enemy);
   useEffect(() => {
     enemyRef.current = enemy;
   }, [enemy]);
+
+  useEffect(() => {
+    setPlayer((prev) => (prev.name === playerName ? prev : { ...prev, name: playerName }));
+  }, [playerName]);
+
+  useEffect(() => {
+    setEnemy((prev) => (prev.name === enemyName ? prev : { ...prev, name: enemyName }));
+  }, [enemyName]);
   const [initiative, setInitiative] = useState<LegacySide>(() =>
     hostId ? hostLegacySide : localLegacySide
   );
@@ -443,7 +474,16 @@ export function useThreeWheelGame({
 
   const [isPtrDragging, setIsPtrDragging] = useState(false);
   const [ptrDragCard, setPtrDragCard] = useState<Card | null>(null);
+  const [ptrDragType, setPtrDragType] = useState<"pointer" | "touch" | null>(null);
   const ptrPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const supportsPointerEventsRef = useRef<boolean>(
+    typeof window === "undefined" ? true : "PointerEvent" in window,
+  );
+
+  useEffect(() => {
+    supportsPointerEventsRef.current = typeof window === "undefined" ? true : "PointerEvent" in window;
+  }, []);
 
   const addTouchDragCss = useCallback((on: boolean) => {
     const root = document.documentElement;
@@ -616,11 +656,12 @@ export function useThreeWheelGame({
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [reserveSums, setReserveSums] = useState<null | { player: number; enemy: number }>(null);
 
-  const START_LOG = "A Shade Bandit eyes your purse...";
-  const [log, setLog] = useState<string[]>([START_LOG]);
+  const START_LOG = `A ${enemyName} eyes your purse...`;
+  const [log, setLog] = useState<GameLogEntry[]>(() => [createLogEntry(START_LOG)]);
 
-  const appendLog = useCallback((s: string) => {
-    setLog((prev) => [s, ...prev].slice(0, 60));
+  const appendLog = useCallback((message: string, options?: { type?: GameLogEntryType }) => {
+    const entry = createLogEntry(message, options?.type ?? "general");
+    setLog((prev) => [entry, ...prev].slice(0, 60));
   }, []);
 
   const canReveal = useMemo(() => {
@@ -1473,8 +1514,8 @@ export function useThreeWheelGame({
     setFreezeLayout(false);
     setLockedWheelSize(null);
 
-    setPlayer(() => makeFighter("Wanderer"));
-    setEnemy(() => makeFighter("Shade Bandit"));
+    setPlayer(() => makeFighter(playerName));
+    setEnemy(() => makeFighter(enemyName));
 
     setInitiative(hostId ? hostLegacySide : localLegacySide);
 
@@ -1501,7 +1542,7 @@ export function useThreeWheelGame({
     setReserveSums(null);
     setWheelHUD([null, null, null]);
 
-    setLog([START_LOG]);
+    setLog([createLogEntry(START_LOG)]);
 
     wheelRngRef.current = createSeededRng(seed);
     setWheelSections(generateWheelSet());
@@ -1511,8 +1552,10 @@ export function useThreeWheelGame({
     clearResolveVotes,
     generateWheelSet,
     hostId,
+    enemyName,
     hostLegacySide,
     localLegacySide,
+    playerName,
     seed,
     setAssign,
     setDragCardId,
@@ -1584,11 +1627,14 @@ export function useThreeWheelGame({
     (card: Card, e: ReactPointerEvent) => {
       if (phaseRef.current !== "choose") return;
       if (e.pointerType === "mouse") return;
+      if (e.pointerType === "touch") return;
+      e.preventDefault();
       e.currentTarget.setPointerCapture?.(e.pointerId);
       setSelectedCardId(card.id);
       setDragCardId(card.id);
       setPtrDragCard(card);
       setIsPtrDragging(true);
+      setPtrDragType("pointer");
       addTouchDragCss(true);
       ptrPos.current = { x: e.clientX, y: e.clientY };
 
@@ -1617,12 +1663,84 @@ export function useThreeWheelGame({
         setPtrDragCard(null);
         setDragOverWheel(null);
         setDragCardId(null);
+        setPtrDragType(null);
         addTouchDragCss(false);
       }
 
       window.addEventListener("pointermove", onMove, { passive: false, capture: true });
       window.addEventListener("pointerup", onUp, { passive: false, capture: true });
       window.addEventListener("pointercancel", onCancel, { passive: false, capture: true });
+    },
+    [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, setDragOverWheel]
+  );
+
+  const startTouchDrag = useCallback(
+    (card: Card, e: ReactTouchEvent<HTMLButtonElement>) => {
+      if (phaseRef.current !== "choose") return;
+      if (e.touches.length === 0) return;
+
+      const touch = e.touches[0];
+      const identifier = touch.identifier;
+
+      const updatePosition = (clientX: number, clientY: number) => {
+        ptrPos.current = { x: clientX, y: clientY };
+        const t = getDropTargetAt(clientX, clientY);
+        setDragOverWheel(t && (t.kind === "wheel" || t.kind === "slot") ? t.idx : null);
+      };
+
+      const getTouchById = (list: TouchList) => {
+        for (let i = 0; i < list.length; i++) {
+          const item = list.item(i);
+          if (item && item.identifier === identifier) return item;
+        }
+        return null;
+      };
+
+      e.stopPropagation();
+      e.preventDefault();
+
+      setSelectedCardId(card.id);
+      setDragCardId(card.id);
+      setPtrDragCard(card);
+      setIsPtrDragging(true);
+      setPtrDragType("touch");
+      addTouchDragCss(true);
+      updatePosition(touch.clientX, touch.clientY);
+
+      const onMove = (ev: TouchEvent) => {
+        const next = getTouchById(ev.touches);
+        if (!next) return;
+        updatePosition(next.clientX, next.clientY);
+        ev.preventDefault();
+      };
+
+      const onEnd = (ev: TouchEvent) => {
+        const ended = getTouchById(ev.changedTouches);
+        if (!ended) return;
+        const t = getDropTargetAt(ended.clientX, ended.clientY);
+        if (t && active[t.idx]) {
+          assignToWheelLocal(t.idx, card);
+        }
+        cleanup();
+      };
+
+      const onCancel = () => cleanup();
+
+      function cleanup() {
+        window.removeEventListener("touchmove", onMove, { capture: true } as any);
+        window.removeEventListener("touchend", onEnd, { capture: true } as any);
+        window.removeEventListener("touchcancel", onCancel, { capture: true } as any);
+        setIsPtrDragging(false);
+        setPtrDragCard(null);
+        setDragOverWheel(null);
+        setDragCardId(null);
+        setPtrDragType(null);
+        addTouchDragCss(false);
+      }
+
+      window.addEventListener("touchmove", onMove, { passive: false, capture: true });
+      window.addEventListener("touchend", onEnd, { passive: false, capture: true });
+      window.addEventListener("touchcancel", onCancel, { passive: false, capture: true });
     },
     [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, setDragOverWheel]
   );
@@ -1657,6 +1775,7 @@ export function useThreeWheelGame({
     reserveSums,
     isPtrDragging,
     ptrDragCard,
+    ptrDragType,
     log,
   };
 
@@ -1689,6 +1808,7 @@ export function useThreeWheelGame({
     setDragCardId,
     setDragOverWheel,
     startPointerDrag,
+    startTouchDrag,
     assignToWheelLocal,
     handleRevealClick,
     handleNextClick,

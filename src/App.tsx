@@ -1,5 +1,5 @@
-import { motion } from "framer-motion";
-import { useThreeWheelGame } from "./features/threeWheel/hooks/useThreeWheelGame";
+import { AnimatePresence, motion } from "framer-motion";
+import { useThreeWheelGame, type GameLogEntry } from "./features/threeWheel/hooks/useThreeWheelGame";
 import React, {
   useMemo,
   useRef,
@@ -85,6 +85,7 @@ import VictoryOverlay from "./features/threeWheel/components/VictoryOverlay";
 import {
   getLearnedSpellsForFighter,
   getSpellDefinitions,
+  getSpellTargetStage,
   type SpellDefinition,
   type SpellId,
   type SpellRuntimeState,
@@ -254,7 +255,9 @@ export default function ThreeWheel_WinsOnly({
     reserveSums,
     isPtrDragging,
     ptrDragCard,
+    ptrDragType,
     lockedWheelSize,
+    log,
   } = state;
 
   const {
@@ -281,6 +284,7 @@ export default function ThreeWheel_WinsOnly({
     setDragCardId,
     setDragOverWheel,
     startPointerDrag,
+    startTouchDrag,
     assignToWheelLocal,
     handleRevealClick,
     handleNextClick: handleNextClickBase,
@@ -356,6 +360,53 @@ export default function ThreeWheel_WinsOnly({
   const [showGrimoire, setShowGrimoire] = useState(false);
   const closeGrimoire = useCallback(() => setShowGrimoire(false), [setShowGrimoire]);
 
+  const [spellBannerEntry, setSpellBannerEntry] = useState<GameLogEntry | null>(null);
+  const spellBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestSpellEntry = log.find((entry) => entry.type === "spell") ?? null;
+
+  useEffect(() => {
+    if (!latestSpellEntry) {
+      setSpellBannerEntry(null);
+      if (spellBannerTimeoutRef.current) {
+        clearTimeout(spellBannerTimeoutRef.current);
+        spellBannerTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    setSpellBannerEntry(latestSpellEntry);
+    if (spellBannerTimeoutRef.current) {
+      clearTimeout(spellBannerTimeoutRef.current);
+    }
+
+    const timeoutId = setTimeout(() => {
+      setSpellBannerEntry((current) =>
+        current && current.id === latestSpellEntry.id ? null : current,
+      );
+      if (spellBannerTimeoutRef.current === timeoutId) {
+        spellBannerTimeoutRef.current = null;
+      }
+    }, 2400);
+
+    spellBannerTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (spellBannerTimeoutRef.current === timeoutId) {
+        spellBannerTimeoutRef.current = null;
+      }
+    };
+  }, [latestSpellEntry]);
+
+  useEffect(() => {
+    return () => {
+      if (spellBannerTimeoutRef.current) {
+        clearTimeout(spellBannerTimeoutRef.current);
+        spellBannerTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const localHandCards = localLegacySide === "player" ? player.hand : enemy.hand;
   const localHandSymbols = useMemo(() => countSymbolsFromCards(localHandCards), [localHandCards]);
   const [spellLock, setSpellLock] = useState<{ round: number | null; ids: SpellId[] }>({
@@ -387,6 +438,7 @@ export default function ThreeWheel_WinsOnly({
     handlePendingSpellCancel,
     handleSpellTargetSelect,
     handleWheelTargetSelect,
+    handleOptionalStageSkip,
   } = useSpellCasting({
     caster: casterFighter,
     opponent: opponentFighter,
@@ -534,22 +586,27 @@ export default function ThreeWheel_WinsOnly({
 
     const visibleSpells = getSpellDefinitions(visibleSpellIds);
 
-    const candidates = visibleSpells
-      .map((spell) => {
-        const allowedPhases = spell.allowedPhases ?? ["choose"];
-        if (!allowedPhases.includes(phaseForLogic)) return null;
-        const cost = computeSpellCost(spell, {
-          caster,
-          opponent,
-          phase: phaseForLogic,
-          runtimeState: spellRuntimeStateRef.current,
-        });
-        if (cost > mana) return null;
-        return { spell, cost };
-      })
-      .filter((candidate): candidate is { spell: SpellDefinition; cost: number } => Boolean(candidate));
+    const affordableSpells: Array<{ spell: SpellDefinition; cost: number }> = [];
+    const deferredSpells: Array<{ spell: SpellDefinition; cost: number }> = [];
 
-    if (candidates.length === 0) return;
+    visibleSpells.forEach((spell) => {
+      const allowedPhases = spell.allowedPhases ?? ["choose"];
+      if (!allowedPhases.includes(phaseForLogic)) return;
+      const cost = computeSpellCost(spell, {
+        caster,
+        opponent,
+        phase: phaseForLogic,
+        runtimeState: spellRuntimeStateRef.current,
+      });
+      const entry = { spell, cost };
+      if (cost <= mana) {
+        affordableSpells.push(entry);
+      } else {
+        deferredSpells.push(entry);
+      }
+    });
+
+    if (affordableSpells.length === 0) return;
 
     const decision = chooseCpuSpellResponse({
       casterSide: cpuSide,
@@ -558,10 +615,27 @@ export default function ThreeWheel_WinsOnly({
       board: assign,
       reserveSums,
       initiative,
-      availableSpells: candidates,
+      availableSpells: affordableSpells,
     });
 
     if (!decision) return;
+
+    if (deferredSpells.length > 0) {
+      const minDeferredCost = deferredSpells.reduce(
+        (lowest, entry) => Math.min(lowest, entry.cost),
+        Number.POSITIVE_INFINITY,
+      );
+      if (Number.isFinite(minDeferredCost)) {
+        const cheapThreshold = Math.min(2, Math.max(0, minDeferredCost - 1));
+        if (
+          cheapThreshold > 0 &&
+          decision.cost <= cheapThreshold &&
+          mana - decision.cost < minDeferredCost
+        ) {
+          return;
+        }
+      }
+    }
 
     castCpuSpell(decision);
   }, [
@@ -582,7 +656,12 @@ export default function ThreeWheel_WinsOnly({
 
   useEffect(() => {
     if (cpuResponseTick === 0) return;
-    attemptCpuSpell();
+    const timeout = window.setTimeout(() => {
+      attemptCpuSpell();
+    }, 1000);
+    return () => {
+      window.clearTimeout(timeout);
+    };
   }, [attemptCpuSpell, cpuResponseTick]);
 
   useEffect(() => {
@@ -928,38 +1007,69 @@ export default function ThreeWheel_WinsOnly({
     .join(" ");
   const grimoireAttrValue = isGrimoireMode ? "true" : "false";
   const isAwaitingSpellTarget = Boolean(awaitingSpellTarget);
+  const activeTargetStage = pendingSpell
+    ? getSpellTargetStage(pendingSpell.spell.target, pendingSpell.currentStage)
+    : null;
+  const activeTargetStageLabel = pendingSpell
+    ? activeTargetStage?.label ??
+      (pendingSpell.spell.target.type === "sequence"
+        ? `Target #${pendingSpell.currentStage + 1}`
+        : null)
+    : null;
   const targetingPrompt = pendingSpell
     ? (() => {
-        const target = pendingSpell.spell.target;
-        if (target.type === "wheel") {
-          return "Tap a wheel to continue.";
+        if (!activeTargetStage) {
+          return "Select a valid target.";
         }
-        if (target.type === "card") {
-          if (target.ownership === "ally") {
-            return "Tap one of your cards to continue.";
+        switch (activeTargetStage.type) {
+          case "wheel":
+            return activeTargetStage.scope === "any"
+              ? "Select any wheel."
+              : "Select the current wheel.";
+          case "card": {
+            const ownerText =
+              activeTargetStage.ownership === "ally"
+                ? "an ally card"
+                : activeTargetStage.ownership === "enemy"
+                ? "an enemy card"
+                : "a card";
+            const locationText =
+              activeTargetStage.location === "board"
+                ? "on the board"
+                : activeTargetStage.location === "hand"
+                ? "in reserve"
+                : null;
+            const locationSuffix = locationText ? ` ${locationText}` : "";
+            return `Select ${ownerText}${locationSuffix}.`;
           }
-          if (target.ownership === "enemy") {
-            return "Tap an enemy card to continue.";
-          }
-          return "Tap a card that matches the spell's requirement to continue.";
+          case "self":
+            return "Confirm to target yourself.";
+          default:
+            return "Select a valid target.";
         }
-        return "Tap a valid target to continue.";
       })()
     : "";
+  const hudAccentColor = HUD_COLORS[localLegacySide];
 
   useEffect(() => {
-  if (isAwaitingSpellTarget) {
-    setShowGrimoire(false);
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
+    if (isAwaitingSpellTarget) {
+      setShowGrimoire(false);
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     }
-  }
-}, [isAwaitingSpellTarget]);
+  }, [isAwaitingSpellTarget]);
 
   return (
     <div
-      className={`h-screen w-screen overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2 ${rootModeClassName}`}
-      style={{ gridTemplateRows: "auto auto 1fr auto" }}
+      className={`mx-auto w-full max-w-[720px] overflow-x-hidden overflow-y-hidden text-slate-100 p-1 grid gap-2 ${rootModeClassName}`}
+      style={{
+        gridTemplateRows: "auto auto 1fr auto",
+        minHeight: "var(--app-min-height, min(100svh, 1600px))",
+        height: "var(--app-min-height, min(100svh, 1600px))",
+        maxHeight: "var(--app-min-height, min(100svh, 1600px))",
+        maxWidth: "var(--app-max-width, min(100vw, 720px))",
+      }}
       data-game-mode={effectiveGameMode}
       data-mana-enabled={grimoireAttrValue}
       data-spells-enabled={grimoireAttrValue}
@@ -967,20 +1077,55 @@ export default function ThreeWheel_WinsOnly({
       data-local-mana={localMana}
       data-awaiting-spell-target={isAwaitingSpellTarget ? "true" : "false"}
     >
+      <AnimatePresence>
+        {spellBannerEntry ? (
+          <motion.div
+            key={spellBannerEntry.id}
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.24, ease: "easeOut" }}
+            className="pointer-events-none fixed inset-x-0 top-8 z-[85] flex justify-center px-3"
+          >
+            <div
+              className="pointer-events-none w-full max-w-md rounded-2xl border px-5 py-3 text-center text-[14px] font-semibold tracking-wide text-slate-100 shadow-[0_18px_40px_rgba(8,15,32,0.55)]"
+              style={{
+                borderColor: hudAccentColor,
+                background: "rgba(15, 23, 42, 0.92)",
+                color: hudAccentColor,
+              }}
+            >
+              {spellBannerEntry.message}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       {isAwaitingSpellTarget && pendingSpell ? (
         <div className="pointer-events-none fixed inset-x-0 top-20 z-[90] flex justify-center px-3">
           <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-sky-500/60 bg-slate-900/95 px-3 py-2 shadow-2xl">
             <div className="flex items-center justify-between gap-3">
               <div className="text-[13px] font-semibold text-slate-100">
-                Select a target for {pendingSpell.spell.name}
+                Select {activeTargetStageLabel ?? "a target"} for {pendingSpell.spell.name}
               </div>
-              <button
-                type="button"
-                onClick={() => handlePendingSpellCancel(true)}
-                className="rounded border border-slate-600 px-2.5 py-1 text-[11px] text-slate-200 transition hover:border-slate-400 hover:text-white"
-              >
-                Cancel spell
-              </button>
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  type="button"
+                  onClick={() => handlePendingSpellCancel(true)}
+                  className="rounded border border-slate-600 px-2.5 py-1 text-[11px] text-slate-200 transition hover:border-slate-400 hover:text-white"
+                >
+                  Cancel spell
+                </button>
+                {activeTargetStage?.optional ? (
+                  <button
+                    type="button"
+                    onClick={handleOptionalStageSkip}
+                    className="rounded border border-slate-600 px-2.5 py-1 text-[11px] text-slate-200 transition hover:border-slate-400 hover:text-white"
+                  >
+                    Skip
+                  </button>
+                ) : null}
+              </div>
             </div>
             <div className="mt-2 text-[11px] leading-snug text-slate-300">
               {targetingPrompt}
@@ -1369,7 +1514,7 @@ export default function ThreeWheel_WinsOnly({
 
       {/* Wheels center */}
       <div
-        className="relative z-0 flex h-full items-center justify-center -translate-y-4 sm:-translate-y-6 lg:-translate-y-8"
+        className="relative z-0 flex h-full items-center justify-center -translate-y-[36px] sm:-translate-y-6 lg:-translate-y-8"
         style={{ paddingBottom: handClearance }}
       >
         <div
@@ -1408,6 +1553,7 @@ export default function ThreeWheel_WinsOnly({
                 theme={THEME}
                 initiativeOverride={initiativeOverride}
                 startPointerDrag={startPointerDrag}
+                startTouchDrag={startTouchDrag}
                 wheelHudColor={wheelHUD[i]}
                 pendingSpell={pendingSpell}
                 onSpellTargetSelect={handleSpellTargetSelect}
@@ -1434,8 +1580,10 @@ export default function ThreeWheel_WinsOnly({
         assignToWheelLocal={assignToWheelLocal}
         setDragCardId={setDragCardId}
         startPointerDrag={startPointerDrag}
+        startTouchDrag={startTouchDrag}
         isPtrDragging={isPtrDragging}
         ptrDragCard={ptrDragCard}
+        ptrDragType={ptrDragType}
         ptrPos={ptrPos}
         onMeasure={setHandClearance}
         pendingSpell={pendingSpell}
