@@ -269,6 +269,21 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
 
       const cardArcana = getCardArcana(selection.card);
 
+      if (
+        pendingSpell.spell.id === "phantom" &&
+        pendingSpell.currentStage === 1 &&
+        selection.location === "hand"
+      ) {
+        const firstTarget = pendingSpell.targets?.[0];
+        const firstArcana = firstTarget && firstTarget.type === "card" ? firstTarget.arcana : null;
+        if (firstArcana !== "moon") {
+          return;
+        }
+        if (cardArcana !== "moon") {
+          return;
+        }
+      }
+
       if (stage.adjacentToPrevious) {
         const previous = pendingSpell.targets[pendingSpell.targets.length - 1];
         if (
