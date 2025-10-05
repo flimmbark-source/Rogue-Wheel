@@ -33,6 +33,7 @@ interface HandDockProps {
   startTouchDrag: (card: Card, e: React.TouchEvent<HTMLButtonElement>) => void;
   isPtrDragging: boolean;
   ptrDragCard: Card | null;
+  ptrDragType: "pointer" | "touch" | null;
   ptrPos: React.MutableRefObject<{ x: number; y: number }>;
   onMeasure?: (px: number) => void;
   pendingSpell: {
@@ -66,6 +67,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     startTouchDrag,
     isPtrDragging,
     ptrDragCard,
+    ptrDragType,
     ptrPos,
     onMeasure,
     pendingSpell,
@@ -124,7 +126,9 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
         if (x !== prevX || y !== prevY) {
           prevX = x;
           prevY = y;
-          el.style.transform = `translate(${x - 48}px, ${y - 64}px)`;
+          const offsetX = ptrDragType === "touch" ? 72 : 48;
+          const offsetY = ptrDragType === "touch" ? 140 : 64;
+          el.style.transform = `translate(${x - offsetX}px, ${y - offsetY}px)`;
         }
         rafId = window.requestAnimationFrame(syncPosition);
       };
@@ -136,7 +140,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
           window.cancelAnimationFrame(rafId);
         }
       };
-    }, [isPtrDragging, ptrPos]);
+    }, [isPtrDragging, ptrDragType, ptrPos]);
 
     const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
@@ -273,7 +277,16 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
               position: "fixed",
               left: 0,
               top: 0,
-              transform: `translate(${ptrPos.current.x - 48}px, ${ptrPos.current.y - 64}px)`,
+              transform: (() => {
+                const baseX = ptrPos.current.x;
+                const baseY = ptrPos.current.y;
+                if (ptrDragType === "touch") {
+                  const touchOffsetX = 72;
+                  const touchOffsetY = 140;
+                  return `translate(${baseX - touchOffsetX}px, ${baseY - touchOffsetY}px)`;
+                }
+                return `translate(${baseX - 48}px, ${baseY - 64}px)`;
+              })(),
               pointerEvents: "none",
               zIndex: 9999,
             }}
