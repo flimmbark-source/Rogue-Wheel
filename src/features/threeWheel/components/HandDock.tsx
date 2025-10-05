@@ -163,9 +163,13 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
       const el = ghostRef.current;
       if (!el) return;
 
-      const rect = el.getBoundingClientRect();
-      const halfWidth = rect.width ? rect.width / 2 : 0;
-      const halfHeight = rect.height ? rect.height / 2 : 0;
+      const cardEl = el.querySelector("button");
+      const rect = cardEl?.getBoundingClientRect();
+      const defaultHalfWidth = 0;
+      const defaultHalfHeight = 0;
+      const halfWidth = rect?.width ? rect.width / 2 : defaultHalfWidth;
+      const halfHeight = rect?.height ? rect.height / 2 : defaultHalfHeight;
+
       ghostOffsetRef.current = { x: halfWidth, y: halfHeight };
       const { x, y } = ptrPos.current;
       el.style.transform = `translate(${x - halfWidth}px, ${y - halfHeight}px)`;
