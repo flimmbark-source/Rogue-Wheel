@@ -250,18 +250,18 @@ const pushReserveDrain = (
 
 
 export const SPELL_DESCRIPTIONS = {
-  fireball: `Damage 2\n+🔥: Boost by 🔥.`,
+  fireball: `Damage a card by 2\n+🔥: Boost by 🔥.`,
   iceShard: `Freeze a card\n+🗡️: Block initiative.`,
-  mirrorImage: `Copy opposing value\n+👁️: Increase by 👁️ value.`,
-  arcaneShift: `Advance 1\n+🌒: Boost by 🌒.`,
-  hex: `Drain 2\n+🐍: Boost by 🐍.`,
+  mirrorImage: `Copy an opposing card's value\n+👁️: Increase by 👁️ value.`,
+  arcaneShift: `Advance a wheel by 1\n+🌒: Boost by 🌒.`,
+  hex: `Drain opponent's reserve by 2\n+🐍: Boost by 🐍.`,
   timeTwist: `Discard a card to gain Initiative\n–👁️: Draw 1 if discarded card is 👁️.`,
-  kindle: `Fortify 2\n+🔥: Boost by 🔥.`,
+  kindle: `Fortify a card by 2\n+🔥: Boost by 🔥.`,
   leech: `Transfer value from adjacent to selected\n+🐍: Damage reserve by 🐍.`,
   suddenStrike: `Duel. If you win, gain Initiative\n–🗡️: Win on tie.`,
   offering: `Discard a card. Fortify by its value\n–🔥: Double if 🔥.`,
   crosscut: `Duel. Drain by difference\n–🗡️: If tied, gain Initiative.`,
-  phantom: `Swap\n+🌒: With a reserve.`,
+  phantom: `Swap a card with another in play\n+🌒: With a reserve.`,
 } as const satisfies Record<string, string>;
 
 // ---------- registry (IDs MUST match archetypes SpellId union: camelCase) ----------
