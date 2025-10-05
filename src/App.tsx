@@ -658,7 +658,7 @@ export default function ThreeWheel_WinsOnly({
     if (cpuResponseTick === 0) return;
     const timeout = window.setTimeout(() => {
       attemptCpuSpell();
-    }, 2000);
+    }, 1000);
     return () => {
       window.clearTimeout(timeout);
     };
