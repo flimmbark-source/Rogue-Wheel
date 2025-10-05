@@ -62,7 +62,6 @@ export interface WheelPanelProps {
   theme: Theme;
   initiativeOverride: LegacySide | null;
   startPointerDrag: (card: Card, e: React.PointerEvent<HTMLButtonElement>) => void;
-  startTouchDrag: (card: Card, e: React.TouchEvent<HTMLButtonElement>) => void;
   wheelHudColor: string | null;
   pendingSpell: {
     side: LegacySide;
@@ -124,7 +123,6 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   theme,
   initiativeOverride,
   startPointerDrag,
-  startTouchDrag,
   wheelHudColor,
   pendingSpell,
   onSpellTargetSelect,
@@ -298,12 +296,6 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       startPointerDrag(card, e);
     };
 
-    const handleTouchStart = (e: React.TouchEvent<HTMLButtonElement>) => {
-      if (!canInteractNormally) return;
-      e.stopPropagation();
-      startTouchDrag(card, e);
-    };
-
     return (
       <StSCard
         card={card}
@@ -315,7 +307,6 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onPointerDown={handlePointerDown}
-        onTouchStart={handleTouchStart}
         className={slotTargetable ? "ring-2 ring-sky-400" : undefined}
         spellTargetable={slotTargetable}
       />
