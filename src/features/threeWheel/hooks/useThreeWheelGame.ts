@@ -149,7 +149,6 @@ export type ThreeWheelGameDerived = {
 export type ThreeWheelGameRefs = {
   wheelRefs: Array<React.MutableRefObject<WheelHandle | null>>;
   ptrPos: React.MutableRefObject<{ x: number; y: number }>;
-  ptrDragOffset: React.MutableRefObject<{ x: number; y: number } | null>;
 };
 
 export type ThreeWheelGameActions = {
@@ -477,7 +476,6 @@ export function useThreeWheelGame({
   const [ptrDragCard, setPtrDragCard] = useState<Card | null>(null);
   const [ptrDragType, setPtrDragType] = useState<"pointer" | "touch" | null>(null);
   const ptrPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const ptrDragOffset = useRef<{ x: number; y: number } | null>(null);
 
   const supportsPointerEventsRef = useRef<boolean>(
     typeof window === "undefined" ? true : "PointerEvent" in window,
@@ -487,36 +485,18 @@ export function useThreeWheelGame({
     supportsPointerEventsRef.current = typeof window === "undefined" ? true : "PointerEvent" in window;
   }, []);
 
-  const dragTouchActionRef = useRef<{
-    el: HTMLElement | null;
-    prevTouchAction?: string;
-    prevOverscroll?: string;
-  } | null>(null);
-
-  const addTouchDragCss = useCallback((on: boolean, el?: HTMLElement | null) => {
+  const addTouchDragCss = useCallback((on: boolean) => {
+    const root = document.documentElement;
     if (on) {
-      if (!el) return;
-      const current = dragTouchActionRef.current;
-      if (current?.el !== el) {
-        if (current?.el) {
-          current.el.style.touchAction = current.prevTouchAction ?? "";
-          current.el.style.overscrollBehavior = current.prevOverscroll ?? "";
-        }
-        dragTouchActionRef.current = {
-          el,
-          prevTouchAction: el.style.touchAction,
-          prevOverscroll: el.style.overscrollBehavior,
-        };
-      }
-      el.style.touchAction = "none";
-      el.style.overscrollBehavior = "contain";
+      (root as any).__prevTouchAction = root.style.touchAction;
+      (root as any).__prevOverscroll = root.style.overscrollBehavior;
+      root.style.touchAction = "none";
+      root.style.overscrollBehavior = "contain";
     } else {
-      const current = dragTouchActionRef.current;
-      if (current?.el) {
-        current.el.style.touchAction = current.prevTouchAction ?? "";
-        current.el.style.overscrollBehavior = current.prevOverscroll ?? "";
-      }
-      dragTouchActionRef.current = null;
+      root.style.touchAction = (root as any).__prevTouchAction ?? "";
+      root.style.overscrollBehavior = (root as any).__prevOverscroll ?? "";
+      delete (root as any).__prevTouchAction;
+      delete (root as any).__prevOverscroll;
     }
   }, []);
 
@@ -1655,7 +1635,7 @@ export function useThreeWheelGame({
       setPtrDragCard(card);
       setIsPtrDragging(true);
       setPtrDragType("pointer");
-      addTouchDragCss(true, e.currentTarget);
+      addTouchDragCss(true);
       ptrPos.current = { x: e.clientX, y: e.clientY };
 
       const onMove = (ev: PointerEvent) => {
@@ -1684,7 +1664,6 @@ export function useThreeWheelGame({
         setDragOverWheel(null);
         setDragCardId(null);
         setPtrDragType(null);
-        ptrDragOffset.current = null;
         addTouchDragCss(false);
       }
 
@@ -1692,7 +1671,7 @@ export function useThreeWheelGame({
       window.addEventListener("pointerup", onUp, { passive: false, capture: true });
       window.addEventListener("pointercancel", onCancel, { passive: false, capture: true });
     },
-    [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, ptrDragOffset, setDragOverWheel]
+    [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, setDragOverWheel]
   );
 
   const startTouchDrag = useCallback(
@@ -1702,13 +1681,6 @@ export function useThreeWheelGame({
 
       const touch = e.touches[0];
       const identifier = touch.identifier;
-      const target = e.currentTarget;
-      const host = target.parentElement as HTMLElement | null;
-      const rect = host?.getBoundingClientRect() ?? target.getBoundingClientRect();
-      ptrDragOffset.current = {
-        x: touch.clientX - rect.left,
-        y: touch.clientY - rect.top,
-      };
 
       const updatePosition = (clientX: number, clientY: number) => {
         ptrPos.current = { x: clientX, y: clientY };
@@ -1732,7 +1704,7 @@ export function useThreeWheelGame({
       setPtrDragCard(card);
       setIsPtrDragging(true);
       setPtrDragType("touch");
-      addTouchDragCss(true, target);
+      addTouchDragCss(true);
       updatePosition(touch.clientX, touch.clientY);
 
       const onMove = (ev: TouchEvent) => {
@@ -1763,7 +1735,6 @@ export function useThreeWheelGame({
         setDragOverWheel(null);
         setDragCardId(null);
         setPtrDragType(null);
-        ptrDragOffset.current = null;
         addTouchDragCss(false);
       }
 
@@ -1771,7 +1742,7 @@ export function useThreeWheelGame({
       window.addEventListener("touchend", onEnd, { passive: false, capture: true });
       window.addEventListener("touchcancel", onCancel, { passive: false, capture: true });
     },
-    [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, ptrDragOffset, setDragOverWheel]
+    [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, setDragOverWheel]
   );
 
   const state: ThreeWheelGameState = {
@@ -1829,7 +1800,6 @@ export function useThreeWheelGame({
   const refs: ThreeWheelGameRefs = {
     wheelRefs,
     ptrPos,
-    ptrDragOffset,
   };
 
   const actions: ThreeWheelGameActions = {
