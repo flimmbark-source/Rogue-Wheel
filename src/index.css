@@ -9,18 +9,31 @@
  */
 
 :root {
-  --app-min-height: 100vh;
+  --app-min-height: min(100vh, 1600px);
+  --app-max-width: min(100vw, 720px);
 }
 
 @supports (height: 100svh) {
   :root {
-    --app-min-height: 100svh;
+    --app-min-height: min(100svh, 1600px);
   }
 }
 
 @supports (height: 100dvh) {
   :root {
-    --app-min-height: 100dvh;
+    --app-min-height: min(100dvh, 1600px);
+  }
+}
+
+@supports (width: 100svw) {
+  :root {
+    --app-max-width: min(100svw, 720px);
+  }
+}
+
+@supports (width: 100dvw) {
+  :root {
+    --app-max-width: min(100dvw, 720px);
   }
 }
 
