@@ -124,6 +124,7 @@ export type ThreeWheelGameState = {
   reserveSums: null | { player: number; enemy: number };
   isPtrDragging: boolean;
   ptrDragCard: Card | null;
+  ptrDragType: "pointer" | "touch" | null;
   log: GameLogEntry[];
 };
 
@@ -473,6 +474,7 @@ export function useThreeWheelGame({
 
   const [isPtrDragging, setIsPtrDragging] = useState(false);
   const [ptrDragCard, setPtrDragCard] = useState<Card | null>(null);
+  const [ptrDragType, setPtrDragType] = useState<"pointer" | "touch" | null>(null);
   const ptrPos = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const supportsPointerEventsRef = useRef<boolean>(
@@ -1632,6 +1634,7 @@ export function useThreeWheelGame({
       setDragCardId(card.id);
       setPtrDragCard(card);
       setIsPtrDragging(true);
+      setPtrDragType("pointer");
       addTouchDragCss(true);
       ptrPos.current = { x: e.clientX, y: e.clientY };
 
@@ -1660,6 +1663,7 @@ export function useThreeWheelGame({
         setPtrDragCard(null);
         setDragOverWheel(null);
         setDragCardId(null);
+        setPtrDragType(null);
         addTouchDragCss(false);
       }
 
@@ -1699,6 +1703,7 @@ export function useThreeWheelGame({
       setDragCardId(card.id);
       setPtrDragCard(card);
       setIsPtrDragging(true);
+      setPtrDragType("touch");
       addTouchDragCss(true);
       updatePosition(touch.clientX, touch.clientY);
 
@@ -1729,6 +1734,7 @@ export function useThreeWheelGame({
         setPtrDragCard(null);
         setDragOverWheel(null);
         setDragCardId(null);
+        setPtrDragType(null);
         addTouchDragCss(false);
       }
 
@@ -1769,6 +1775,7 @@ export function useThreeWheelGame({
     reserveSums,
     isPtrDragging,
     ptrDragCard,
+    ptrDragType,
     log,
   };
 

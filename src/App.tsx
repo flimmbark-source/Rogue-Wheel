@@ -255,6 +255,7 @@ export default function ThreeWheel_WinsOnly({
     reserveSums,
     isPtrDragging,
     ptrDragCard,
+    ptrDragType,
     lockedWheelSize,
     log,
   } = state;
@@ -1576,6 +1577,7 @@ export default function ThreeWheel_WinsOnly({
         startTouchDrag={startTouchDrag}
         isPtrDragging={isPtrDragging}
         ptrDragCard={ptrDragCard}
+        ptrDragType={ptrDragType}
         ptrPos={ptrPos}
         onMeasure={setHandClearance}
         pendingSpell={pendingSpell}
