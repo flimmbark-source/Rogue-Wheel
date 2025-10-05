@@ -72,6 +72,8 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
   }, forwardedRef) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
     const ghostRef = useRef<HTMLDivElement | null>(null);
+    const ghostOffsetRef = useRef<{ x: number; y: number }>({ x: 48, y: 64 });
+    const touchOffsetCapturedRef = useRef(false);
     const handleDockRef = useCallback(
       (node: HTMLDivElement | null) => {
         dockRef.current = node;
@@ -134,7 +136,43 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
           window.cancelAnimationFrame(rafId);
         }
       };
-    }, [isPtrDragging, ptrPos]);
+    }, [isPtrDragging, ptrDragType, ptrPos]);
+
+    useEffect(() => {
+      if (ptrDragType === "pointer") {
+        ghostOffsetRef.current = { x: 48, y: 64 };
+        touchOffsetCapturedRef.current = false;
+      } else if (ptrDragType === null) {
+        touchOffsetCapturedRef.current = false;
+      }
+
+      if (!isPtrDragging) return;
+      const el = ghostRef.current;
+      if (!el) return;
+      const { x, y } = ptrPos.current;
+      const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
+      el.style.transform = `translate(${x - offsetX}px, ${y - offsetY}px)`;
+    }, [isPtrDragging, ptrDragType, ptrPos]);
+
+    useEffect(() => {
+      if (!isPtrDragging) return;
+      if (ptrDragType !== "touch") return;
+      if (touchOffsetCapturedRef.current) return;
+      const el = ghostRef.current;
+      if (!el) return;
+
+      const cardEl = el.querySelector("button");
+      const rect = cardEl?.getBoundingClientRect();
+      const defaultHalfWidth = 0;
+      const defaultHalfHeight = 0;
+      const halfWidth = rect?.width ? rect.width / 2 : defaultHalfWidth;
+      const halfHeight = rect?.height ? rect.height / 2 : defaultHalfHeight;
+
+      ghostOffsetRef.current = { x: halfWidth, y: halfHeight };
+      touchOffsetCapturedRef.current = true;
+      const { x, y } = ptrPos.current;
+      el.style.transform = `translate(${x - halfWidth}px, ${y - halfHeight}px)`;
+    }, [isPtrDragging, ptrDragType, ptrPos]);
 
     const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
@@ -251,6 +289,19 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                     onPointerDown={(e) => {
                       if (awaitingManualTarget) return;
                       startPointerDrag(card, e);
+                    }}
+                    onTouchStart={(e) => {
+                      if (awaitingManualTarget) return;
+                      const touch = e.touches[0];
+                      if (touch) {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        ghostOffsetRef.current = {
+                          x: touch.clientX - rect.left,
+                          y: touch.clientY - rect.top,
+                        };
+                        touchOffsetCapturedRef.current = true;
+                      }
+                      startTouchDrag(card, e);
                     }}
                     aria-pressed={isSelected}
                     aria-label={`Select ${card.name}`}
