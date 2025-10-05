@@ -76,6 +76,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
   }, forwardedRef) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
     const ghostRef = useRef<HTMLDivElement | null>(null);
+    const cardDimensionsRef = useRef<{ width: number; height: number }>({ width: 72, height: 96 });
     const ghostOffsetRef = useRef<{ x: number; y: number }>({ x: 48, y: 64 });
     const handleDockRef = useCallback(
       (node: HTMLDivElement | null) => {
@@ -96,7 +97,10 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
         if (!root) return;
         const sample = root.querySelector("[data-hand-card]") as HTMLElement | null;
         if (!sample) return;
-        const h = sample.getBoundingClientRect().height || 96;
+        const rect = sample.getBoundingClientRect();
+        const h = rect.height || 96;
+        const w = rect.width || 72;
+        cardDimensionsRef.current = { width: w, height: h };
         const nextLift = Math.round(Math.min(44, Math.max(12, h * 0.34)));
         setLiftPx(nextLift);
         const clearance = Math.round(h + nextLift + 12);
@@ -144,7 +148,8 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
 
     useEffect(() => {
       if (ptrDragType === "touch") {
-        ghostOffsetRef.current = { x: 0, y: 0 };
+        const { width, height } = cardDimensionsRef.current;
+        ghostOffsetRef.current = { x: width / 2, y: height / 2 };
       } else if (ptrDragType === "pointer") {
         ghostOffsetRef.current = { x: 48, y: 64 };
       }
@@ -155,25 +160,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
       const { x, y } = ptrPos.current;
       const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
       el.style.transform = `translate(${x - offsetX}px, ${y - offsetY}px)`;
-    }, [isPtrDragging, ptrDragType, ptrPos]);
-
-    useEffect(() => {
-      if (!isPtrDragging) return;
-      if (ptrDragType !== "touch") return;
-      const el = ghostRef.current;
-      if (!el) return;
-
-      const cardEl = el.querySelector("button");
-      const rect = cardEl?.getBoundingClientRect();
-      const defaultHalfWidth = 0;
-      const defaultHalfHeight = 0;
-      const halfWidth = rect?.width ? rect.width / 2 : defaultHalfWidth;
-      const halfHeight = rect?.height ? rect.height / 2 : defaultHalfHeight;
-
-      ghostOffsetRef.current = { x: halfWidth, y: halfHeight };
-      const { x, y } = ptrPos.current;
-      el.style.transform = `translate(${x - halfWidth}px, ${y - halfHeight}px)`;
-    }, [isPtrDragging, ptrDragType, ptrPos]);
+    }, [cardDimensionsRef, isPtrDragging, ptrDragType, ptrPos]);
 
     const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
