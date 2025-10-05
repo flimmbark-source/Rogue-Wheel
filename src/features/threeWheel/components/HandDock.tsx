@@ -35,6 +35,7 @@ interface HandDockProps {
   ptrDragCard: Card | null;
   ptrDragType: "pointer" | "touch" | null;
   ptrPos: React.MutableRefObject<{ x: number; y: number }>;
+  ptrDragOffset: React.MutableRefObject<{ x: number; y: number } | null>;
   onMeasure?: (px: number) => void;
   pendingSpell: {
     side: LegacySide;
@@ -69,6 +70,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     ptrDragCard,
     ptrDragType,
     ptrPos,
+    ptrDragOffset,
     onMeasure,
     pendingSpell,
     isAwaitingSpellTarget,
@@ -77,6 +79,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     const dockRef = useRef<HTMLDivElement | null>(null);
     const ghostRef = useRef<HTMLDivElement | null>(null);
     const ghostOffsetRef = useRef<{ x: number; y: number }>({ x: 48, y: 64 });
+    const handCardRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
     const handleDockRef = useCallback(
       (node: HTMLDivElement | null) => {
         dockRef.current = node;
@@ -88,6 +91,12 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
       },
       [forwardedRef],
     );
+    const setHandCardRef = useCallback((cardId: string, node: HTMLDivElement | null) => {
+      handCardRefs.current.set(cardId, node);
+      if (!node) {
+        handCardRefs.current.delete(cardId);
+      }
+    }, []);
     const [liftPx, setLiftPx] = useState<number>(18);
 
     useEffect(() => {
@@ -115,6 +124,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
 
     useEffect(() => {
       if (!isPtrDragging) return;
+      if (ptrDragType === "touch") return;
       const el = ghostRef.current;
       if (!el) return;
 
@@ -160,20 +170,84 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     useEffect(() => {
       if (!isPtrDragging) return;
       if (ptrDragType !== "touch") return;
-      const el = ghostRef.current;
-      if (!el) return;
+      const activeCard = ptrDragCard ? handCardRefs.current.get(ptrDragCard.id) : null;
+      if (!activeCard) return;
 
-      const cardEl = el.querySelector("button");
-      const rect = cardEl?.getBoundingClientRect();
-      const defaultHalfWidth = 0;
-      const defaultHalfHeight = 0;
-      const halfWidth = rect?.width ? rect.width / 2 : defaultHalfWidth;
-      const halfHeight = rect?.height ? rect.height / 2 : defaultHalfHeight;
+      const placeholder = activeCard.parentElement as HTMLElement | null;
+      const rect = activeCard.getBoundingClientRect();
+      const prevStyles = {
+        position: activeCard.style.position,
+        left: activeCard.style.left,
+        top: activeCard.style.top,
+        width: activeCard.style.width,
+        height: activeCard.style.height,
+        pointerEvents: activeCard.style.pointerEvents,
+        zIndex: activeCard.style.zIndex,
+        transform: activeCard.style.transform,
+        transition: activeCard.style.transition,
+        willChange: activeCard.style.willChange,
+      };
+      const prevPlaceholderStyles = placeholder
+        ? { width: placeholder.style.width, height: placeholder.style.height }
+        : null;
 
-      ghostOffsetRef.current = { x: halfWidth, y: halfHeight };
-      const { x, y } = ptrPos.current;
-      el.style.transform = `translate(${x - halfWidth}px, ${y - halfHeight}px)`;
-    }, [isPtrDragging, ptrDragType, ptrPos]);
+      if (placeholder) {
+        placeholder.style.width = `${rect.width}px`;
+        placeholder.style.height = `${rect.height}px`;
+      }
+
+      activeCard.style.position = "fixed";
+      activeCard.style.left = "0";
+      activeCard.style.top = "0";
+      activeCard.style.width = `${rect.width}px`;
+      activeCard.style.height = `${rect.height}px`;
+      activeCard.style.pointerEvents = "none";
+      activeCard.style.zIndex = "10000";
+      activeCard.style.transition = "none";
+      activeCard.style.willChange = "transform";
+
+      let rafId: number | null = null;
+      let prevX = NaN;
+      let prevY = NaN;
+
+      const syncPosition = () => {
+        const { x, y } = ptrPos.current;
+        const { x: offsetX, y: offsetY } = ptrDragOffset.current ?? {
+          x: rect.width / 2,
+          y: rect.height / 2,
+        };
+        const nextX = x - offsetX;
+        const nextY = y - offsetY;
+        if (nextX !== prevX || nextY !== prevY) {
+          prevX = nextX;
+          prevY = nextY;
+          activeCard.style.transform = `translate3d(${nextX}px, ${nextY}px, 0)`;
+        }
+        rafId = window.requestAnimationFrame(syncPosition);
+      };
+
+      syncPosition();
+
+      return () => {
+        if (rafId !== null) {
+          window.cancelAnimationFrame(rafId);
+        }
+        activeCard.style.position = prevStyles.position;
+        activeCard.style.left = prevStyles.left;
+        activeCard.style.top = prevStyles.top;
+        activeCard.style.width = prevStyles.width;
+        activeCard.style.height = prevStyles.height;
+        activeCard.style.pointerEvents = prevStyles.pointerEvents;
+        activeCard.style.zIndex = prevStyles.zIndex;
+        activeCard.style.transform = prevStyles.transform;
+        activeCard.style.transition = prevStyles.transition;
+        activeCard.style.willChange = prevStyles.willChange;
+        if (placeholder) {
+          placeholder.style.width = prevPlaceholderStyles?.width ?? "";
+          placeholder.style.height = prevPlaceholderStyles?.height ?? "";
+        }
+      };
+    }, [handCardRefs, isPtrDragging, ptrDragCard, ptrDragType, ptrDragOffset, ptrPos]);
 
     const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
@@ -234,6 +308,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
             return (
               <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
                 <motion.div
+                  ref={(node) => setHandCardRef(card.id, node)}
                   data-hand-card
                   initial={false}
                   animate={{
@@ -303,22 +378,22 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
             );
           })}
       </div>
-        {isPtrDragging && ptrDragCard && (
-          <div
-            ref={ghostRef}
-            style={{
-              position: "fixed",
-              left: 0,
-              top: 0,
-              transform: (() => {
-                const baseX = ptrPos.current.x;
-                const baseY = ptrPos.current.y;
-                const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
-                return `translate(${baseX - offsetX}px, ${baseY - offsetY}px)`;
-              })(),
-              pointerEvents: "none",
-              zIndex: 9999,
-            }}
+      {isPtrDragging && ptrDragCard && ptrDragType !== "touch" && (
+        <div
+          ref={ghostRef}
+          style={{
+            position: "fixed",
+            left: 0,
+            top: 0,
+            transform: (() => {
+              const baseX = ptrPos.current.x;
+              const baseY = ptrPos.current.y;
+              const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
+              return `translate(${baseX - offsetX}px, ${baseY - offsetY}px)`;
+            })(),
+            pointerEvents: "none",
+            zIndex: 9999,
+          }}
             aria-hidden
           >
             <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
