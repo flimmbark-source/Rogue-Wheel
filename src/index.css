@@ -8,6 +8,30 @@
  * tailwind.config.js.  It also includes typographic rules for headings.
  */
 
+:root {
+  --app-min-height: 100vh;
+}
+
+@supports (height: 100svh) {
+  :root {
+    --app-min-height: 100svh;
+  }
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --app-min-height: 100dvh;
+  }
+}
+
+html,
+body,
+#root {
+  min-height: 100vh;
+  min-height: var(--app-min-height, 100vh);
+  width: 100%;
+}
+
 body {
   /* Apply a warm wood background texture across the entire game.  The dark
    * slate fallback ensures the UI remains legible if the image fails to
