@@ -657,7 +657,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
     id: "phantom",
     name: "Phantom",
     description: SPELL_DESCRIPTIONS.phantom,
-    targetSummary: "Targets: Two committed (+optional 🌒 committed → reserve)",
+    targetSummary: "Targets: Two committed (reserve if first 🌒)",
     cost: 3,
     icon: "🌒",
     allowedPhases: ["roundEnd", "showEnemy"],
@@ -665,26 +665,24 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       type: "sequence",
       stages: [
         { type: "card", ownership: "ally", location: "board", label: "Committed card A" },
-        { type: "card", ownership: "ally", location: "board", label: "Committed card B" },
-        { type: "card", ownership: "ally", location: "hand", arcana: "moon", label: "Optional 🌒 in reserve", optional: true },
+        {
+          type: "card",
+          ownership: "ally",
+          location: "any",
+          label: "Committed card B (or reserve if first 🌒)",
+        },
       ],
     },
     resolver: (context) => {
-      const [a, b, moonReserve] = context.targets ?? [];
+      const [a, b] = context.targets ?? [];
       if (!a || a.type !== "card" || !b || b.type !== "card") return;
       const log = ensureLog(context);
 
-      if (moonReserve?.type === "card") {
-        if (a.arcana === "moon") {
-          log.push(`${context.caster.name} phases ${describeTarget(a)} with ${describeTarget(moonReserve)} from reserve.`);
-          pushSwapRequest(context, { first: a, second: moonReserve, caster: context.caster.name });
-          return;
-        }
-        if (b.arcana === "moon") {
-          log.push(`${context.caster.name} phases ${describeTarget(b)} with ${describeTarget(moonReserve)} from reserve.`);
-          pushSwapRequest(context, { first: b, second: moonReserve, caster: context.caster.name });
-          return;
-        }
+      if (b.location === "hand") {
+        if (a.arcana !== "moon") return;
+        log.push(`${context.caster.name} phases ${describeTarget(a)} with ${describeTarget(b)} from reserve.`);
+        pushSwapRequest(context, { first: a, second: b, caster: context.caster.name });
+        return;
       }
 
       log.push(`${context.caster.name} phases ${describeTarget(a)} with ${describeTarget(b)}.`);
