@@ -125,10 +125,13 @@ button[aria-label^="Card"] {
   background-position: center;
   border: none;
 }
-button[aria-label^="Card"] > div:first-child {
+button[aria-label^="Card"]:not([data-skill-ability]) > div:first-child {
   opacity: 0;
 }
-button[aria-label^="Card"] > div:nth-child(2) {
+button[aria-label^="Card"][data-skill-ability] > div:first-child {
+  opacity: 1;
+}
+button[aria-label^="Card"]:not([data-skill-ability]) > div:nth-child(2) {
   background-color: transparent;
   border: none;
 }
