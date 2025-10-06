@@ -188,6 +188,7 @@ type RuntimeInitiativeChallenge = {
   target: SpellTargetInstance;
   mode: "higher" | "lower";
   caster: string;
+  winOnTie?: boolean;
 };
 
 type RuntimeReserveDrain = {
@@ -251,7 +252,7 @@ const pushReserveDrain = (
 
 export const SPELL_DESCRIPTIONS = {
   fireball: `Damage a card by 2\n+🔥: Boost spell by 🔥.`,
-  iceShard: `Freeze a card\n+🗡️: Block initiative.`,
+  iceShard: `Freeze a card\n+🗡️: Add another freeze stack.`,
   mirrorImage: `Copy an opposing card's value\n+👁️: Increase by 👁️ value.`,
   arcaneShift: `Advance a wheel by 1\n+🌒: Boost spell by 🌒.`,
   hex: `Damage opponent's reserve by 2\n+🐍: Boost spell by 🐍.`,
@@ -260,49 +261,48 @@ export const SPELL_DESCRIPTIONS = {
   leech: `Drain value from an adjacent to selected card\n+🐍: Damage reserve by 🐍.`,
   suddenStrike: `Duel. If you win, gain Initiative\n–🗡️: Win on tie.`,
   offering: `Discard a card. Fortify by its value\n–🔥: Double if 🔥.`,
-  crosscut: `Duel. Damage opponent's reserve by difference\n–🗡️: If tied, gain Initiative.`,
+  crosscut: `Duel. Damage opponent's reserve by difference\n–🗡️: Boost 🗡️ card by difference.`,
   phantom: `Swap a card with another in play\n-🌒: With a reserve.`,
 } as const satisfies Record<string, string>;
 
 // ---------- registry (IDs MUST match archetypes SpellId union: camelCase) ----------
 const SPELL_REGISTRY: Record<string, SpellDefinition> = {
-  // 🔥 Fireball — base -2; +🔥: add value of selected 🔥 to the reduction; still escalates cost by streak
+  // 🔥 Fireball — base -2; +🔥: add value of selected 🔥 to the reduction
   fireball: {
-  id: "fireball",
-  name: "Fireball",
-  description: SPELL_DESCRIPTIONS.fireball,
-  targetSummary: "Target: Enemy card (+optional 🔥)",
-  cost: 2,
-  variableCost: (context) => {
-    const streak = (context.state.fireballStreak as number | undefined) ?? 0;
-    return context.state.fireballBaseCost === undefined
-      ? 2 + streak
-      : Number(context.state.fireballBaseCost);
+    id: "fireball",
+    name: "Fireball",
+    description: SPELL_DESCRIPTIONS.fireball,
+    targetSummary: "Target: Enemy card (+optional 🔥)",
+    cost: 2,
+    icon: "🔥",
+    allowedPhases: ["roundEnd", "showEnemy"],
+    target: {
+      type: "sequence",
+      stages: [
+        { type: "card", ownership: "enemy", location: "board", label: "Enemy card" },
+        {
+          type: "card",
+          ownership: "ally",
+          location: "any",
+          arcana: "fire",
+          label: "Optional 🔥 card",
+          optional: true,
+        },
+      ],
+    },
+    resolver: (context) => {
+      const log = ensureLog(context);
+      const [foe, bonus] = context.targets ?? [];
+      log.push(`${context.caster.name} scorches ${describeTarget(foe)} with a Fireball.`);
+      if (foe?.type === "card") {
+        const bonusVal = bonus?.type === "card" ? (bonus.cardValue ?? 0) : 0;
+        pushCardAdjustment(context, { target: foe, numberDelta: -(2 + bonusVal) });
+      }
+    },
+    requirements: [{ arcana: "fire", symbols: 1 }],
   },
-  icon: "🔥",
-  allowedPhases: ["roundEnd", "showEnemy"],
-  target: {
-    type: "sequence",
-    stages: [
-      { type: "card", ownership: "enemy", location: "board", label: "Enemy card" },
-      { type: "card", ownership: "ally", location: "any", arcana: "fire", label: "Optional 🔥 card", optional: true },
-    ],
-  },
-  resolver: (context) => {
-    const log = ensureLog(context);
-    const [foe, bonus] = context.targets ?? [];
-    log.push(`${context.caster.name} scorches ${describeTarget(foe)} with a Fireball.`);
-    const streak = (context.state.fireballStreak as number | undefined) ?? 0;
-    context.state.fireballStreak = streak + 1;
-    if (foe?.type === "card") {
-      const bonusVal = bonus?.type === "card" ? (bonus.cardValue ?? 0) : 0;
-      pushCardAdjustment(context, { target: foe, numberDelta: -(2 + bonusVal) });
-    }
-  },
-  requirements: [{ arcana: "fire", symbols: 1 }],
-},
 
-  // 🗡️ Ice Shard — freeze; +🗡️: prevents initiative gain by that card this round
+  // 🗡️ Ice Shard — freeze; +🗡️: adds an extra freeze stack
   iceShard: {
     id: "iceShard",
     name: "Ice Shard",
@@ -326,8 +326,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       if (foe?.type === "card") {
         chilled[foe.cardId] = (chilled[foe.cardId] ?? 0) + 1;
         if (blade?.type === "card") {
-          const key = "initBlock:" + foe.cardId;
-          (context.state as any)[key] = true;
+          chilled[foe.cardId] = (chilled[foe.cardId] ?? 0) + 1;
         }
       }
       context.state.chilledCards = chilled;
@@ -498,12 +497,15 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       const tgt = context.target;
       log.push(`${context.caster.name} lashes out with a sudden strike from ${describeTarget(tgt)}.`);
       if (tgt?.type === "card") {
-        pushInitiativeChallenge(context, { target: tgt, mode: "higher", caster: context.caster.name });
-        // +🗡️ applies only if the targeted card is blade
+        const challenge: RuntimeInitiativeChallenge = {
+          target: tgt,
+          mode: "higher",
+          caster: context.caster.name,
+        };
         if (tgt.arcana === "blade") {
-          const key = "edgeTieWin:" + tgt.cardId;
-          (context.state as any)[key] = true;
+          challenge.winOnTie = true;
         }
+        pushInitiativeChallenge(context, challenge);
       }
     },
     requirements: [{ arcana: "blade", symbols: 1 }],

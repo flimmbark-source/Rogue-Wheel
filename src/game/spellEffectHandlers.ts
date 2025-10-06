@@ -468,8 +468,10 @@ export function handleInitiativeEffects<CardT extends { id: string }>(
       const opponentCard = opponentLanes[laneIndex as number] as CardLikeWithValues | null;
       const challengerValue = getCardValue(challengerCard);
       const opponentValue = getCardValue(opponentCard);
-      const success =
-        challenge.mode === "lower" ? challengerValue < opponentValue : challengerValue > opponentValue;
+      const winOnTie = challenge.winOnTie === true;
+      const success = challenge.mode === "lower"
+        ? challengerValue < opponentValue || (winOnTie && challengerValue === opponentValue)
+        : challengerValue > opponentValue || (winOnTie && challengerValue === opponentValue);
       if (success) {
         setInitiative(challengerSide);
       }
