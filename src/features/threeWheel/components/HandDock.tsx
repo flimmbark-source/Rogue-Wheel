@@ -50,6 +50,7 @@ interface HandDockProps {
     card: Card;
     location: SpellTargetLocation;
   }) => void;
+  spellHighlightedCardIds: readonly string[];
 }
 
 const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
@@ -74,6 +75,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     pendingSpell,
     isAwaitingSpellTarget,
     onSpellTargetSelect,
+    spellHighlightedCardIds,
   }, forwardedRef) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
     const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -209,6 +211,8 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
 
     const stageLocation = activeStage?.type === "card" ? activeStage.location ?? "board" : null;
 
+    const spellHighlightSet = useMemo(() => new Set(spellHighlightedCardIds), [spellHighlightedCardIds]);
+
     const ghost =
       isPtrDragging && ptrDragCard ? (
         <div
@@ -251,6 +255,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
           >
             {localFighter.hand.map((card, idx) => {
               const isSelected = selectedCardId === card.id;
+              const isSpellAffected = spellHighlightSet.has(card.id);
               const cardSelectable = awaitingCardTarget && (stageLocation === "any" || stageLocation === "hand");
               return (
                 <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
@@ -272,6 +277,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                       card={card}
                       selected={isSelected}
                       disabled={awaitingManualTarget && !cardSelectable}
+                      spellAffected={isSpellAffected}
                       onPick={() => {
                         if (cardSelectable) {
                           const side = localLegacySide;

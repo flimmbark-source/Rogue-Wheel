@@ -94,6 +94,18 @@ const createLogEntry = (
   type,
 });
 
+type SideState<T> = Record<LegacySide, T>;
+
+type SpellHighlightState = {
+  cards: string[];
+  reserve: SideState<boolean>;
+};
+
+const createEmptySpellHighlights = (): SpellHighlightState => ({
+  cards: [],
+  reserve: { player: false, enemy: false },
+});
+
 export type ThreeWheelGameState = {
   player: Fighter;
   enemy: Fighter;
@@ -126,6 +138,7 @@ export type ThreeWheelGameState = {
   ptrDragCard: Card | null;
   ptrDragType: "pointer" | "touch" | null;
   log: GameLogEntry[];
+  spellHighlights: SpellHighlightState;
 };
 
 export type ThreeWheelGameDerived = {
@@ -659,6 +672,67 @@ export function useThreeWheelGame({
   const START_LOG = `A ${enemyName} eyes your purse...`;
   const [log, setLog] = useState<GameLogEntry[]>(() => [createLogEntry(START_LOG)]);
 
+  const [spellHighlights, setSpellHighlights] = useState<SpellHighlightState>(() => createEmptySpellHighlights());
+  const spellHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearSpellHighlights = useCallback(() => {
+    setSpellHighlights(createEmptySpellHighlights());
+  }, []);
+
+  const scheduleSpellHighlightClear = useCallback(() => {
+    if (spellHighlightTimeoutRef.current) {
+      clearTimeout(spellHighlightTimeoutRef.current);
+      spellHighlightTimeoutRef.current = null;
+    }
+
+    if (typeof window === "undefined") {
+      clearSpellHighlights();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      clearSpellHighlights();
+      spellHighlightTimeoutRef.current = null;
+    }, 2000);
+
+    spellHighlightTimeoutRef.current = timeoutId;
+  }, [clearSpellHighlights]);
+
+  const flashSpellHighlights = useCallback(
+    (cardIds: Iterable<string>, reserveSides: Iterable<LegacySide>) => {
+      const cardSet = new Set<string>();
+      for (const id of cardIds) {
+        if (typeof id === "string" && id.length > 0) {
+          cardSet.add(id);
+        }
+      }
+
+      const reserveHighlight: SideState<boolean> = { player: false, enemy: false };
+      for (const side of reserveSides) {
+        if (side === "player" || side === "enemy") {
+          reserveHighlight[side] = true;
+        }
+      }
+
+      if (cardSet.size === 0 && !reserveHighlight.player && !reserveHighlight.enemy) {
+        return;
+      }
+
+      setSpellHighlights({ cards: Array.from(cardSet), reserve: reserveHighlight });
+      scheduleSpellHighlightClear();
+    },
+    [scheduleSpellHighlightClear],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (spellHighlightTimeoutRef.current) {
+        clearTimeout(spellHighlightTimeoutRef.current);
+        spellHighlightTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const appendLog = useCallback((message: string, options?: { type?: GameLogEntryType }) => {
     const entry = createLogEntry(message, options?.type ?? "general");
     setLog((prev) => [entry, ...prev].slice(0, 60));
@@ -945,6 +1019,29 @@ export function useThreeWheelGame({
       let assignmentsChanged = false;
       let tokensAdjusted = false;
 
+      const affectedCardIds = new Set<string>();
+      const affectedReserveSides = new Set<LegacySide>();
+
+      const noteCardId = (value?: string | null) => {
+        if (typeof value === "string" && value.length > 0) {
+          affectedCardIds.add(value);
+        }
+      };
+
+      const noteReserveSide = (side?: LegacySide | null) => {
+        if (side === "player" || side === "enemy") {
+          affectedReserveSides.add(side);
+        }
+      };
+
+      payload.cardAdjustments?.forEach((adj) => noteCardId(adj?.cardId));
+      payload.chilledCards?.forEach((entry) => noteCardId(entry?.cardId));
+      payload.handAdjustments?.forEach((entry) => noteCardId(entry?.cardId));
+      payload.handDiscards?.forEach((entry) => noteCardId(entry?.cardId));
+      payload.initiativeChallenges?.forEach((entry) => noteCardId(entry?.cardId));
+      payload.mirrorCopyEffects?.forEach((entry) => noteCardId(entry?.targetCardId));
+      payload.reserveDrains?.forEach((entry) => noteReserveSide(entry?.side));
+
       runSpellEffects(
         payload,
         {
@@ -1016,6 +1113,10 @@ export function useThreeWheelGame({
         }
       }
 
+      if (affectedCardIds.size > 0 || affectedReserveSides.size > 0) {
+        flashSpellHighlights(affectedCardIds, affectedReserveSides);
+      }
+
       if (phaseRef.current === "anim" || phaseRef.current === "roundEnd") {
         resolveRound(undefined, {
           skipAnimation: true,
@@ -1037,6 +1138,7 @@ export function useThreeWheelGame({
       resolveRound,
       wheelRefs,
       tokens,
+      flashSpellHighlights,
     ],
   );
 
@@ -1777,6 +1879,7 @@ export function useThreeWheelGame({
     ptrDragCard,
     ptrDragType,
     log,
+    spellHighlights,
   };
 
   const derived: ThreeWheelGameDerived = {

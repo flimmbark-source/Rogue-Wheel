@@ -258,6 +258,7 @@ export default function ThreeWheel_WinsOnly({
     ptrDragType,
     lockedWheelSize,
     log,
+    spellHighlights,
   } = state;
 
   const {
@@ -409,6 +410,8 @@ export default function ThreeWheel_WinsOnly({
 
   const localHandCards = localLegacySide === "player" ? player.hand : enemy.hand;
   const localHandSymbols = useMemo(() => countSymbolsFromCards(localHandCards), [localHandCards]);
+  const spellHighlightedCardIds = spellHighlights.cards;
+  const reserveSpellHighlights = spellHighlights.reserve;
   const [spellLock, setSpellLock] = useState<{ round: number | null; ids: SpellId[] }>({
     round: null,
     ids: [],
@@ -1509,6 +1512,7 @@ export default function ThreeWheel_WinsOnly({
           onPlayerManaToggle={handlePlayerManaToggle}
           isGrimoireOpen={showGrimoire}
           playerManaButtonRef={playerManaButtonRef}
+          reserveSpellHighlights={reserveSpellHighlights}
         />
       </div>
 
@@ -1560,6 +1564,7 @@ export default function ThreeWheel_WinsOnly({
                 onWheelTargetSelect={handleWheelTargetSelect}
                 isAwaitingSpellTarget={isAwaitingSpellTarget}
                 variant="grouped"
+                spellHighlightedCardIds={spellHighlightedCardIds}
               />
             </div>
           ))}
@@ -1589,6 +1594,7 @@ export default function ThreeWheel_WinsOnly({
         pendingSpell={pendingSpell}
         isAwaitingSpellTarget={isAwaitingSpellTarget}
         onSpellTargetSelect={handleSpellTargetSelect}
+        spellHighlightedCardIds={spellHighlightedCardIds}
       />
 
       <FirstRunCoach

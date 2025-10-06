@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import CanvasWheel, { WheelHandle } from "../../../components/CanvasWheel";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter, Phase, Section } from "../../../game/types";
@@ -70,6 +70,7 @@ export interface WheelPanelProps {
     targets: SpellTargetInstance[];
     currentStage: number;
   } | null;
+  spellHighlightedCardIds: readonly string[];
   onSpellTargetSelect?: (selection: {
     side: LegacySide;
     lane: number | null;
@@ -131,6 +132,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   onWheelTargetSelect,
   isAwaitingSpellTarget,
   variant = "standalone",
+  spellHighlightedCardIds,
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -161,6 +163,8 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const pendingOwnership: SpellTargetOwnership | null = awaitingCardTarget && activeStage?.type === "card"
     ? activeStage.ownership
     : null;
+
+  const spellHighlightSet = useMemo(() => new Set(spellHighlightedCardIds), [spellHighlightedCardIds]);
 
   const leftSlot: SlotView = { side: "player", card: playerCard, name: namesByLegacy.player };
   const rightSlot: SlotView = { side: "enemy", card: enemyCard, name: namesByLegacy.enemy };
@@ -259,6 +263,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   ) => {
     if (!slot.card) return null;
     const card = slot.card;
+    const isSpellAffected = spellHighlightSet.has(card.id);
     const canInteractNormally =
       !awaitingSpellTarget && slot.side === localLegacySide && phase === "choose" && isWheelActive;
 
@@ -310,6 +315,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         size="sm"
         disabled={!cardInteractable}
         selected={isSlotSelected}
+        spellAffected={isSpellAffected}
         onPick={handlePick}
         draggable={canInteractNormally}
         onDragStart={handleDragStart}
