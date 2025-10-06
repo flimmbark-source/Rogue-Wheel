@@ -958,39 +958,44 @@ export function useThreeWheelGame({
       let winner: LegacySide | null = null;
       let tie = false;
       let detail = "";
-      switch (section.id) {
-        case "Strongest":
-          if (pVal === eVal) tie = true;
-          else winner = pVal > eVal ? "player" : "enemy";
-          detail = `Strongest ${pVal} vs ${eVal}`;
-          break;
-        case "Weakest":
-          if (pVal === eVal) tie = true;
-          else winner = pVal < eVal ? "player" : "enemy";
-          detail = `Weakest ${pVal} vs ${eVal}`;
-          break;
-        case "ReserveSum":
-          if (pReserve === eReserve) tie = true;
-          else winner = pReserve > eReserve ? "player" : "enemy";
-          detail = `Reserve ${pReserve} vs ${eReserve}`;
-          break;
-        case "ClosestToTarget": {
-          const t = targetSlice === 0 ? section.target ?? 0 : targetSlice;
-          const pd = Math.abs(pVal - t);
-          const ed = Math.abs(eVal - t);
-          if (pd === ed) tie = true;
-          else winner = pd < ed ? "player" : "enemy";
-          detail = `Closest to ${t}: ${pVal} vs ${eVal}`;
-          break;
+      if (targetSlice === 0) {
+        tie = true;
+        detail = "Slice 0: no win";
+      } else {
+        switch (section.id) {
+          case "Strongest":
+            if (pVal === eVal) tie = true;
+            else winner = pVal > eVal ? "player" : "enemy";
+            detail = `Strongest ${pVal} vs ${eVal}`;
+            break;
+          case "Weakest":
+            if (pVal === eVal) tie = true;
+            else winner = pVal < eVal ? "player" : "enemy";
+            detail = `Weakest ${pVal} vs ${eVal}`;
+            break;
+          case "ReserveSum":
+            if (pReserve === eReserve) tie = true;
+            else winner = pReserve > eReserve ? "player" : "enemy";
+            detail = `Reserve ${pReserve} vs ${eReserve}`;
+            break;
+          case "ClosestToTarget": {
+            const t = targetSlice === 0 ? section.target ?? 0 : targetSlice;
+            const pd = Math.abs(pVal - t);
+            const ed = Math.abs(eVal - t);
+            if (pd === ed) tie = true;
+            else winner = pd < ed ? "player" : "enemy";
+            detail = `Closest to ${t}: ${pVal} vs ${eVal}`;
+            break;
+          }
+          case "Initiative":
+            winner = initiative;
+            detail = `Initiative -> ${winner}`;
+            break;
+          default:
+            tie = true;
+            detail = `Slice 0: no section`;
+            break;
         }
-        case "Initiative":
-          winner = initiative;
-          detail = `Initiative -> ${winner}`;
-          break;
-        default:
-          tie = true;
-          detail = `Slice 0: no section`;
-          break;
       }
       outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail });
     }
