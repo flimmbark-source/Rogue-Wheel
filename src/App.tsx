@@ -1092,6 +1092,8 @@ export default function ThreeWheel_WinsOnly({
     switch (skillTargeting.ability) {
       case "swapReserve":
         return "Select a reserve card to swap in.";
+      case "rerollReserve":
+        return "Select a reserve card to cycle.";
       case "reserveBoost":
         return "Select a reserve card to exhaust for a boost.";
       default:
