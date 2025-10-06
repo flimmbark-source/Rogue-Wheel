@@ -1921,6 +1921,7 @@ export function useThreeWheelGame({
             : `pad-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         name: "Reserve",
         number: 0,
+        baseNumber: 0,
         kind: "normal",
       } as unknown as Card);
     }
