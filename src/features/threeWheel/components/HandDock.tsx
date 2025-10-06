@@ -11,7 +11,7 @@ import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter } from "../../../game/types";
-import { isNormal } from "../../../game/values";
+import { isReserveBoostTarget } from "../../../game/skills";
 import type { LegacySide } from "./WheelPanel";
 import { type SpellDefinition, type SpellTargetInstance } from "../../../game/spellEngine";
 import {
@@ -211,11 +211,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
         case "rerollReserve":
           return new Set(fighter.hand.map((card) => card.id));
         case "reserveBoost":
-          return new Set(
-            fighter.hand
-              .filter((card) => isNormal(card) && (card.number ?? 0) > 0)
-              .map((card) => card.id),
-          );
+          return new Set(fighter.hand.filter(isReserveBoostTarget).map((card) => card.id));
         default:
           return new Set<string>();
       }
