@@ -105,6 +105,7 @@ export default memo(function StSCard({
         ) : (
           <div
             className={`mt+10 text-3xl font-extrabold ${skillNumberColor ?? "text-white/90"}`}
+            data-skill-color={skillNumberColor ? "true" : undefined}
           >
             {fmtNum(card.number as number)}
           </div>
