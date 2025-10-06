@@ -1100,6 +1100,15 @@ export default function ThreeWheel_WinsOnly({
         return "";
     }
   }, [skillTargeting, localLegacySide]);
+
+  const skillPhaseMessage =
+    phase === "skill" && isSkillMode && skillPhase
+      ? skillPhase.activeSide === localLegacySide
+        ? isAwaitingSkillTarget
+          ? skillTargetingPrompt || "Select a target."
+          : "Click a card to use its skill or pass to end your turn."
+        : `Waiting for ${namesByLegacy[skillPhase.activeSide]}...`
+      : "";
   const hudAccentColor = HUD_COLORS[localLegacySide];
 
   useEffect(() => {
@@ -1385,13 +1394,6 @@ export default function ThreeWheel_WinsOnly({
           {phase === "skill" && isSkillMode && skillPhase && (
             <div className="flex flex-col items-end gap-2 text-right">
               <div className="text-sm font-semibold text-slate-200">Skill Phase</div>
-              <div className="text-xs text-slate-300 max-w-xs">
-                {skillPhase.activeSide === localLegacySide
-                  ? isAwaitingSkillTarget
-                    ? skillTargetingPrompt || "Select a target."
-                    : "Click a card to use its skill or pass to end your turn."
-                  : `Waiting for ${namesByLegacy[skillPhase.activeSide]}...`}
-              </div>
               {skillPhase.activeSide === localLegacySide && skillPhase.options.every((opt) => !opt.canActivate) && (
                 <div className="text-xs text-slate-400">No ready skills.</div>
               )}
@@ -1600,6 +1602,14 @@ export default function ThreeWheel_WinsOnly({
           reserveSpellHighlights={reserveSpellHighlights}
         />
       </div>
+
+      {skillPhaseMessage && (
+        <div className="relative z-10 -mt-2 mb-2 flex justify-center px-2">
+          <div className="max-w-md rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-center text-xs text-slate-200 shadow">
+            {skillPhaseMessage}
+          </div>
+        </div>
+      )}
 
       {/* Wheels center */}
       <div
