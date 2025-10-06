@@ -27,11 +27,17 @@ import { genWheelSections } from "../../../game/wheel";
 import {
   makeFighter,
   refillTo,
+  drawOne,
   recordMatchResult,
   type MatchResultSummary,
   type LevelProgress,
 } from "../../../player/profileStore";
-import { isNormal } from "../../../game/values";
+import { fmtNum, isNormal } from "../../../game/values";
+import {
+  describeSkillAbility,
+  determineSkillAbility,
+  type SkillAbility,
+} from "../../../game/skills";
 import type { WheelHandle } from "../../../components/CanvasWheel";
 import {
   applySpellEffects as runSpellEffects,
@@ -106,6 +112,29 @@ const createEmptySpellHighlights = (): SpellHighlightState => ({
   reserve: { player: false, enemy: false },
 });
 
+type SkillOption = {
+  lane: number;
+  card: Card;
+  ability: SkillAbility;
+  description: string;
+  canActivate: boolean;
+  reason?: string;
+};
+
+type SkillPhaseState = {
+  activeSide: LegacySide;
+  exhausted: SideState<[boolean, boolean, boolean]>;
+  passed: SideState<boolean>;
+  enemyPicks: (Card | null)[];
+};
+
+type SkillPhaseView = {
+  activeSide: LegacySide;
+  exhausted: SideState<[boolean, boolean, boolean]>;
+  passed: SideState<boolean>;
+  options: SkillOption[];
+};
+
 export type ThreeWheelGameState = {
   player: Fighter;
   enemy: Fighter;
@@ -139,6 +168,7 @@ export type ThreeWheelGameState = {
   ptrDragType: "pointer" | "touch" | null;
   log: GameLogEntry[];
   spellHighlights: SpellHighlightState;
+  skillPhase: SkillPhaseView | null;
 };
 
 export type ThreeWheelGameDerived = {
@@ -149,6 +179,7 @@ export type ThreeWheelGameDerived = {
   HUD_COLORS: { player: string; enemy: string };
   winGoal: number;
   isMultiplayer: boolean;
+  isSkillMode: boolean;
   matchWinner: LegacySide | null;
   localWinsCount: number;
   remoteWinsCount: number;
@@ -178,6 +209,8 @@ export type ThreeWheelGameActions = {
   handleExitClick: () => void;
   applySpellEffects: (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => void;
   setAnteBet: (bet: number) => void;
+  activateSkillOption: (lane: number) => void;
+  passSkillTurn: () => void;
 };
 
 export type ThreeWheelGameReturn = {
@@ -244,6 +277,7 @@ export function useThreeWheelGame({
 
   const currentGameMode = normalizeGameMode(gameMode ?? DEFAULT_GAME_MODE);
   const isAnteMode = currentGameMode.includes("ante");
+  const isSkillMode = currentGameMode.includes("skill");
 
   const hostLegacySide: LegacySide = (() => {
     if (!hostId) return "player";
@@ -674,6 +708,13 @@ export function useThreeWheelGame({
 
   const [spellHighlights, setSpellHighlights] = useState<SpellHighlightState>(() => createEmptySpellHighlights());
   const spellHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [skillState, setSkillState] = useState<SkillPhaseState | null>(null);
+  const skillStateRef = useRef<SkillPhaseState | null>(skillState);
+  const [skillPhaseView, setSkillPhaseView] = useState<SkillPhaseView | null>(null);
+
+  useEffect(() => {
+    skillStateRef.current = skillState;
+  }, [skillState]);
 
   const clearSpellHighlights = useCallback(() => {
     setSpellHighlights(createEmptySpellHighlights());
@@ -723,6 +764,499 @@ export function useThreeWheelGame({
     },
     [scheduleSpellHighlightClear],
   );
+
+  const getFighterSnapshot = useCallback(
+    (side: LegacySide): Fighter => (side === "player" ? playerRef.current : enemyRef.current),
+    [],
+  );
+
+  const updateFighter = useCallback(
+    (side: LegacySide, mutator: (prev: Fighter) => Fighter) => {
+      if (side === "player") {
+        setPlayer((prev) => {
+          const next = mutator(prev);
+          playerRef.current = next;
+          return next;
+        });
+      } else {
+        setEnemy((prev) => {
+          const next = mutator(prev);
+          enemyRef.current = next;
+          return next;
+        });
+      }
+    },
+    [setEnemy, setPlayer],
+  );
+
+  const boostLaneCard = useCallback(
+    (side: LegacySide, laneIndex: number, amount: number): boolean => {
+      if (!Number.isFinite(amount) || amount === 0) return false;
+      let applied = false;
+      setAssign((prev) => {
+        const lane = side === "player" ? [...prev.player] : [...prev.enemy];
+        const target = lane[laneIndex];
+        if (!target || !isNormal(target)) return prev;
+        const baseValue = typeof target.number === "number" ? target.number : 0;
+        const updatedCard: Card = { ...target, number: Math.max(0, baseValue + amount) };
+        lane[laneIndex] = updatedCard;
+        const next = side === "player" ? { ...prev, player: lane } : { ...prev, enemy: lane };
+        assignRef.current = next;
+        applied = true;
+        return next;
+      });
+      return applied;
+    },
+    [setAssign],
+  );
+
+  const swapCardWithReserve = useCallback(
+    (side: LegacySide, laneIndex: number): { swapped: boolean; incoming?: Card; outgoing?: Card } => {
+      const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
+      const boardCard = lane[laneIndex];
+      if (!boardCard) return { swapped: false };
+      const fighter = getFighterSnapshot(side);
+      if (!fighter.hand.length) return { swapped: false };
+      let chosen: Card | null = null;
+      let bestValue = Number.NEGATIVE_INFINITY;
+      for (const card of fighter.hand) {
+        const value = isNormal(card) ? card.number ?? 0 : 0;
+        if (value > bestValue) {
+          bestValue = value;
+          chosen = card;
+        }
+      }
+      if (!chosen) {
+        chosen = fighter.hand[0] ?? null;
+      }
+      if (!chosen) return { swapped: false };
+
+      const incoming = chosen;
+      const outgoing = boardCard;
+
+      updateFighter(side, (prev) => {
+        const hand = prev.hand.filter((c) => c.id !== incoming.id);
+        const nextHand = [...hand, outgoing];
+        return { ...prev, hand: nextHand };
+      });
+
+      setAssign((prev) => {
+        const laneArr = side === "player" ? [...prev.player] : [...prev.enemy];
+        laneArr[laneIndex] = incoming;
+        const next = side === "player" ? { ...prev, player: laneArr } : { ...prev, enemy: laneArr };
+        assignRef.current = next;
+        return next;
+      });
+
+      return { swapped: true, incoming, outgoing };
+    },
+    [getFighterSnapshot, setAssign, updateFighter],
+  );
+
+  const rerollReserve = useCallback(
+    (side: LegacySide): number => {
+      let discarded = 0;
+      updateFighter(side, (prev) => {
+        if (prev.hand.length === 0) return prev;
+        discarded = prev.hand.length;
+        let next: Fighter = {
+          ...prev,
+          hand: [],
+          deck: [...prev.deck],
+          discard: [...prev.discard, ...prev.hand],
+        };
+        for (let i = 0; i < discarded; i++) {
+          next = drawOne(next);
+        }
+        return next;
+      });
+      return discarded;
+    },
+    [updateFighter],
+  );
+
+  const exhaustReserveForBoost = useCallback(
+    (side: LegacySide): { value: number; card: Card | null } => {
+      const fighter = getFighterSnapshot(side);
+      const reserveCards = fighter.hand.filter((card) => isNormal(card));
+      if (reserveCards.length === 0) {
+        return { value: 0, card: null };
+      }
+      let chosen = reserveCards[0];
+      let bestValue = chosen.number ?? 0;
+      for (const candidate of reserveCards) {
+        const value = candidate.number ?? 0;
+        if (value > bestValue) {
+          chosen = candidate;
+          bestValue = value;
+        }
+      }
+      const chosenCard = chosen;
+      updateFighter(side, (prev) => {
+        const hand = prev.hand.filter((card) => card.id !== chosenCard.id);
+        const discard = [...prev.discard, chosenCard];
+        return { ...prev, hand, discard };
+      });
+      return { value: bestValue, card: chosenCard };
+    },
+    [getFighterSnapshot, updateFighter],
+  );
+
+  const canUseSkillAbility = useCallback(
+    (side: LegacySide, laneIndex: number, ability: SkillAbility, state: SkillPhaseState): {
+      ok: boolean;
+      reason?: string;
+    } => {
+      const exhausted = state.exhausted[side][laneIndex];
+      if (exhausted) {
+        return { ok: false, reason: "Exhausted." };
+      }
+      const fighter = getFighterSnapshot(side);
+      const reserveCards = fighter.hand;
+
+      switch (ability) {
+        case "swapReserve": {
+          if (!reserveCards.length) {
+            return { ok: false, reason: "No reserve cards." };
+          }
+          return { ok: true };
+        }
+        case "rerollReserve": {
+          if (!reserveCards.length) {
+            return { ok: false, reason: "Reserve is empty." };
+          }
+          return { ok: true };
+        }
+        case "boostSelf": {
+          return { ok: true };
+        }
+        case "reserveBoost": {
+          const hasReserveValue = reserveCards.some((card) => isNormal(card) && (card.number ?? 0) > 0);
+          if (!hasReserveValue) {
+            return { ok: false, reason: "Need a reserve card with value." };
+          }
+          return { ok: true };
+        }
+        default:
+          return { ok: false };
+      }
+    },
+    [getFighterSnapshot],
+  );
+
+  const computeSkillPhaseView = useCallback(
+    (state: SkillPhaseState | null): SkillPhaseView | null => {
+      if (!state) return null;
+      const activeSide = state.activeSide;
+      const options: SkillOption[] = [];
+      if (activeSide === localLegacySide) {
+        const lane = activeSide === "player" ? assignRef.current.player : assignRef.current.enemy;
+        lane.forEach((card, laneIndex) => {
+          if (!card) return;
+          const ability = determineSkillAbility(card);
+          if (!ability) return;
+          const availability = canUseSkillAbility(activeSide, laneIndex, ability, state);
+          options.push({
+            lane: laneIndex,
+            card,
+            ability,
+            description: describeSkillAbility(ability, card),
+            canActivate: availability.ok,
+            reason: availability.ok ? undefined : availability.reason,
+          });
+        });
+      }
+      return {
+        activeSide,
+        exhausted: state.exhausted,
+        passed: state.passed,
+        options,
+      };
+    },
+    [assignRef, canUseSkillAbility, localLegacySide],
+  );
+
+  useEffect(() => {
+    setSkillPhaseView(computeSkillPhaseView(skillState));
+  }, [assign, player, enemy, skillState, computeSkillPhaseView]);
+
+  const hasSkillActions = useCallback(
+    (side: LegacySide, state: SkillPhaseState): boolean => {
+      if (state.passed[side]) return false;
+      const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
+      for (let i = 0; i < lane.length; i++) {
+        const card = lane[i];
+        if (!card) continue;
+        const ability = determineSkillAbility(card);
+        if (!ability) continue;
+        const availability = canUseSkillAbility(side, i, ability, state);
+        if (availability.ok) {
+          return true;
+        }
+      }
+      return false;
+    },
+    [assignRef, canUseSkillAbility],
+  );
+
+  const finishSkillPhase = useCallback(
+    (state: SkillPhaseState) => {
+      setPhase("anim");
+      resolveRound(state.enemyPicks);
+    },
+    [resolveRound],
+  );
+
+  const advanceSkillTurn = useCallback(
+    (state: SkillPhaseState): SkillPhaseState | null => {
+      const current = state.activeSide;
+      const other: LegacySide = current === "player" ? "enemy" : "player";
+      const currentHas = hasSkillActions(current, state);
+      const otherHas = hasSkillActions(other, state);
+      if (!currentHas && !otherHas) {
+        finishSkillPhase(state);
+        return null;
+      }
+      let nextSide: LegacySide;
+      if (!currentHas && otherHas) {
+        nextSide = other;
+      } else if (currentHas && !otherHas) {
+        nextSide = current;
+      } else if (otherHas) {
+        nextSide = other;
+      } else {
+        nextSide = current;
+      }
+      if (!hasSkillActions(nextSide, state)) {
+        const fallback: LegacySide = nextSide === current ? other : current;
+        if (hasSkillActions(fallback, state)) {
+          nextSide = fallback;
+        } else {
+          finishSkillPhase(state);
+          return null;
+        }
+      }
+      if (nextSide !== state.activeSide) {
+        return { ...state, activeSide: nextSide };
+      }
+      return state;
+    },
+    [finishSkillPhase, hasSkillActions],
+  );
+
+  const createInitialSkillExhausted = useCallback((): SideState<[boolean, boolean, boolean]> => {
+    const playerFlags = assignRef.current.player.map((card) => !card || !determineSkillAbility(card)) as [
+      boolean,
+      boolean,
+      boolean,
+    ];
+    const enemyFlags = assignRef.current.enemy.map((card) => !card || !determineSkillAbility(card)) as [
+      boolean,
+      boolean,
+      boolean,
+    ];
+    return { player: playerFlags, enemy: enemyFlags };
+  }, [assignRef]);
+
+  const updateReservePreview = useCallback(() => {
+    const playerReserve = computeReserveSum("player", assignRef.current.player);
+    const enemyReserve = computeReserveSum("enemy", assignRef.current.enemy);
+    setReserveSums({ player: playerReserve, enemy: enemyReserve });
+  }, [setReserveSums]);
+
+  const startSkillPhase = useCallback(
+    (enemyAssignments: (Card | null)[]) => {
+      if (isMultiplayer) {
+        setPhase("anim");
+        resolveRound(enemyAssignments);
+        return;
+      }
+
+      const exhausted = createInitialSkillExhausted();
+      const initialState: SkillPhaseState = {
+        activeSide: initiative,
+        exhausted,
+        passed: { player: false, enemy: false },
+        enemyPicks: enemyAssignments,
+      };
+      const currentHas = hasSkillActions(initialState.activeSide, initialState);
+      const otherSide: LegacySide = initialState.activeSide === "player" ? "enemy" : "player";
+      const otherHas = hasSkillActions(otherSide, initialState);
+      if (!currentHas && !otherHas) {
+        setPhase("anim");
+        resolveRound(enemyAssignments);
+        return;
+      }
+
+      let nextState = initialState;
+      if (!currentHas && otherHas) {
+        nextState = { ...initialState, activeSide: otherSide };
+      }
+
+      updateReservePreview();
+      setSkillState(nextState);
+      setPhase("skill");
+    },
+    [
+      createInitialSkillExhausted,
+      hasSkillActions,
+      initiative,
+      isMultiplayer,
+      resolveRound,
+      updateReservePreview,
+    ],
+  );
+
+  const activateSkillOption = useCallback(
+    (laneIndex: number) => {
+      setSkillState((prev) => {
+        if (!prev) return prev;
+        if (phaseRef.current !== "skill") return prev;
+        const side = prev.activeSide;
+        const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
+        const card = lane[laneIndex];
+        if (!card) return prev;
+        const ability = determineSkillAbility(card);
+        if (!ability) return prev;
+        const availability = canUseSkillAbility(side, laneIndex, ability, prev);
+        if (!availability.ok) return prev;
+
+        let success = false;
+
+        switch (ability) {
+          case "swapReserve": {
+            const result = swapCardWithReserve(side, laneIndex);
+            if (result.swapped) {
+              const incomingValue = result.incoming && isNormal(result.incoming) ? result.incoming.number ?? 0 : 0;
+              const outgoingValue = result.outgoing && isNormal(result.outgoing) ? result.outgoing.number ?? 0 : 0;
+              appendLog(
+                `${namesByLegacy[side]} swapped a reserve card (${fmtNum(incomingValue)}) with ${fmtNum(outgoingValue)} in lane ${
+                  laneIndex + 1
+                }.`,
+              );
+              success = true;
+            }
+            break;
+          }
+          case "rerollReserve": {
+            const discarded = rerollReserve(side);
+            appendLog(`${namesByLegacy[side]} cycled ${discarded} reserve card${discarded === 1 ? "" : "s"}.`);
+            success = discarded > 0;
+            break;
+          }
+          case "boostSelf": {
+            const currentCard = side === "player" ? assignRef.current.player[laneIndex] : assignRef.current.enemy[laneIndex];
+            const value = currentCard && isNormal(currentCard) ? currentCard.number ?? 0 : 0;
+            if (value !== 0) {
+              success = boostLaneCard(side, laneIndex, value);
+            }
+            if (success) {
+              appendLog(`${namesByLegacy[side]} empowered their card by ${fmtNum(value)}.`);
+            }
+            break;
+          }
+          case "reserveBoost": {
+            const { value, card: reserveCard } = exhaustReserveForBoost(side);
+            success = value > 0 ? boostLaneCard(side, laneIndex, value) : false;
+            if (success) {
+              appendLog(
+                `${namesByLegacy[side]} exhausted ${reserveCard?.name ?? "a reserve"} for +${fmtNum(value)} power.`,
+              );
+            }
+            break;
+          }
+          default:
+            break;
+        }
+
+        if (!success) {
+          return prev;
+        }
+
+        if (ability === "swapReserve" || ability === "rerollReserve" || ability === "reserveBoost") {
+          updateReservePreview();
+        }
+
+        const updatedExhaustedSide = [...prev.exhausted[side]] as [boolean, boolean, boolean];
+        updatedExhaustedSide[laneIndex] = true;
+        const updatedState: SkillPhaseState = {
+          ...prev,
+          exhausted: { ...prev.exhausted, [side]: updatedExhaustedSide },
+        };
+
+        const advanced = advanceSkillTurn(updatedState);
+        return advanced ?? null;
+      });
+    },
+    [
+      advanceSkillTurn,
+      appendLog,
+      boostLaneCard,
+      canUseSkillAbility,
+      exhaustReserveForBoost,
+      namesByLegacy,
+      rerollReserve,
+      swapCardWithReserve,
+      updateReservePreview,
+    ],
+  );
+
+  const passSkillTurn = useCallback(() => {
+    setSkillState((prev) => {
+      if (!prev) return prev;
+      if (phaseRef.current !== "skill") return prev;
+      const side = prev.activeSide;
+      if (prev.passed[side]) return prev;
+      appendLog(`${namesByLegacy[side]} passes their skill activations.`);
+      const updatedState: SkillPhaseState = {
+        ...prev,
+        passed: { ...prev.passed, [side]: true },
+      };
+      const advanced = advanceSkillTurn(updatedState);
+      return advanced ?? null;
+    });
+  }, [advanceSkillTurn, appendLog, namesByLegacy]);
+
+  useEffect(() => {
+    if (!isSkillMode) return;
+    if (isMultiplayer) return;
+    if (phase !== "skill") return;
+    if (!skillState) return;
+    if (skillState.activeSide === localLegacySide) return;
+
+    const lane = skillState.activeSide === "player" ? assignRef.current.player : assignRef.current.enemy;
+    let targetLane = -1;
+    for (let i = 0; i < lane.length; i++) {
+      const card = lane[i];
+      const ability = determineSkillAbility(card);
+      if (!ability) continue;
+      const availability = canUseSkillAbility(skillState.activeSide, i, ability, skillState);
+      if (availability.ok) {
+        targetLane = i;
+        break;
+      }
+    }
+
+    const timeout = window.setTimeout(() => {
+      if (phaseRef.current !== "skill") return;
+      if (targetLane >= 0) activateSkillOption(targetLane);
+      else passSkillTurn();
+    }, 500);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [
+    activateSkillOption,
+    assignRef,
+    canUseSkillAbility,
+    isMultiplayer,
+    isSkillMode,
+    localLegacySide,
+    passSkillTurn,
+    phase,
+    skillState,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -1210,13 +1744,17 @@ export function useThreeWheelGame({
       setPhase("showEnemy");
       setSafeTimeout(() => {
         if (!mountedRef.current) return;
-        setPhase("anim");
-        resolveRound(enemyPicks);
+        if (isSkillMode) {
+          startSkillPhase(enemyPicks);
+        } else {
+          setPhase("anim");
+          resolveRound(enemyPicks);
+        }
       }, 600);
 
       return true;
     },
-    [broadcastLocalReserve, canReveal, isMultiplayer, wheelSize]
+    [broadcastLocalReserve, canReveal, isMultiplayer, isSkillMode, startSkillPhase, wheelSize]
   );
 
   const onReveal = useCallback(() => {
@@ -1401,6 +1939,7 @@ export function useThreeWheelGame({
       setWheelHUD([null, null, null]);
       reservePenaltiesRef.current = { player: 0, enemy: 0 };
       reserveReportsRef.current = { player: null, enemy: null };
+      setSkillState(null);
 
       setPhase("choose");
       setRound((r) => r + 1);
@@ -1588,6 +2127,13 @@ export function useThreeWheelGame({
   ]);
 
   const handleNextClick = useCallback(() => {
+    if (phase === "skill") {
+      if (skillStateRef.current?.activeSide === localLegacySide) {
+        passSkillTurn();
+      }
+      return;
+    }
+
     if (phase !== "roundEnd") return;
 
     if (!isMultiplayer) {
@@ -1599,7 +2145,17 @@ export function useThreeWheelGame({
 
     markAdvanceVote(localLegacySide);
     sendIntent({ type: "nextRound", side: localLegacySide });
-  }, [advanceVotes, isMultiplayer, localLegacySide, markAdvanceVote, nextRound, phase, sendIntent]);
+  }, [
+    advanceVotes,
+    isMultiplayer,
+    localLegacySide,
+    markAdvanceVote,
+    nextRound,
+    passSkillTurn,
+    phase,
+    sendIntent,
+    skillStateRef,
+  ]);
 
   useEffect(() => {
     if (!isMultiplayer) return;
@@ -1648,6 +2204,7 @@ export function useThreeWheelGame({
     setTokens([0, 0, 0]);
     setReserveSums(null);
     setWheelHUD([null, null, null]);
+    setSkillState(null);
 
     setLog([createLogEntry(START_LOG)]);
 
@@ -1885,6 +2442,7 @@ export function useThreeWheelGame({
     ptrDragType,
     log,
     spellHighlights,
+    skillPhase: skillPhaseView,
   };
 
   const derived: ThreeWheelGameDerived = {
@@ -1895,6 +2453,7 @@ export function useThreeWheelGame({
     HUD_COLORS: { player: HUD_COLORS.player, enemy: HUD_COLORS.enemy },
     winGoal,
     isMultiplayer,
+    isSkillMode,
     matchWinner,
     localWinsCount,
     remoteWinsCount,
@@ -1924,6 +2483,8 @@ export function useThreeWheelGame({
     handleExitClick,
     applySpellEffects,
     setAnteBet,
+    activateSkillOption,
+    passSkillTurn,
   };
 
   return { state, derived, refs, actions };

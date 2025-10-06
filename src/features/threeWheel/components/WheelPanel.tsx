@@ -80,6 +80,8 @@ export interface WheelPanelProps {
   onWheelTargetSelect?: (wheelIndex: number) => void;
   isAwaitingSpellTarget: boolean;
   variant?: "standalone" | "grouped";
+  skillExhausted?: { player: boolean[]; enemy: boolean[] } | null;
+  isSkillMode?: boolean;
 }
 
 const slotWidthPx = 80;
@@ -133,6 +135,8 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   isAwaitingSpellTarget,
   variant = "standalone",
   spellHighlightedCardIds,
+  skillExhausted,
+  isSkillMode = false,
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -309,6 +313,14 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       startTouchDrag(card, e);
     };
 
+    const exhausted = Boolean(isSkillMode && skillExhausted && skillExhausted[slot.side]?.[index]);
+
+    const cardStyle: React.CSSProperties | undefined = exhausted
+      ? { transform: "rotate(-90deg)", transformOrigin: "center", transition: "transform 0.2s ease", opacity: 0.8 }
+      : isSkillMode
+      ? { transition: "transform 0.2s ease" }
+      : undefined;
+
     return (
       <StSCard
         card={card}
@@ -324,6 +336,8 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         onTouchStart={handleTouchStart}
         className={slotTargetable ? "ring-2 ring-sky-400" : undefined}
         spellTargetable={slotTargetable}
+        style={cardStyle}
+        data-skill-exhausted={exhausted ? "true" : undefined}
       />
     );
   };

@@ -3,6 +3,7 @@ import React, { memo, useMemo } from "react";
 import type { Arcana, Card } from "../game/types";
 import { getArcanaIcon, getCardArcana } from "../game/arcana";
 import { fmtNum, isSplit } from "../game/values";
+import { getSkillAbilityColorClass } from "../game/skills";
 
 const ARCANA_COLOR_CLASS: Record<Arcana, string> = {
   fire: "text-orange-300",
@@ -56,6 +57,7 @@ export default memo(function StSCard({
 }: StSCardProps) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
   const arcana = useMemo(() => getCardArcana(card), [card]);
+  const skillNumberColor = useMemo(() => getSkillAbilityColorClass(card), [card]);
 
   return (
     <button
@@ -96,7 +98,11 @@ export default memo(function StSCard({
             <div>{fmtNum(card.leftValue!)}<span className="opacity-60">|</span>{fmtNum(card.rightValue!)}</div>
           </div>
         ) : (
-          <div className="mt+10 text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
+          <div
+            className={`mt+10 text-3xl font-extrabold ${skillNumberColor ?? "text-white/90"}`}
+          >
+            {fmtNum(card.number as number)}
+          </div>
         )}
         <div className="pointer-events-none mt-1 flex items-center justify-center card-arcana">
           <ArcanaGlyph arcana={arcana} />
