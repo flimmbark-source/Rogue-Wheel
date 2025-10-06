@@ -51,6 +51,7 @@ interface HandDockProps {
     location: SpellTargetLocation;
   }) => void;
   spellHighlightedCardIds: readonly string[];
+  isSkillMode?: boolean;
 }
 
 const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
@@ -76,6 +77,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     isAwaitingSpellTarget,
     onSpellTargetSelect,
     spellHighlightedCardIds,
+    isSkillMode = false,
   }, forwardedRef) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
     const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -232,9 +234,9 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
           }}
           aria-hidden
         >
-          <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
-            <StSCard card={ptrDragCard} />
-          </div>
+      <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
+        <StSCard card={ptrDragCard} showSkillColor={isSkillMode} />
+      </div>
         </div>
       ) : null;
 
@@ -276,6 +278,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                       className="pointer-events-auto"
                       card={card}
                       selected={isSelected}
+                      showSkillColor={isSkillMode}
                       disabled={awaitingManualTarget && !cardSelectable}
                       spellAffected={isSpellAffected}
                       onPick={() => {

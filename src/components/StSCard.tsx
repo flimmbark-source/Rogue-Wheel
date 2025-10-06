@@ -35,6 +35,7 @@ type StSCardProps = {
   ariaLabel?: string;
   ariaPressed?: React.AriaAttributes["aria-pressed"];
   onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  showSkillColor?: boolean;
 } & Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
   "onClick" | "children" | "className" | "disabled" | "aria-label" | "aria-pressed"
@@ -52,12 +53,16 @@ export default memo(function StSCard({
   ariaLabel,
   ariaPressed,
   onClick,
+  showSkillColor = false,
   style,
   ...buttonProps
 }: StSCardProps) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
   const arcana = useMemo(() => getCardArcana(card), [card]);
-  const skillNumberColor = useMemo(() => getSkillAbilityColorClass(card), [card]);
+  const skillNumberColor = useMemo(
+    () => (showSkillColor ? getSkillAbilityColorClass(card) : null),
+    [card, showSkillColor],
+  );
 
   return (
     <button

@@ -125,7 +125,6 @@ type SkillPhaseState = {
   activeSide: LegacySide;
   exhausted: SideState<[boolean, boolean, boolean]>;
   passed: SideState<boolean>;
-  enemyPicks: (Card | null)[];
 };
 
 type SkillPhaseView = {
@@ -715,6 +714,7 @@ export function useThreeWheelGame({
   const spellHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [skillState, setSkillState] = useState<SkillPhaseState | null>(null);
   const skillStateRef = useRef<SkillPhaseState | null>(skillState);
+  const postSkillPhaseRef = useRef<CorePhase>("roundEnd");
   const [skillPhaseView, setSkillPhaseView] = useState<SkillPhaseView | null>(null);
 
   useEffect(() => {
@@ -1004,13 +1004,15 @@ export function useThreeWheelGame({
     [assignRef, canUseSkillAbility],
   );
 
-  const finishSkillPhase = useCallback(
-    (state: SkillPhaseState) => {
-      setPhase("anim");
-      resolveRound(state.enemyPicks);
-    },
-    [resolveRound],
-  );
+  const finishSkillPhase = useCallback(() => {
+    setSkillState(null);
+    const nextPhase = postSkillPhaseRef.current ?? "roundEnd";
+    postSkillPhaseRef.current = "roundEnd";
+    setPhase(nextPhase);
+    if (nextPhase === "ended") {
+      clearRematchVotes();
+    }
+  }, [clearRematchVotes, setPhase]);
 
   const advanceSkillTurn = useCallback(
     (state: SkillPhaseState): SkillPhaseState | null => {
@@ -1019,7 +1021,7 @@ export function useThreeWheelGame({
       const currentHas = hasSkillActions(current, state);
       const otherHas = hasSkillActions(other, state);
       if (!currentHas && !otherHas) {
-        finishSkillPhase(state);
+        finishSkillPhase();
         return null;
       }
       let nextSide: LegacySide;
@@ -1037,7 +1039,7 @@ export function useThreeWheelGame({
         if (hasSkillActions(fallback, state)) {
           nextSide = fallback;
         } else {
-          finishSkillPhase(state);
+          finishSkillPhase();
           return null;
         }
       }
@@ -1070,27 +1072,25 @@ export function useThreeWheelGame({
   }, [setReserveSums]);
 
   const startSkillPhase = useCallback(
-    (enemyAssignments: (Card | null)[]) => {
+    (options?: { activeSide?: LegacySide }): boolean => {
       if (isMultiplayer) {
-        setPhase("anim");
-        resolveRound(enemyAssignments);
-        return;
+        setSkillState(null);
+        return false;
       }
 
       const exhausted = createInitialSkillExhausted();
+      const initialActive = options?.activeSide ?? initiative;
       const initialState: SkillPhaseState = {
-        activeSide: initiative,
+        activeSide: initialActive,
         exhausted,
         passed: { player: false, enemy: false },
-        enemyPicks: enemyAssignments,
       };
       const currentHas = hasSkillActions(initialState.activeSide, initialState);
       const otherSide: LegacySide = initialState.activeSide === "player" ? "enemy" : "player";
       const otherHas = hasSkillActions(otherSide, initialState);
       if (!currentHas && !otherHas) {
-        setPhase("anim");
-        resolveRound(enemyAssignments);
-        return;
+        setSkillState(null);
+        return false;
       }
 
       let nextState = initialState;
@@ -1101,15 +1101,9 @@ export function useThreeWheelGame({
       updateReservePreview();
       setSkillState(nextState);
       setPhase("skill");
+      return true;
     },
-    [
-      createInitialSkillExhausted,
-      hasSkillActions,
-      initiative,
-      isMultiplayer,
-      resolveRound,
-      updateReservePreview,
-    ],
+    [createInitialSkillExhausted, hasSkillActions, initiative, isMultiplayer, setPhase, updateReservePreview],
   );
 
   const activateSkillOption = useCallback(
@@ -1744,17 +1738,13 @@ export function useThreeWheelGame({
       setPhase("showEnemy");
       setSafeTimeout(() => {
         if (!mountedRef.current) return;
-        if (isSkillMode) {
-          startSkillPhase(enemyPicks);
-        } else {
-          setPhase("anim");
-          resolveRound(enemyPicks);
-        }
+        setPhase("anim");
+        resolveRound(enemyPicks);
       }, 600);
 
       return true;
     },
-    [broadcastLocalReserve, canReveal, isMultiplayer, isSkillMode, startSkillPhase, wheelSize]
+    [broadcastLocalReserve, canReveal, isMultiplayer, wheelSize]
   );
 
   const onReveal = useCallback(() => {
@@ -1824,6 +1814,7 @@ export function useThreeWheelGame({
         remoteLegacySide,
       });
 
+      const skillStartSide = initiative;
       setInitiative(summary.nextInitiative);
       summary.logs.forEach((entry) => {
         appendLog(entry);
@@ -1845,11 +1836,22 @@ export function useThreeWheelGame({
       }
 
       clearAdvanceVotes();
-      setPhase("roundEnd");
+
       if (summary.matchEnded) {
         clearRematchVotes();
         setPhase("ended");
+        return;
       }
+
+      if (isSkillMode) {
+        postSkillPhaseRef.current = "roundEnd";
+        const started = startSkillPhase({ activeSide: skillStartSide });
+        if (started) {
+          return;
+        }
+      }
+
+      setPhase("roundEnd");
     };
 
     if (options?.skipAnimation) {
