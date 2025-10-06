@@ -17,6 +17,7 @@ import {
   shouldShowSlotCard,
   type LegacySide,
 } from "../utils/slotVisibility";
+import type { SkillTargetingState } from "../hooks/useThreeWheelGame";
 
 export type { LegacySide } from "../utils/slotVisibility";
 
@@ -87,6 +88,7 @@ export interface WheelPanelProps {
   onSkillActivate?: (lane: number) => void;
   skillPhaseActiveSide?: LegacySide | null;
   skillOptions?: SkillOptionView[];
+  skillTargeting?: SkillTargetingState | null;
 }
 
 const slotWidthPx = 80;
@@ -145,6 +147,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   onSkillActivate,
   skillPhaseActiveSide = null,
   skillOptions = [],
+  skillTargeting = null,
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -283,8 +286,21 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     if (!slot.card) return null;
     const card = slot.card;
     const isSpellAffected = spellHighlightSet.has(card.id);
+    const awaitingSkillTarget = Boolean(
+      isSkillMode &&
+        skillTargeting &&
+        skillTargeting.side === localLegacySide &&
+        skillTargeting.kind === "reserve",
+    );
+    const isSkillPendingLane = Boolean(
+      awaitingSkillTarget && skillTargeting?.laneIndex === index && skillTargeting?.side === localLegacySide,
+    );
     const canInteractNormally =
-      !awaitingSpellTarget && slot.side === localLegacySide && phase === "choose" && isWheelActive;
+      !awaitingSpellTarget &&
+      !awaitingSkillTarget &&
+      slot.side === localLegacySide &&
+      phase === "choose" &&
+      isWheelActive;
 
     const isSkillTurn =
       isSkillMode &&
@@ -293,7 +309,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       slot.side === localLegacySide;
 
     const skillOption = isSkillTurn ? skillOptionsByLane.get(index) ?? null : null;
-    const canActivateSkill = Boolean(skillOption?.canActivate);
+    const canActivateSkill = !awaitingSkillTarget && Boolean(skillOption?.canActivate);
     const skillHint = skillOption && !skillOption.canActivate ? skillOption.reason : undefined;
 
     const cardInteractable = canInteractNormally || slotTargetable || canActivateSkill;
@@ -307,6 +323,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         onSkillActivate?.(index);
         return;
       }
+      if (awaitingSkillTarget) return;
       if (!canInteractNormally) return;
       if (selectedCardId) {
         tapAssignIfSelected();
@@ -369,6 +386,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         showSkillColor={isSkillMode}
         data-skill-exhausted={exhausted ? "true" : undefined}
         data-skill-activatable={canActivateSkill ? "true" : undefined}
+        data-skill-targeting={isSkillPendingLane ? "true" : undefined}
         data-skill-hint={skillHint}
         title={skillHint}
       />

@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter } from "../../../game/types";
+import { isNormal } from "../../../game/values";
 import type { LegacySide } from "./WheelPanel";
 import { type SpellDefinition, type SpellTargetInstance } from "../../../game/spellEngine";
 import {
@@ -18,6 +19,7 @@ import {
   spellTargetStageRequiresManualSelection,
   type SpellTargetLocation,
 } from "../../../game/spells";
+import type { SkillTargetingState } from "../hooks/useThreeWheelGame";
 
 interface HandDockProps {
   localLegacySide: LegacySide;
@@ -52,6 +54,8 @@ interface HandDockProps {
   }) => void;
   spellHighlightedCardIds: readonly string[];
   isSkillMode?: boolean;
+  skillTargeting?: SkillTargetingState | null;
+  onSkillTargetSelect?: (selection: { cardId: string }) => void;
 }
 
 const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
@@ -78,6 +82,8 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     onSpellTargetSelect,
     spellHighlightedCardIds,
     isSkillMode = false,
+    skillTargeting,
+    onSkillTargetSelect,
   }, forwardedRef) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
     const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -189,6 +195,30 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
 
     const awaitingCardTarget = awaitingManualTarget && activeStage?.type === "card";
 
+    const awaitingSkillReserveTarget = Boolean(
+      isSkillMode &&
+        skillTargeting &&
+        skillTargeting.kind === "reserve" &&
+        skillTargeting.side === localLegacySide,
+    );
+
+    const skillTargetableSet = useMemo(() => {
+      if (!awaitingSkillReserveTarget || !skillTargeting) return new Set<string>();
+      const fighter = localLegacySide === "player" ? player : enemy;
+      switch (skillTargeting.ability) {
+        case "swapReserve":
+          return new Set(fighter.hand.map((card) => card.id));
+        case "reserveBoost":
+          return new Set(
+            fighter.hand
+              .filter((card) => isNormal(card) && (card.number ?? 0) > 0)
+              .map((card) => card.id),
+          );
+        default:
+          return new Set<string>();
+      }
+    }, [awaitingSkillReserveTarget, enemy, localLegacySide, player, skillTargeting]);
+
     const overlayStyle = useMemo<React.CSSProperties>(() => {
       const bottom = "calc(env(safe-area-inset-bottom, 0px) + -30px)";
       const measuredWidth = wheelPanelBounds?.width ?? wheelPanelWidth;
@@ -247,6 +277,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
           className="fixed bottom-0 z-40 pointer-events-none select-none"
           style={overlayStyle}
           data-awaiting-spell-target={awaitingCardTarget ? "true" : "false"}
+          data-awaiting-skill-target={awaitingSkillReserveTarget ? "true" : "false"}
         >
           <div
             className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5"
@@ -258,7 +289,9 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
             {localFighter.hand.map((card, idx) => {
               const isSelected = selectedCardId === card.id;
               const isSpellAffected = spellHighlightSet.has(card.id);
-              const cardSelectable = awaitingCardTarget && (stageLocation === "any" || stageLocation === "hand");
+              const cardSelectableForSpell = awaitingCardTarget && (stageLocation === "any" || stageLocation === "hand");
+              const cardSelectableForSkill = awaitingSkillReserveTarget && skillTargetableSet.has(card.id);
+              const cardSelectable = cardSelectableForSpell || cardSelectableForSkill;
               return (
                 <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
                   <motion.div
@@ -279,15 +312,23 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                       card={card}
                       selected={isSelected}
                       showSkillColor={isSkillMode}
-                      disabled={awaitingManualTarget && !cardSelectable}
+                      disabled={
+                        (awaitingManualTarget && !cardSelectableForSpell) ||
+                        (awaitingSkillReserveTarget && !cardSelectableForSkill)
+                      }
+                      spellTargetable={cardSelectable}
                       spellAffected={isSpellAffected}
                       onPick={() => {
-                        if (cardSelectable) {
+                        if (cardSelectableForSpell) {
                           const side = localLegacySide;
                           onSpellTargetSelect?.({ side, lane: null, card, location: "hand" });
                           return;
                         }
-                        if (awaitingManualTarget) return;
+                        if (cardSelectableForSkill) {
+                          onSkillTargetSelect?.({ cardId: card.id });
+                          return;
+                        }
+                        if (awaitingSkillReserveTarget || awaitingManualTarget) return;
                         if (!selectedCardId) {
                           setSelectedCardId(card.id);
                           return;
@@ -307,9 +348,9 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
 
                         setSelectedCardId(card.id);
                       }}
-                      draggable={!awaitingManualTarget}
+                      draggable={!awaitingManualTarget && !awaitingSkillReserveTarget}
                       onDragStart={(e) => {
-                        if (awaitingManualTarget) return;
+                        if (awaitingManualTarget || awaitingSkillReserveTarget) return;
                         setDragCardId(card.id);
                         try {
                           e.dataTransfer.setData("text/plain", card.id);
@@ -318,11 +359,11 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                       }}
                       onDragEnd={() => setDragCardId(null)}
                       onPointerDown={(e) => {
-                        if (awaitingManualTarget) return;
+                        if (awaitingManualTarget || awaitingSkillReserveTarget) return;
                         startPointerDrag(card, e);
                       }}
                       onTouchStart={(e) => {
-                        if (awaitingManualTarget) return;
+                        if (awaitingManualTarget || awaitingSkillReserveTarget) return;
                         startTouchDrag(card, e);
                       }}
                       aria-pressed={isSelected}

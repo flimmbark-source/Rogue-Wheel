@@ -1,5 +1,10 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useThreeWheelGame, type GameLogEntry } from "./features/threeWheel/hooks/useThreeWheelGame";
+import {
+  useThreeWheelGame,
+  type GameLogEntry,
+  type SkillTargetingState,
+  type SkillTargetSelection,
+} from "./features/threeWheel/hooks/useThreeWheelGame";
 import React, {
   useMemo,
   useRef,
@@ -260,6 +265,7 @@ export default function ThreeWheel_WinsOnly({
     log,
     spellHighlights,
     skillPhase,
+    skillTargeting,
   } = state;
 
   const {
@@ -297,6 +303,8 @@ export default function ThreeWheel_WinsOnly({
     setAnteBet,
     activateSkillOption,
     passSkillTurn,
+    resolveSkillTargeting,
+    cancelSkillTargeting,
   } = actions;
 
   // --- local UI/Grimoire state (from Spells branch) ---
@@ -338,6 +346,24 @@ export default function ThreeWheel_WinsOnly({
     },
     [applySpellEffectsWithAi],
   );
+
+  const handleSkillTargetSelect = useCallback(
+    (selection: SkillTargetSelection) => {
+      resolveSkillTargeting(selection);
+    },
+    [resolveSkillTargeting],
+  );
+
+  const handleSkillReserveSelect = useCallback(
+    (cardId: string) => {
+      handleSkillTargetSelect({ kind: "reserve", cardId });
+    },
+    [handleSkillTargetSelect],
+  );
+
+  const handleSkillTargetCancel = useCallback(() => {
+    cancelSkillTargeting();
+  }, [cancelSkillTargeting]);
 
   const localGrimoireSpellIds = useMemo<SpellId[]>(() => {
     try {
@@ -471,6 +497,9 @@ export default function ThreeWheel_WinsOnly({
 
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
+  const isAwaitingSkillTarget = Boolean(
+    skillTargeting && skillTargeting.side === localLegacySide,
+  );
   const castCpuSpell = useCallback(
     (decision: CpuSpellDecision) => {
       if (isMultiplayer) return;
@@ -1056,6 +1085,19 @@ export default function ThreeWheel_WinsOnly({
         }
       })()
     : "";
+  const skillTargetingPrompt = useMemo(() => {
+    if (!skillTargeting || skillTargeting.side !== localLegacySide) {
+      return "";
+    }
+    switch (skillTargeting.ability) {
+      case "swapReserve":
+        return "Select a reserve card to swap in.";
+      case "reserveBoost":
+        return "Select a reserve card to exhaust for a boost.";
+      default:
+        return "";
+    }
+  }, [skillTargeting, localLegacySide]);
   const hudAccentColor = HUD_COLORS[localLegacySide];
 
   useEffect(() => {
@@ -1343,20 +1385,33 @@ export default function ThreeWheel_WinsOnly({
               <div className="text-sm font-semibold text-slate-200">Skill Phase</div>
               <div className="text-xs text-slate-300 max-w-xs">
                 {skillPhase.activeSide === localLegacySide
-                  ? "Click a card to use its skill or pass to end your turn."
+                  ? isAwaitingSkillTarget
+                    ? skillTargetingPrompt || "Select a target."
+                    : "Click a card to use its skill or pass to end your turn."
                   : `Waiting for ${namesByLegacy[skillPhase.activeSide]}...`}
               </div>
               {skillPhase.activeSide === localLegacySide && skillPhase.options.every((opt) => !opt.canActivate) && (
                 <div className="text-xs text-slate-400">No ready skills.</div>
               )}
               {skillPhase.activeSide === localLegacySide && (
-                <button
-                  type="button"
-                  onClick={passSkillTurn}
-                  className="self-end rounded bg-slate-700 px-2.5 py-0.5 text-xs font-semibold text-slate-200 hover:bg-slate-600"
-                >
-                  Pass
-                </button>
+                <div className="flex items-center justify-end gap-2 self-end">
+                  {isAwaitingSkillTarget && (
+                    <button
+                      type="button"
+                      onClick={handleSkillTargetCancel}
+                      className="rounded bg-slate-700 px-2.5 py-0.5 text-xs font-semibold text-slate-200 hover:bg-slate-600"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={passSkillTurn}
+                    className="rounded bg-slate-700 px-2.5 py-0.5 text-xs font-semibold text-slate-200 hover:bg-slate-600"
+                  >
+                    Pass
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -1604,6 +1659,7 @@ export default function ThreeWheel_WinsOnly({
                     reason: option.reason,
                   })) ?? []
                 }
+                skillTargeting={skillTargeting}
               />
             </div>
           ))}
@@ -1635,6 +1691,8 @@ export default function ThreeWheel_WinsOnly({
         onSpellTargetSelect={handleSpellTargetSelect}
         spellHighlightedCardIds={spellHighlightedCardIds}
         isSkillMode={isSkillMode}
+        skillTargeting={skillTargeting}
+        onSkillTargetSelect={handleSkillReserveSelect}
       />
 
       <FirstRunCoach
