@@ -1109,6 +1109,12 @@ export default function ThreeWheel_WinsOnly({
           : "Click a card to use its skill or pass to end your turn."
         : `Waiting for ${namesByLegacy[skillPhase.activeSide]}...`
       : "";
+  const showSkillPassButton =
+    phase === "skill" &&
+    isSkillMode &&
+    !!skillPhase &&
+    skillPhase.activeSide === localLegacySide &&
+    !isAwaitingSkillTarget;
   const hudAccentColor = HUD_COLORS[localLegacySide];
 
   useEffect(() => {
@@ -1396,23 +1402,14 @@ export default function ThreeWheel_WinsOnly({
               {skillPhase.activeSide === localLegacySide && skillPhase.options.every((opt) => !opt.canActivate) && (
                 <div className="text-xs text-slate-400">No ready skills.</div>
               )}
-              {skillPhase.activeSide === localLegacySide && (
+              {skillPhase.activeSide === localLegacySide && isAwaitingSkillTarget && (
                 <div className="flex items-center justify-end gap-2 self-end">
-                  {isAwaitingSkillTarget && (
-                    <button
-                      type="button"
-                      onClick={handleSkillTargetCancel}
-                      className="rounded bg-slate-700 px-2.5 py-0.5 text-xs font-semibold text-slate-200 hover:bg-slate-600"
-                    >
-                      Cancel
-                    </button>
-                  )}
                   <button
                     type="button"
-                    onClick={passSkillTurn}
+                    onClick={handleSkillTargetCancel}
                     className="rounded bg-slate-700 px-2.5 py-0.5 text-xs font-semibold text-slate-200 hover:bg-slate-600"
                   >
-                    Pass
+                    Cancel
                   </button>
                 </div>
               )}
@@ -1601,6 +1598,26 @@ export default function ThreeWheel_WinsOnly({
           reserveSpellHighlights={reserveSpellHighlights}
         />
       </div>
+
+      {skillPhaseMessage && (
+        <div className="relative z-10 -mt-2 mb-2 flex justify-center px-2">
+          <div className="max-w-md rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-200 shadow">
+            <div className="flex flex-wrap items-center justify-center gap-2 text-center">
+              <span className="block">{skillPhaseMessage}</span>
+              {showSkillPassButton && (
+                <button
+                  type="button"
+                  onClick={passSkillTurn}
+                  className="rounded bg-slate-700 px-2.5 py-0.5 text-xs font-semibold text-slate-200 hover:bg-slate-600"
+                >
+                  Pass
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Wheels center */}
       <div
         className="relative z-0 flex h-full items-center justify-center -translate-y-[36px] sm:-translate-y-6 lg:-translate-y-8"
