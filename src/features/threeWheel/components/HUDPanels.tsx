@@ -25,6 +25,7 @@ interface HUDPanelsProps {
   onPlayerManaToggle?: () => void;
   isGrimoireOpen?: boolean;
   playerManaButtonRef?: React.Ref<HTMLButtonElement>;
+  reserveSpellHighlights: Record<LegacySide, boolean>;
 }
 
 const HUDPanels: React.FC<HUDPanelsProps> = ({
@@ -41,6 +42,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
   onPlayerManaToggle,
   isGrimoireOpen,
   playerManaButtonRef,
+  reserveSpellHighlights,
 }) => {
   const rsP = reserveSums ? reserveSums.player : null;
   const rsE = reserveSums ? reserveSums.enemy : null;
@@ -54,6 +56,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
     const hasInit = initiative === side;
     const isReserveVisible =
       (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") && rs !== null;
+    const reserveHighlighted = Boolean(reserveSpellHighlights?.[side]);
 
     const manaCount = isPlayer ? manaPools.player : manaPools.enemy;
 
@@ -158,12 +161,23 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
                   background: "#1b1209ee",
                   borderColor: theme.slotBorder,
                   color: theme.textWarm,
+                  boxShadow: reserveHighlighted ? "0 0 12px rgba(251,191,36,0.4)" : undefined,
                 }}
                 title={rs !== null ? `Reserve: ${rs}` : undefined}
+                data-spell-affected={reserveHighlighted ? "true" : undefined}
               >
                 <span className="sm:hidden mr-1">Reserve:</span>
                 <span className="hidden sm:inline">Reserve: </span>
                 <span className="font-bold tabular-nums">{rs ?? 0}</span>
+                {reserveHighlighted ? (
+                  <span
+                    aria-hidden
+                    className="ml-1 text-sm leading-none animate-pulse"
+                    style={{ textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}
+                  >
+                    ✨
+                  </span>
+                ) : null}
               </div>
             )}
           </div>
