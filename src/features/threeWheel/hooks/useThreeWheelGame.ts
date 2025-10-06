@@ -1451,17 +1451,139 @@ export function useThreeWheelGame({
     if (!skillState) return;
     if (skillState.activeSide === localLegacySide) return;
 
-    const lane = skillState.activeSide === "player" ? assignRef.current.player : assignRef.current.enemy;
+    const side = skillState.activeSide;
+    const opponentSide: LegacySide = side === "player" ? "enemy" : "player";
+    const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
+    const opponentLane = opponentSide === "player" ? assignRef.current.player : assignRef.current.enemy;
+    const fighter = getFighterSnapshot(side);
+    const reserveCards = fighter.hand;
+
+    const getCardPower = (card: Card | null | undefined): number => {
+      if (!card) return 0;
+      if (typeof card.number === "number") {
+        return card.number;
+      }
+      return getSkillCardValue(card) ?? 0;
+    };
+
+    let highestReserveValue = Number.NEGATIVE_INFINITY;
+    let lowestReserveValue = Number.POSITIVE_INFINITY;
+    let bestPositiveReserve = Number.NEGATIVE_INFINITY;
+
+    for (const reserve of reserveCards) {
+      const value = getSkillCardValue(reserve);
+      if (value === null) continue;
+      if (value > highestReserveValue) {
+        highestReserveValue = value;
+      }
+      if (value < lowestReserveValue) {
+        lowestReserveValue = value;
+      }
+      if (value > 0 && value > bestPositiveReserve) {
+        bestPositiveReserve = value;
+      }
+    }
+
+    if (!Number.isFinite(highestReserveValue)) {
+      highestReserveValue = Number.NEGATIVE_INFINITY;
+    }
+    if (!Number.isFinite(lowestReserveValue)) {
+      lowestReserveValue = Number.POSITIVE_INFINITY;
+    }
+    if (!Number.isFinite(bestPositiveReserve)) {
+      bestPositiveReserve = Number.NEGATIVE_INFINITY;
+    }
+
     let targetLane = -1;
+    let bestScore = Number.NEGATIVE_INFINITY;
+
     for (let i = 0; i < lane.length; i++) {
       const card = lane[i];
       const ability = determineSkillAbility(card);
       if (!ability) continue;
-      const availability = canUseSkillAbility(skillState.activeSide, i, ability, skillState);
-      if (availability.ok) {
-        targetLane = i;
-        break;
+      const availability = canUseSkillAbility(side, i, ability, skillState);
+      if (!availability.ok) continue;
+
+      const currentPower = getCardPower(card);
+      const opposingPower = getCardPower(opponentLane[i]);
+
+      let score = Number.NEGATIVE_INFINITY;
+
+      switch (ability) {
+        case "swapReserve": {
+          if (highestReserveValue === Number.NEGATIVE_INFINITY) {
+            score = Number.NEGATIVE_INFINITY;
+            break;
+          }
+          const improvement = highestReserveValue - currentPower;
+          if (improvement <= 0) {
+            score = Number.NEGATIVE_INFINITY;
+            break;
+          }
+          score = improvement;
+          if (currentPower <= opposingPower && highestReserveValue > opposingPower) {
+            score += highestReserveValue - opposingPower;
+          }
+          if (currentPower <= 0 && highestReserveValue > 0) {
+            score += 1;
+          }
+          break;
+        }
+        case "rerollReserve": {
+          if (lowestReserveValue === Number.POSITIVE_INFINITY) {
+            score = Number.NEGATIVE_INFINITY;
+            break;
+          }
+          const expectedGain = 3 - lowestReserveValue;
+          if (expectedGain <= 0) {
+            score = Number.NEGATIVE_INFINITY;
+            break;
+          }
+          score = expectedGain;
+          break;
+        }
+        case "boostSelf": {
+          const boostValue = getSkillCardValue(card) ?? 0;
+          if (boostValue <= 0) {
+            score = Number.NEGATIVE_INFINITY;
+            break;
+          }
+          const boostedPower = currentPower + boostValue;
+          score = boostValue;
+          if (currentPower <= opposingPower && boostedPower > opposingPower) {
+            score += boostedPower - opposingPower + 1;
+          } else if (boostedPower > opposingPower) {
+            score += 0.5;
+          }
+          break;
+        }
+        case "reserveBoost": {
+          if (bestPositiveReserve === Number.NEGATIVE_INFINITY) {
+            score = Number.NEGATIVE_INFINITY;
+            break;
+          }
+          const boostedPower = currentPower + bestPositiveReserve;
+          score = bestPositiveReserve;
+          if (currentPower <= opposingPower && boostedPower > opposingPower) {
+            score += boostedPower - opposingPower + 1.5;
+          } else if (boostedPower > opposingPower) {
+            score += 0.5;
+          }
+          break;
+        }
+        default:
+          score = Number.NEGATIVE_INFINITY;
+          break;
       }
+
+      if (score > bestScore) {
+        bestScore = score;
+        targetLane = i;
+      }
+    }
+
+    if (bestScore <= 0) {
+      targetLane = -1;
     }
 
     const timeout = window.setTimeout(() => {
@@ -1477,6 +1599,7 @@ export function useThreeWheelGame({
     activateSkillOption,
     assignRef,
     canUseSkillAbility,
+    getFighterSnapshot,
     isMultiplayer,
     isSkillMode,
     localLegacySide,
