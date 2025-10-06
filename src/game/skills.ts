@@ -1,25 +1,36 @@
 import type { Card } from "./types";
 import { fmtNum } from "./values";
 
+function coerceFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 export type SkillAbility = "swapReserve" | "rerollReserve" | "boostSelf" | "reserveBoost";
 
 export function getSkillCardValue(card: Card | null | undefined): number | null {
   if (!card) return null;
-  if (typeof card.number === "number") {
-    return card.number;
+  const numberValue = coerceFiniteNumber(card.number);
+  if (numberValue !== null) {
+    return numberValue;
   }
-  if (typeof card.baseNumber === "number") {
-    return card.baseNumber;
+  const baseValue = coerceFiniteNumber(card.baseNumber);
+  if (baseValue !== null) {
+    return baseValue;
   }
   return null;
 }
 
 export function determineSkillAbility(card: Card | null): SkillAbility | null {
   if (!card) return null;
-  const value =
-    typeof card.baseNumber === "number"
-      ? card.baseNumber
-      : getSkillCardValue(card);
+  const baseValue = coerceFiniteNumber(card.baseNumber);
+  const value = baseValue ?? getSkillCardValue(card);
   if (value === null) return null;
   if (value <= 0) return "swapReserve";
   if (value === 1 || value === 2) return "rerollReserve";
@@ -38,11 +49,9 @@ export function isReserveBoostTarget(card: Card | null | undefined): boolean {
 
 export function describeSkillAbility(ability: SkillAbility, card: Card): string {
   const printedValue =
-    typeof card.baseNumber === "number"
-      ? card.baseNumber
-      : typeof card.number === "number"
-        ? card.number
-        : 0;
+    coerceFiniteNumber(card.baseNumber) ??
+    coerceFiniteNumber(card.number) ??
+    0;
   const value = fmtNum(printedValue);
   switch (ability) {
     case "swapReserve":
