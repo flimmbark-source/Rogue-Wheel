@@ -137,7 +137,7 @@ type SkillPhaseView = {
 export type SkillTargetingState =
   | {
       kind: "reserve";
-      ability: "swapReserve" | "reserveBoost";
+      ability: "swapReserve" | "reserveBoost" | "rerollReserve";
       side: LegacySide;
       laneIndex: number;
     };
@@ -897,23 +897,63 @@ export function useThreeWheelGame({
   );
 
   const rerollReserve = useCallback(
-    (side: LegacySide): number => {
-      let discarded = 0;
+    (
+      side: LegacySide,
+      preferredCardId?: string,
+    ): { discarded: Card | null; drawn: Card | null } => {
+      let discardedCard: Card | null = null;
+      let drawnCard: Card | null = null;
+
       updateFighter(side, (prev) => {
         if (prev.hand.length === 0) return prev;
-        discarded = prev.hand.length;
+
+        const hand = [...prev.hand];
+        let targetIndex = -1;
+
+        if (preferredCardId) {
+          targetIndex = hand.findIndex((card) => card.id === preferredCardId);
+        }
+
+        if (targetIndex === -1) {
+          let lowestValue = Number.POSITIVE_INFINITY;
+          for (let i = 0; i < hand.length; i++) {
+            const card = hand[i];
+            const value = isNormal(card) ? card.number ?? 0 : Number.POSITIVE_INFINITY;
+            if (value < lowestValue) {
+              lowestValue = value;
+              targetIndex = i;
+            }
+          }
+          if (targetIndex === -1) {
+            targetIndex = 0;
+          }
+        }
+
+        const targetCard = hand[targetIndex];
+        if (!targetCard) {
+          return prev;
+        }
+
+        discardedCard = targetCard;
+        const nextHand = hand.filter((_, idx) => idx !== targetIndex);
+        const beforeDrawCount = nextHand.length;
         let next: Fighter = {
           ...prev,
-          hand: [],
+          hand: nextHand,
           deck: [...prev.deck],
-          discard: [...prev.discard, ...prev.hand],
+          discard: [...prev.discard, targetCard],
         };
-        for (let i = 0; i < discarded; i++) {
-          next = drawOne(next);
+
+        next = drawOne(next);
+
+        if (next.hand.length > beforeDrawCount) {
+          drawnCard = next.hand[next.hand.length - 1] ?? null;
         }
+
         return next;
       });
-      return discarded;
+
+      return { discarded: discardedCard, drawn: drawnCard };
     },
     [updateFighter],
   );
@@ -1179,7 +1219,8 @@ export function useThreeWheelGame({
         const availability = canUseSkillAbility(side, laneIndex, ability, prev);
         if (!availability.ok) return prev;
 
-        const requiresReserveTarget = ability === "swapReserve" || ability === "reserveBoost";
+        const requiresReserveTarget =
+          ability === "swapReserve" || ability === "reserveBoost" || ability === "rerollReserve";
         if (requiresReserveTarget && side === localLegacySide) {
           setSkillTargeting({ kind: "reserve", ability, side, laneIndex });
           return prev;
@@ -1203,9 +1244,14 @@ export function useThreeWheelGame({
             break;
           }
           case "rerollReserve": {
-            const discarded = rerollReserve(side);
-            appendLog(`${namesByLegacy[side]} cycled ${discarded} reserve card${discarded === 1 ? "" : "s"}.`);
-            success = discarded > 0;
+            const { discarded, drawn } = rerollReserve(side);
+            if (discarded) {
+              const discardedName = discarded.name ?? fmtNum(discarded.number ?? 0);
+              const drawnName = drawn ? drawn.name ?? fmtNum(drawn.number ?? 0) : null;
+              const drawnSuffix = drawnName ? ` and drew ${drawnName}` : "";
+              appendLog(`${namesByLegacy[side]} cycled ${discardedName}${drawnSuffix}.`);
+              success = true;
+            }
             break;
           }
           case "boostSelf": {
@@ -1296,6 +1342,17 @@ export function useThreeWheelGame({
             }
             break;
           }
+          case "rerollReserve": {
+            const { discarded, drawn } = rerollReserve(side, selection.cardId);
+            if (discarded) {
+              const discardedName = discarded.name ?? fmtNum(discarded.number ?? 0);
+              const drawnName = drawn ? drawn.name ?? fmtNum(drawn.number ?? 0) : null;
+              const drawnSuffix = drawnName ? ` and drew ${drawnName}` : "";
+              appendLog(`${namesByLegacy[side]} cycled ${discardedName}${drawnSuffix}.`);
+              success = true;
+            }
+            break;
+          }
           case "reserveBoost": {
             const fighter = getFighterSnapshot(side);
             const candidate = fighter.hand.find((card) => card.id === selection.cardId);
@@ -1321,7 +1378,11 @@ export function useThreeWheelGame({
           return prev;
         }
 
-        if (targeting.ability === "swapReserve" || targeting.ability === "reserveBoost") {
+        if (
+          targeting.ability === "swapReserve" ||
+          targeting.ability === "reserveBoost" ||
+          targeting.ability === "rerollReserve"
+        ) {
           updateReservePreview();
         }
 
