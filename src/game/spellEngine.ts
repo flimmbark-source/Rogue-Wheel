@@ -334,11 +334,21 @@ export function resolvePendingSpell(params: ResolveSpellParams): SpellResolution
           if (!owner) return null;
           const mode = (entry as { mode?: unknown }).mode;
           const normalizedMode = mode === "lower" ? "lower" : "higher";
-          return { side: owner, lane: lane as number, cardId, mode: normalizedMode };
+          const winOnTie = (entry as { winOnTie?: unknown }).winOnTie === true;
+          return winOnTie
+            ? { side: owner, lane: lane as number, cardId, mode: normalizedMode, winOnTie: true }
+            : { side: owner, lane: lane as number, cardId, mode: normalizedMode };
         })
         .filter(
-          (entry): entry is { side: LegacySide; lane: number; cardId: string; mode: "higher" | "lower" } =>
-            entry !== null,
+          (
+            entry,
+          ): entry is {
+            side: LegacySide;
+            lane: number;
+            cardId: string;
+            mode: "higher" | "lower";
+            winOnTie?: boolean;
+          } => entry !== null,
         )
     : undefined;
 
