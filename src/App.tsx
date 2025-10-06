@@ -355,7 +355,7 @@ export default function ThreeWheel_WinsOnly({
   );
 
   const handleSkillReserveSelect = useCallback(
-    (cardId: string) => {
+    ({ cardId }: { cardId: string }) => {
       handleSkillTargetSelect({ kind: "reserve", cardId });
     },
     [handleSkillTargetSelect],
