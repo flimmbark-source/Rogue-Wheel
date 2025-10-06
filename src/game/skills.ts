@@ -16,7 +16,10 @@ export function getSkillCardValue(card: Card | null | undefined): number | null 
 
 export function determineSkillAbility(card: Card | null): SkillAbility | null {
   if (!card) return null;
-  const value = getSkillCardValue(card);
+  const value =
+    typeof card.baseNumber === "number"
+      ? card.baseNumber
+      : getSkillCardValue(card);
   if (value === null) return null;
   if (value <= 0) return "swapReserve";
   if (value === 1 || value === 2) return "rerollReserve";
