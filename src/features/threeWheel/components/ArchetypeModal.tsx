@@ -4,6 +4,7 @@ import {
   ARCHETYPE_IDS,
   type ArchetypeId,
 } from "../../../game/archetypes";
+import { getArcanaTextClass } from "../../../game/arcana";
 import { getSpellDefinitions, type SpellDefinition } from "../../../game/spells";
 import { SpellDescription } from "../../../components/SpellDescription";
 
@@ -85,6 +86,11 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
     <ul className="mt-2 space-y-1 text-xs text-slate-100/90">
       {spells.map((spell) => {
         const isActive = visibleSpellId === spell.id;
+        const primaryArcana = spell.requirements?.[0]?.arcana;
+        const spellNameClass = [
+          "font-semibold",
+          getArcanaTextClass(primaryArcana, "text-slate-100"),
+        ].join(" ");
         return (
           <li key={`${idPrefix}-${spell.id}`} className="flex flex-col gap-1">
             <button
@@ -120,7 +126,7 @@ const ArchetypeModal: React.FC<ArchetypeModalProps> = ({
               aria-expanded={isActive}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-slate-500" aria-hidden />
-              <span className="font-semibold text-slate-100">{spell.name}</span>
+              <span className={spellNameClass}>{spell.name}</span>
             </button>
 
             <SpellDescription

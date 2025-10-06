@@ -9,6 +9,14 @@ export const ARCANA_EMOJI: Record<Arcana, string> = {
   serpent: "🐍",
 };
 
+export const ARCANA_TEXT_CLASS: Record<Arcana, string> = {
+  fire: "text-orange-300",
+  blade: "text-sky-200",
+  eye: "text-violet-200",
+  moon: "text-slate-200",
+  serpent: "text-emerald-300",
+};
+
 const TAG_TO_ARCANA: Partial<Record<TagId, Arcana>> = {
   oddshift: "serpent",
   parityflip: "blade",
@@ -46,6 +54,11 @@ export function getCardArcana(card: Card): Arcana {
 
 export function getArcanaIcon(arcana: Arcana): string {
   return ARCANA_EMOJI[arcana];
+}
+
+export function getArcanaTextClass(arcana?: Arcana | null, fallback = "text-slate-200"): string {
+  if (!arcana) return fallback;
+  return ARCANA_TEXT_CLASS[arcana] ?? fallback;
 }
 
 export function matchesArcana(arcana: Arcana | undefined, requirement?: Arcana | Arcana[]): boolean {

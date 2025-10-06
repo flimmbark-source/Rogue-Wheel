@@ -1,20 +1,12 @@
 // src/components/StSCard.tsx
 import React, { memo, useMemo } from "react";
 import type { Arcana, Card } from "../game/types";
-import { getArcanaIcon, getCardArcana } from "../game/arcana";
+import { getArcanaIcon, getArcanaTextClass, getCardArcana } from "../game/arcana";
 import { fmtNum, isSplit } from "../game/values";
-
-const ARCANA_COLOR_CLASS: Record<Arcana, string> = {
-  fire: "text-orange-300",
-  blade: "text-sky-200",
-  eye: "text-violet-200",
-  moon: "text-slate-200",
-  serpent: "text-emerald-300",
-};
 
 function ArcanaGlyph({ arcana }: { arcana: Arcana }) {
   const icon = getArcanaIcon(arcana);
-  const color = ARCANA_COLOR_CLASS[arcana] ?? "text-slate-200";
+  const color = getArcanaTextClass(arcana);
   return (
     <span aria-hidden className={`text-1x2 leading-none ${color}`}>
       {icon}
