@@ -523,6 +523,7 @@ function cardFromId(cardId: string): Card {
     name: `${num}`,
     type: "normal",
     number: num,
+    baseNumber: num,
     tags: [],
   };
 
@@ -550,6 +551,7 @@ function buildGrimoireDeck(symbols: GrimoireSymbols): Card[] {
       name: `${number}`,
       type: "normal",
       number,
+      baseNumber: number,
       tags: [],
       arcana,
     };
@@ -564,6 +566,7 @@ function buildGrimoireDeck(symbols: GrimoireSymbols): Card[] {
       name: `${number}`,
       type: "normal",
       number,
+      baseNumber: number,
       tags: ["grimoireFiller"],
     };
     cards.push(filler);

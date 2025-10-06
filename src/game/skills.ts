@@ -6,7 +6,12 @@ export type SkillAbility = "swapReserve" | "rerollReserve" | "boostSelf" | "rese
 export function determineSkillAbility(card: Card | null): SkillAbility | null {
   if (!card) return null;
   if (!isNormal(card)) return null;
-  const value = typeof card.number === "number" ? card.number : null;
+  const value =
+    typeof card.baseNumber === "number"
+      ? card.baseNumber
+      : typeof card.number === "number"
+        ? card.number
+        : null;
   if (value === null) return null;
   if (value <= 0) return "swapReserve";
   if (value === 1 || value === 2) return "rerollReserve";
@@ -15,7 +20,13 @@ export function determineSkillAbility(card: Card | null): SkillAbility | null {
 }
 
 export function describeSkillAbility(ability: SkillAbility, card: Card): string {
-  const value = typeof card.number === "number" ? fmtNum(card.number) : "0";
+  const printedValue =
+    typeof card.baseNumber === "number"
+      ? card.baseNumber
+      : typeof card.number === "number"
+        ? card.number
+        : 0;
+  const value = fmtNum(printedValue);
   switch (ability) {
     case "swapReserve":
       return "Swap this card with any reserve card, replacing it on the board.";
