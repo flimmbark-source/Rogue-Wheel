@@ -7,14 +7,13 @@ export type SpellDescriptionProps = HTMLAttributes<HTMLDivElement> & {
 
 export const SpellDescription = forwardRef<HTMLDivElement, SpellDescriptionProps>(
   ({ description, className, ...rest }, ref) => {
-    const lines = description.split(/\r?\n/);
+    const combinedClassName = ["whitespace-pre-line", className]
+      .filter(Boolean)
+      .join(" ");
+
     return (
-      <div ref={ref} className={className} {...rest}>
-        {lines.map((line, index) => (
-          <span key={index} className="block">
-            {line === "" ? "\u00a0" : line}
-          </span>
-        ))}
+      <div ref={ref} className={combinedClassName} {...rest}>
+        {description === "" ? "\u00a0" : description}
       </div>
     );
   },

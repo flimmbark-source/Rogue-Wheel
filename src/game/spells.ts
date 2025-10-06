@@ -249,14 +249,28 @@ const pushReserveDrain = (
 };
 
 
+export const SPELL_DESCRIPTIONS = {
+  fireball: `Damage a card by 2\n+🔥: Boost spell by 🔥.`,
+  iceShard: `Freeze a card\n+🗡️: Block initiative.`,
+  mirrorImage: `Copy an opposing card's value\n+👁️: Increase by 👁️ value.`,
+  arcaneShift: `Advance a wheel by 1\n+🌒: Boost spell by 🌒.`,
+  hex: `Damage opponent's reserve by 2\n+🐍: Boost spell by 🐍.`,
+  timeTwist: `Discard a card to gain Initiative\n–👁️: Draw 1 if discarded card is 👁️.`,
+  kindle: `Increase a card by 2\n+🔥: Boost by 🔥.`,
+  leech: `Drain value from an adjacent to selected card\n+🐍: Damage reserve by 🐍.`,
+  suddenStrike: `Duel. If you win, gain Initiative\n–🗡️: Win on tie.`,
+  offering: `Discard a card. Fortify by its value\n–🔥: Double if 🔥.`,
+  crosscut: `Duel. Damage opponent's reserve by difference\n–🗡️: If tied, gain Initiative.`,
+  phantom: `Swap a card with another in play\n-🌒: With a reserve.`,
+} as const satisfies Record<string, string>;
+
 // ---------- registry (IDs MUST match archetypes SpellId union: camelCase) ----------
 const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   // 🔥 Fireball — base -2; +🔥: add value of selected 🔥 to the reduction; still escalates cost by streak
   fireball: {
   id: "fireball",
   name: "Fireball",
-  description: `Damage a card by 2.
-                +🔥: Boost by the value of a 🔥 in play.`,
+  description: SPELL_DESCRIPTIONS.fireball,
   targetSummary: "Target: Enemy card (+optional 🔥)",
   cost: 2,
   variableCost: (context) => {
@@ -292,8 +306,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   iceShard: {
     id: "iceShard",
     name: "Ice Shard",
-    description: `Freeze a card's value.
-                  +🗡️: That card can't win Initiative.`,
+    description: SPELL_DESCRIPTIONS.iceShard,
     targetSummary: "Target: Enemy card (+optional 🗡️)",
     cost: 1,
     icon: "🗡️",
@@ -326,8 +339,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   mirrorImage: {
     id: "mirrorImage",
     name: "Mirror Image",
-    description: `Copy a card's opposing value.
-                  +👁️: Increase the card by the value of a 👁️ in reserve.`,
+    description: SPELL_DESCRIPTIONS.mirrorImage,
     targetSummary: "Target: Ally card (+optional 👁️ from reserve)",
     cost: 4,
     icon: "👁️",
@@ -360,8 +372,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   arcaneShift: {
     id: "arcaneShift",
     name: "Arcane Shift",
-    description: `Advance a wheel by 1.
-                  +🌒: Boost it by the value of a 🌒 in play.`,
+    description: SPELL_DESCRIPTIONS.arcaneShift,
     targetSummary: "Target: Active wheel (+optional 🌒)",
     cost: 3,
     icon: "🌒",
@@ -392,8 +403,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   hex: {
     id: "hex",
     name: "Hex",
-    description: `Drain 2 from opponent’s reserve.
-                  +🐍: Boost by value of a 🐍 in play.`,
+    description: SPELL_DESCRIPTIONS.hex,
     targetSummary: "Target: Enemy card (+optional 🐍)",
     cost: 4,
     icon: "🐍",
@@ -421,8 +431,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   timeTwist: {
     id: "timeTwist",
     name: "Time Twist",
-    description: `Discard a reserve card to gain initiative.
-                  +👁️: If it was 👁️, draw 1.`,
+    description: SPELL_DESCRIPTIONS.timeTwist,
     targetSummary: "Target: Your reserve card",
     cost: 5,
     icon: "⏳",
@@ -447,8 +456,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   kindle: {
     id: "kindle",
     name: "Kindle",
-    description: `Increase a card in play or reserve by 2.
-                  +🔥: Boost by the value of a 🔥 in play.`,
+    description: SPELL_DESCRIPTIONS.kindle,
     targetSummary: "Target: Your card (+optional 🔥)",
     cost: 2,
     icon: "🔥",
@@ -479,8 +487,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   suddenStrike: {
     id: "suddenStrike",
     name: "Sudden Strike",
-    description: `Select a card in play. Gain Initiative if opposing card is lower.
-                  +🗡️: Also gain Initiative on tie if target is 🗡️.`,
+    description: SPELL_DESCRIPTIONS.suddenStrike,
     targetSummary: "Target: Your committed card",
     cost: 6,
     icon: "🗡️",
@@ -506,8 +513,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   leech: {
     id: "leech",
     name: "Leech",
-    description: `Transfer value to the target from an adjacent card.
-                  +🐍: Drain opponent's reserve equal to a 🐍 in play.`,
+    description: SPELL_DESCRIPTIONS.leech,
     targetSummary: "Targets: Your card → adjacent (+optional 🐍)",
     cost: 4,
     icon: "🐍",
@@ -544,8 +550,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   crosscut: {
     id: "crosscut",
     name: "Crosscut",
-    description: `Both players reveal a reserve. Drain opponent reserve equal to the value difference.
-                  +🗡️: Increase a 🗡️ card in play by the difference.`,
+    description: SPELL_DESCRIPTIONS.crosscut,
     targetSummary: "Targets: Your reserve (+optional 🗡️ in play)",
     cost: 4,
     icon: "🗡️",
@@ -622,8 +627,7 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   offering: {
     id: "offering",
     name: "Offering",
-    description: `Discard a reserve to increase a card in play by its value.
-                  +🔥: Boost x2 if the reserve card was 🔥.`,
+    description: SPELL_DESCRIPTIONS.offering,
     targetSummary: "Targets: Your committed → reserve to discard",
     cost: 4,
     icon: "🔥",
@@ -652,9 +656,8 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
   phantom: {
     id: "phantom",
     name: "Phantom",
-    description: `Swap two cards in play.
-                  +🌒: Instead, swap a 🌒 in play with one in reserve.`,
-    targetSummary: "Targets: Two committed (+optional 🌒 committed → reserve)",
+    description: SPELL_DESCRIPTIONS.phantom,
+    targetSummary: "Targets: Two committed (reserve if first 🌒)",
     cost: 3,
     icon: "🌒",
     allowedPhases: ["roundEnd", "showEnemy"],
@@ -662,26 +665,24 @@ const SPELL_REGISTRY: Record<string, SpellDefinition> = {
       type: "sequence",
       stages: [
         { type: "card", ownership: "ally", location: "board", label: "Committed card A" },
-        { type: "card", ownership: "ally", location: "board", label: "Committed card B" },
-        { type: "card", ownership: "ally", location: "hand", arcana: "moon", label: "Optional 🌒 in reserve", optional: true },
+        {
+          type: "card",
+          ownership: "ally",
+          location: "any",
+          label: "Committed card B (or reserve if first 🌒)",
+        },
       ],
     },
     resolver: (context) => {
-      const [a, b, moonReserve] = context.targets ?? [];
+      const [a, b] = context.targets ?? [];
       if (!a || a.type !== "card" || !b || b.type !== "card") return;
       const log = ensureLog(context);
 
-      if (moonReserve?.type === "card") {
-        if (a.arcana === "moon") {
-          log.push(`${context.caster.name} phases ${describeTarget(a)} with ${describeTarget(moonReserve)} from reserve.`);
-          pushSwapRequest(context, { first: a, second: moonReserve, caster: context.caster.name });
-          return;
-        }
-        if (b.arcana === "moon") {
-          log.push(`${context.caster.name} phases ${describeTarget(b)} with ${describeTarget(moonReserve)} from reserve.`);
-          pushSwapRequest(context, { first: b, second: moonReserve, caster: context.caster.name });
-          return;
-        }
+      if (b.location === "hand") {
+        if (a.arcana !== "moon") return;
+        log.push(`${context.caster.name} phases ${describeTarget(a)} with ${describeTarget(b)} from reserve.`);
+        pushSwapRequest(context, { first: a, second: b, caster: context.caster.name });
+        return;
       }
 
       log.push(`${context.caster.name} phases ${describeTarget(a)} with ${describeTarget(b)}.`);
