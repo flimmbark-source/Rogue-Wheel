@@ -22,6 +22,8 @@ export type { LegacySide } from "../utils/slotVisibility";
 
 type SlotView = { side: LegacySide; card: Card | null; name: string };
 
+type SkillOptionView = { lane: number; canActivate: boolean; reason?: string };
+
 type SideState<T> = Record<LegacySide, T>;
 
 interface Theme {
@@ -82,6 +84,9 @@ export interface WheelPanelProps {
   variant?: "standalone" | "grouped";
   skillExhausted?: { player: boolean[]; enemy: boolean[] } | null;
   isSkillMode?: boolean;
+  onSkillActivate?: (lane: number) => void;
+  skillPhaseActiveSide?: LegacySide | null;
+  skillOptions?: SkillOptionView[];
 }
 
 const slotWidthPx = 80;
@@ -137,6 +142,9 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   spellHighlightedCardIds,
   skillExhausted,
   isSkillMode = false,
+  onSkillActivate,
+  skillPhaseActiveSide = null,
+  skillOptions = [],
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -169,6 +177,13 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     : null;
 
   const spellHighlightSet = useMemo(() => new Set(spellHighlightedCardIds), [spellHighlightedCardIds]);
+  const skillOptionsByLane = useMemo(() => {
+    const map = new Map<number, SkillOptionView>();
+    skillOptions.forEach((option) => {
+      map.set(option.lane, option);
+    });
+    return map;
+  }, [skillOptions]);
 
   const leftSlot: SlotView = { side: "player", card: playerCard, name: namesByLegacy.player };
   const rightSlot: SlotView = { side: "enemy", card: enemyCard, name: namesByLegacy.enemy };
@@ -271,11 +286,25 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     const canInteractNormally =
       !awaitingSpellTarget && slot.side === localLegacySide && phase === "choose" && isWheelActive;
 
-    const cardInteractable = canInteractNormally || slotTargetable;
+    const isSkillTurn =
+      isSkillMode &&
+      phase === "skill" &&
+      skillPhaseActiveSide === localLegacySide &&
+      slot.side === localLegacySide;
+
+    const skillOption = isSkillTurn ? skillOptionsByLane.get(index) ?? null : null;
+    const canActivateSkill = Boolean(skillOption?.canActivate);
+    const skillHint = skillOption && !skillOption.canActivate ? skillOption.reason : undefined;
+
+    const cardInteractable = canInteractNormally || slotTargetable || canActivateSkill;
 
     const handlePick = () => {
       if (slotTargetable && slot.card) {
         onSpellTargetSelect?.({ side: slot.side, lane: index, card: slot.card, location: "board" });
+        return;
+      }
+      if (skillOption && canActivateSkill) {
+        onSkillActivate?.(index);
         return;
       }
       if (!canInteractNormally) return;
@@ -337,7 +366,11 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         className={slotTargetable ? "ring-2 ring-sky-400" : undefined}
         spellTargetable={slotTargetable}
         style={cardStyle}
+        showSkillColor={isSkillMode}
         data-skill-exhausted={exhausted ? "true" : undefined}
+        data-skill-activatable={canActivateSkill ? "true" : undefined}
+        data-skill-hint={skillHint}
+        title={skillHint}
       />
     );
   };

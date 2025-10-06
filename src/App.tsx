@@ -1343,37 +1343,11 @@ export default function ThreeWheel_WinsOnly({
               <div className="text-sm font-semibold text-slate-200">Skill Phase</div>
               <div className="text-xs text-slate-300 max-w-xs">
                 {skillPhase.activeSide === localLegacySide
-                  ? "Activate a skill or pass to end your turn."
+                  ? "Click a card to use its skill or pass to end your turn."
                   : `Waiting for ${namesByLegacy[skillPhase.activeSide]}...`}
               </div>
-              {skillPhase.activeSide === localLegacySide && (
-                <ul className="flex flex-col gap-2 max-w-xs text-left">
-                  {skillPhase.options.length === 0 ? (
-                    <li className="text-xs text-slate-400">No ready skills.</li>
-                  ) : (
-                    skillPhase.options.map((option) => (
-                      <li key={option.card.id} className="rounded border border-slate-700 bg-slate-800/70 p-2 text-xs">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="font-semibold text-slate-100 truncate">
-                            {option.card.name ?? `Card ${option.lane + 1}`}
-                          </div>
-                          <button
-                            type="button"
-                            className="rounded bg-emerald-400 px-2 py-0.5 text-[11px] font-semibold text-slate-900 disabled:opacity-50"
-                            onClick={() => activateSkillOption(option.lane)}
-                            disabled={!option.canActivate}
-                          >
-                            Activate
-                          </button>
-                        </div>
-                        <div className="mt-1 text-slate-300">{option.description}</div>
-                        {!option.canActivate && option.reason ? (
-                          <div className="mt-1 text-[11px] text-rose-300">{option.reason}</div>
-                        ) : null}
-                      </li>
-                    ))
-                  )}
-                </ul>
+              {skillPhase.activeSide === localLegacySide && skillPhase.options.every((opt) => !opt.canActivate) && (
+                <div className="text-xs text-slate-400">No ready skills.</div>
               )}
               {skillPhase.activeSide === localLegacySide && (
                 <button
@@ -1621,6 +1595,15 @@ export default function ThreeWheel_WinsOnly({
                 spellHighlightedCardIds={spellHighlightedCardIds}
                 skillExhausted={skillPhase?.exhausted ?? null}
                 isSkillMode={isSkillMode}
+                onSkillActivate={activateSkillOption}
+                skillPhaseActiveSide={skillPhase?.activeSide ?? null}
+                skillOptions={
+                  skillPhase?.options.map((option) => ({
+                    lane: option.lane,
+                    canActivate: option.canActivate,
+                    reason: option.reason,
+                  })) ?? []
+                }
               />
             </div>
           ))}
@@ -1651,6 +1634,7 @@ export default function ThreeWheel_WinsOnly({
         isAwaitingSpellTarget={isAwaitingSpellTarget}
         onSpellTargetSelect={handleSpellTargetSelect}
         spellHighlightedCardIds={spellHighlightedCardIds}
+        isSkillMode={isSkillMode}
       />
 
       <FirstRunCoach
