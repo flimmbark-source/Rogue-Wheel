@@ -18,13 +18,13 @@ export function describeSkillAbility(ability: SkillAbility, card: Card): string 
   const value = typeof card.number === "number" ? fmtNum(card.number) : "0";
   switch (ability) {
     case "swapReserve":
-      return "Swap this card with one from your reserve.";
+      return "Swap this card with any reserve card, replacing it on the board.";
     case "rerollReserve":
-      return "Discard your reserve cards and draw replacements.";
+      return "Discard a reserve card you select and draw a replacement.";
     case "boostSelf":
       return `Add ${value} to a card in play.`;
     case "reserveBoost":
-      return "Exhaust a reserve card to add its value to a card in play.";
+      return "Exhaust a reserve card to add its value to a card in play, exhausting it in the process.";
     default:
       return "Activate skill.";
   }

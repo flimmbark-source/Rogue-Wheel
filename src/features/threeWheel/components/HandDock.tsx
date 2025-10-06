@@ -208,6 +208,8 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
       switch (skillTargeting.ability) {
         case "swapReserve":
           return new Set(fighter.hand.map((card) => card.id));
+        case "rerollReserve":
+          return new Set(fighter.hand.map((card) => card.id));
         case "reserveBoost":
           return new Set(
             fighter.hand
