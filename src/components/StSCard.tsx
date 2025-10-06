@@ -30,6 +30,7 @@ type StSCardProps = {
   onPick?: () => void;
   className?: string;
   spellTargetable?: boolean;
+  spellAffected?: boolean;
   ariaLabel?: string;
   ariaPressed?: React.AriaAttributes["aria-pressed"];
   onClick?: React.MouseEventHandler<HTMLButtonElement>;
@@ -46,6 +47,7 @@ export default memo(function StSCard({
   onPick,
   className,
   spellTargetable,
+  spellAffected,
   ariaLabel,
   ariaPressed,
   onClick,
@@ -70,6 +72,22 @@ export default memo(function StSCard({
       aria-pressed={ariaPressed}
       data-spell-targetable={spellTargetable ? "true" : undefined}
     >
+      {spellAffected ? (
+        <>
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 rounded-[12px] ring-2 ring-amber-300/70 animate-pulse"
+            style={{ boxShadow: "0 0 14px rgba(251,191,36,0.45)", zIndex: 3 }}
+          />
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -top-1 right-1 text-lg animate-pulse"
+            style={{ textShadow: "0 1px 4px rgba(0,0,0,0.7)", zIndex: 4 }}
+          >
+            ✨
+          </div>
+        </>
+      ) : null}
       <div className="absolute inset-0 rounded-xl border bg-gradient-to-br from-slate-600 to-slate-800 border-slate-400"></div>
       <div className="absolute inset-px rounded-[10px] bg-slate-900/85 backdrop-blur-[1px] border border-slate-700/70" />
       <div className="absolute inset-0 flex flex-col items-center justify-center">
