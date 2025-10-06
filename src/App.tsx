@@ -1167,56 +1167,58 @@ export default function ThreeWheel_WinsOnly({
               </button>
 
               {showAnte && (
-                <div className="absolute top-[110%] right-0 w-72 max-w-[calc(100vw-2rem)] sm:w-80 rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="font-semibold">Ante</div>
-                    <button
-                      onClick={() => setShowAnte(false)}
-                      className="text-xl leading-none text-slate-300 hover:text-white"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div className="text-[12px] space-y-3">
-                    <div className="space-y-1">
-                      <div className="font-semibold text-slate-200">Round odds</div>
-                      <div className="flex justify-between text-xs text-slate-300">
-                        <span>
-                          {namesByLegacy.player}: {(ante?.odds?.player ?? 1.1).toFixed(2)}×
-                        </span>
-                        <span>
-                          {namesByLegacy.enemy}: {(ante?.odds?.enemy ?? 1.1).toFixed(2)}×
-                        </span>
-                      </div>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:absolute sm:inset-auto sm:top-[110%] sm:right-0 sm:z-50 sm:block sm:p-0">
+                  <div className="w-full max-w-[calc(100vw-2rem)] rounded-lg border border-slate-700 bg-slate-800/95 p-3 shadow-xl sm:w-80">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="font-semibold">Ante</div>
+                      <button
+                        onClick={() => setShowAnte(false)}
+                        className="text-xl leading-none text-slate-300 hover:text-white"
+                      >
+                        ×
+                      </button>
                     </div>
-                    <div className="space-y-1">
-                      <label className="font-semibold text-slate-200" htmlFor="ante-input">
-                        Your ante (wins)
-                      </label>
-                      <input
-                        id="ante-input"
-                        type="number"
-                        min={0}
-                        max={wins[localLegacySide]}
-                        value={localAnteValue}
-                        onChange={(event) => {
-                          const parsed = Number.parseInt(event.target.value, 10);
-                          setAnteBet(Number.isFinite(parsed) ? parsed : 0);
-                        }}
-                        disabled={phase !== "choose"}
-                        className="w-full rounded border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 disabled:opacity-60"
-                      />
+                    <div className="text-[12px] space-y-3">
+                      <div className="space-y-1">
+                        <div className="font-semibold text-slate-200">Round odds</div>
+                        <div className="flex justify-between text-xs text-slate-300">
+                          <span>
+                            {namesByLegacy.player}: {(ante?.odds?.player ?? 1.1).toFixed(2)}×
+                          </span>
+                          <span>
+                            {namesByLegacy.enemy}: {(ante?.odds?.enemy ?? 1.1).toFixed(2)}×
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-slate-200" htmlFor="ante-input">
+                          Your ante (wins)
+                        </label>
+                        <input
+                          id="ante-input"
+                          type="number"
+                          min={0}
+                          max={wins[localLegacySide]}
+                          value={localAnteValue}
+                          onChange={(event) => {
+                            const parsed = Number.parseInt(event.target.value, 10);
+                            setAnteBet(Number.isFinite(parsed) ? parsed : 0);
+                          }}
+                          disabled={phase !== "choose"}
+                          className="w-full rounded border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 disabled:opacity-60"
+                        />
+                        <div className="text-xs text-slate-400">
+                          Available wins: {wins[localLegacySide]}
+                        </div>
+                      </div>
+                      {isMultiplayer && (
+                        <div className="text-xs text-slate-300">
+                          Opponent ante: {remoteAnteValue}
+                        </div>
+                      )}
                       <div className="text-xs text-slate-400">
-                        Available wins: {wins[localLegacySide]}
+                        Ante can only be changed before resolving the round.
                       </div>
-                    </div>
-                    {isMultiplayer && (
-                      <div className="text-xs text-slate-300">
-                        Opponent ante: {remoteAnteValue}
-                      </div>
-                    )}
-                    <div className="text-xs text-slate-400">
-                      Ante can only be changed before resolving the round.
                     </div>
                   </div>
                 </div>
