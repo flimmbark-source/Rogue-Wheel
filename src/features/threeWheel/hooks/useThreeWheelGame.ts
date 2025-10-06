@@ -36,6 +36,8 @@ import { fmtNum, isNormal } from "../../../game/values";
 import {
   describeSkillAbility,
   determineSkillAbility,
+  getSkillCardValue,
+  isReserveBoostTarget,
   type SkillAbility,
 } from "../../../game/skills";
 import type { WheelHandle } from "../../../components/CanvasWheel";
@@ -823,9 +825,14 @@ export function useThreeWheelGame({
       setAssign((prev) => {
         const lane = side === "player" ? [...prev.player] : [...prev.enemy];
         const target = lane[laneIndex];
-        if (!target || !isNormal(target)) return prev;
-        const baseValue = typeof target.number === "number" ? target.number : 0;
-        const updatedCard: Card = { ...target, number: Math.max(0, baseValue + amount) };
+        if (!target) return prev;
+        const baseValue = getSkillCardValue(target);
+        if (baseValue === null) return prev;
+        const currentValue = typeof target.number === "number" ? target.number : baseValue;
+        const updatedCard: Card = {
+          ...target,
+          number: Math.max(0, currentValue + amount),
+        };
         lane[laneIndex] = updatedCard;
         const next = side === "player" ? { ...prev, player: lane } : { ...prev, enemy: lane };
         assignRef.current = next;
@@ -860,7 +867,7 @@ export function useThreeWheelGame({
       if (!chosen) {
         let bestValue = Number.NEGATIVE_INFINITY;
         for (const card of fighter.hand) {
-          const value = isNormal(card) ? card.number ?? 0 : 0;
+          const value = getSkillCardValue(card) ?? 0;
           if (value > bestValue) {
             bestValue = value;
             chosen = card;
@@ -918,9 +925,10 @@ export function useThreeWheelGame({
           let lowestValue = Number.POSITIVE_INFINITY;
           for (let i = 0; i < hand.length; i++) {
             const card = hand[i];
-            const value = isNormal(card) ? card.number ?? 0 : Number.POSITIVE_INFINITY;
-            if (value < lowestValue) {
-              lowestValue = value;
+            const cardValue = getSkillCardValue(card);
+            const comparableValue = cardValue ?? Number.POSITIVE_INFINITY;
+            if (comparableValue < lowestValue) {
+              lowestValue = comparableValue;
               targetIndex = i;
             }
           }
@@ -961,21 +969,22 @@ export function useThreeWheelGame({
   const exhaustReserveForBoost = useCallback(
     (side: LegacySide, preferredCardId?: string): { value: number; card: Card | null } => {
       const fighter = getFighterSnapshot(side);
-      const reserveCards = fighter.hand.filter((card) => isNormal(card));
+      const reserveCards = fighter.hand.filter((card) => isReserveBoostTarget(card));
       if (reserveCards.length === 0) {
         return { value: 0, card: null };
       }
       let chosenCard: Card = reserveCards[0];
+      let bestValue = getSkillCardValue(chosenCard) ?? Number.NEGATIVE_INFINITY;
       if (preferredCardId) {
         const match = reserveCards.find((card) => card.id === preferredCardId);
         if (!match) {
           return { value: 0, card: null };
         }
         chosenCard = match;
+        bestValue = getSkillCardValue(chosenCard) ?? Number.NEGATIVE_INFINITY;
       } else {
-        let bestValue = chosenCard.number ?? 0;
         for (const candidate of reserveCards) {
-          const value = candidate.number ?? 0;
+          const value = getSkillCardValue(candidate) ?? Number.NEGATIVE_INFINITY;
           if (value > bestValue) {
             chosenCard = candidate;
             bestValue = value;
@@ -987,7 +996,7 @@ export function useThreeWheelGame({
         const discard = [...prev.discard, chosenCard];
         return { ...prev, hand, discard };
       });
-      const boostValue = chosenCard.number ?? 0;
+      const boostValue = getSkillCardValue(chosenCard) ?? 0;
       return { value: boostValue, card: chosenCard };
     },
     [getFighterSnapshot, updateFighter],
@@ -1022,9 +1031,9 @@ export function useThreeWheelGame({
           return { ok: true };
         }
         case "reserveBoost": {
-          const hasReserveValue = reserveCards.some((card) => isNormal(card) && (card.number ?? 0) > 0);
-          if (!hasReserveValue) {
-            return { ok: false, reason: "Need a reserve card with value." };
+          const hasReserveTarget = reserveCards.some((card) => isReserveBoostTarget(card));
+          if (!hasReserveTarget) {
+            return { ok: false, reason: "Need an eligible reserve card." };
           }
           return { ok: true };
         }
@@ -1232,8 +1241,8 @@ export function useThreeWheelGame({
           case "swapReserve": {
             const result = swapCardWithReserve(side, laneIndex);
             if (result.swapped) {
-              const incomingValue = result.incoming && isNormal(result.incoming) ? result.incoming.number ?? 0 : 0;
-              const outgoingValue = result.outgoing && isNormal(result.outgoing) ? result.outgoing.number ?? 0 : 0;
+              const incomingValue = getSkillCardValue(result.incoming) ?? 0;
+              const outgoingValue = getSkillCardValue(result.outgoing) ?? 0;
               appendLog(
                 `${namesByLegacy[side]} swapped a reserve card (${fmtNum(incomingValue)}) with ${fmtNum(outgoingValue)} in lane ${
                   laneIndex + 1
@@ -1256,7 +1265,7 @@ export function useThreeWheelGame({
           }
           case "boostSelf": {
             const currentCard = side === "player" ? assignRef.current.player[laneIndex] : assignRef.current.enemy[laneIndex];
-            const value = currentCard && isNormal(currentCard) ? currentCard.number ?? 0 : 0;
+            const value = currentCard ? getSkillCardValue(currentCard) ?? 0 : 0;
             if (value !== 0) {
               success = boostLaneCard(side, laneIndex, value);
             }
@@ -1331,8 +1340,8 @@ export function useThreeWheelGame({
           case "swapReserve": {
             const result = swapCardWithReserve(side, laneIndex, selection.cardId);
             if (result.swapped) {
-              const incomingValue = result.incoming && isNormal(result.incoming) ? result.incoming.number ?? 0 : 0;
-              const outgoingValue = result.outgoing && isNormal(result.outgoing) ? result.outgoing.number ?? 0 : 0;
+              const incomingValue = getSkillCardValue(result.incoming) ?? 0;
+              const outgoingValue = getSkillCardValue(result.outgoing) ?? 0;
               appendLog(
                 `${namesByLegacy[side]} swapped a reserve card (${fmtNum(incomingValue)}) with ${fmtNum(outgoingValue)} in lane ${
                   laneIndex + 1
@@ -1356,7 +1365,7 @@ export function useThreeWheelGame({
           case "reserveBoost": {
             const fighter = getFighterSnapshot(side);
             const candidate = fighter.hand.find((card) => card.id === selection.cardId);
-            const candidateValue = candidate && isNormal(candidate) ? candidate.number ?? 0 : 0;
+            const candidateValue = candidate ? getSkillCardValue(candidate) ?? 0 : 0;
             if (candidateValue <= 0) {
               success = false;
               break;

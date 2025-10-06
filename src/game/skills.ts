@@ -1,22 +1,36 @@
 import type { Card } from "./types";
-import { fmtNum, isNormal } from "./values";
+import { fmtNum } from "./values";
 
 export type SkillAbility = "swapReserve" | "rerollReserve" | "boostSelf" | "reserveBoost";
 
+export function getSkillCardValue(card: Card | null | undefined): number | null {
+  if (!card) return null;
+  if (typeof card.number === "number") {
+    return card.number;
+  }
+  if (typeof card.baseNumber === "number") {
+    return card.baseNumber;
+  }
+  return null;
+}
+
 export function determineSkillAbility(card: Card | null): SkillAbility | null {
   if (!card) return null;
-  if (!isNormal(card)) return null;
-  const value =
-    typeof card.baseNumber === "number"
-      ? card.baseNumber
-      : typeof card.number === "number"
-        ? card.number
-        : null;
+  const value = getSkillCardValue(card);
   if (value === null) return null;
   if (value <= 0) return "swapReserve";
   if (value === 1 || value === 2) return "rerollReserve";
   if (value === 3 || value === 4) return "boostSelf";
   return "reserveBoost";
+}
+
+export function isReserveBoostTarget(card: Card | null | undefined): boolean {
+  const value = getSkillCardValue(card);
+  if (value === null) return false;
+  if (value > 0) {
+    return true;
+  }
+  return determineSkillAbility(card ?? null) !== null;
 }
 
 export function describeSkillAbility(ability: SkillAbility, card: Card): string {
