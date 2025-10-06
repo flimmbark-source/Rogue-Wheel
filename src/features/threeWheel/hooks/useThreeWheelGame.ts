@@ -706,6 +706,11 @@ export function useThreeWheelGame({
   const START_LOG = `A ${enemyName} eyes your purse...`;
   const [log, setLog] = useState<GameLogEntry[]>(() => [createLogEntry(START_LOG)]);
 
+  const appendLog = useCallback((message: string, options?: { type?: GameLogEntryType }) => {
+    const entry = createLogEntry(message, options?.type ?? "general");
+    setLog((prev) => [entry, ...prev].slice(0, 60));
+  }, []);
+
   const [spellHighlights, setSpellHighlights] = useState<SpellHighlightState>(() => createEmptySpellHighlights());
   const spellHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [skillState, setSkillState] = useState<SkillPhaseState | null>(null);
@@ -1265,11 +1270,6 @@ export function useThreeWheelGame({
         spellHighlightTimeoutRef.current = null;
       }
     };
-  }, []);
-
-  const appendLog = useCallback((message: string, options?: { type?: GameLogEntryType }) => {
-    const entry = createLogEntry(message, options?.type ?? "general");
-    setLog((prev) => [entry, ...prev].slice(0, 60));
   }, []);
 
   const canReveal = useMemo(() => {
