@@ -120,6 +120,124 @@ const getHandTargetsForSide = (
     }));
 };
 
+type LaneSnapshot = {
+  lane: number;
+  allyCard: Card | null;
+  enemyCard: Card | null;
+  allyValue: number;
+  enemyValue: number;
+  threatScore: number;
+  controlScore: number;
+};
+
+const computeLaneThreatScore = (allyValue: number, enemyValue: number): number => {
+  if (enemyValue <= 0) return 0;
+  const deficit = Math.max(0, enemyValue - allyValue);
+  const contested = allyValue > 0 ? Math.min(allyValue, enemyValue) : 0;
+  let score = Math.max(0, enemyValue);
+  if (deficit > 0) score += deficit * 0.8;
+  if (contested > 0) score += contested * 0.25;
+  return score;
+};
+
+const computeLaneControlScore = (allyValue: number, enemyValue: number): number => {
+  if (allyValue <= 0) return 0;
+  const margin = allyValue - enemyValue;
+  let score = Math.max(0, allyValue);
+  if (margin > 0) {
+    score += margin * 0.65;
+  } else if (margin === 0) {
+    score += allyValue * 0.2;
+  } else {
+    score += allyValue * 0.1;
+  }
+  return score;
+};
+
+const getLaneSnapshot = (context: CpuSpellContext, lane: number): LaneSnapshot => {
+  const selfSide = context.casterSide;
+  const foeSide = opponentOf(selfSide);
+  const allyCard = (context.board[selfSide] ?? [])[lane] ?? null;
+  const enemyCard = (context.board[foeSide] ?? [])[lane] ?? null;
+  const allyValue = getCardValue(allyCard);
+  const enemyValue = getCardValue(enemyCard);
+  return {
+    lane,
+    allyCard,
+    enemyCard,
+    allyValue,
+    enemyValue,
+    threatScore: computeLaneThreatScore(allyValue, enemyValue),
+    controlScore: computeLaneControlScore(allyValue, enemyValue),
+  };
+};
+
+const computeThreatRelief = (
+  allyValue: number,
+  enemyValue: number,
+  newEnemyValue: number,
+): number => {
+  const before = computeLaneThreatScore(allyValue, enemyValue);
+  const after = computeLaneThreatScore(allyValue, newEnemyValue);
+  return Math.max(0, before - after);
+};
+
+const computeControlDelta = (
+  allyValue: number,
+  enemyValue: number,
+  newAllyValue: number,
+): number => {
+  const before = computeLaneControlScore(allyValue, enemyValue);
+  const after = computeLaneControlScore(newAllyValue, enemyValue);
+  return after - before;
+};
+
+const computeControlGain = (
+  allyValue: number,
+  enemyValue: number,
+  newAllyValue: number,
+): number => {
+  return Math.max(0, computeControlDelta(allyValue, enemyValue, newAllyValue));
+};
+
+const getTotalThreatScore = (context: CpuSpellContext): number => {
+  const laneCount = Math.max(
+    context.board.player.length,
+    context.board.enemy.length,
+  );
+  let total = 0;
+  for (let lane = 0; lane < laneCount; lane += 1) {
+    total += getLaneSnapshot(context, lane).threatScore;
+  }
+  return total;
+};
+
+const getReserveTotals = (
+  context: CpuSpellContext,
+): { self: number; foe: number } => {
+  const selfSide = context.casterSide;
+  const foeSide = opponentOf(selfSide);
+  const self = Math.max(0, context.reserveSums?.[selfSide] ?? 0);
+  const foe = Math.max(0, context.reserveSums?.[foeSide] ?? 0);
+  return { self, foe };
+};
+
+const computeReservePressure = (self: number, foe: number): number => {
+  if (foe <= 0) return 0;
+  const deficit = Math.max(0, foe - self);
+  return foe + deficit * 0.6;
+};
+
+const computeReserveRelief = (
+  self: number,
+  foe: number,
+  foeAfter: number,
+): number => {
+  const before = computeReservePressure(self, foe);
+  const after = computeReservePressure(self, foeAfter);
+  return Math.max(0, before - after);
+};
+
 const findBestAllyArcanaTarget = (
   context: CpuSpellContext,
   arcana: Card["arcana"],
@@ -161,12 +279,27 @@ const evaluateFireball = (context: CpuSpellContext): SpellEvaluation | null => {
   const bonusCandidate = findBestAllyArcanaTarget(context, "fire", "any");
   let best: SpellEvaluation | null = null;
 
-  enemyTargets.forEach(({ target, value }) => {
+  enemyTargets.forEach(({ target, value, lane }) => {
+    if (value <= 0) return;
     const baseDamage = 2;
     const bonus = bonusCandidate?.value ?? 0;
     const damage = baseDamage + bonus;
-    const improvement = Math.min(damage, Math.max(0, value));
-    const score = improvement + bonus * 0.5 + Math.max(0, value - improvement) * 0.1;
+    const snapshot = getLaneSnapshot(context, lane);
+    const inflicted = Math.min(damage, Math.max(0, snapshot.enemyValue));
+    if (inflicted <= 0) return;
+    const remainingEnemy = Math.max(0, snapshot.enemyValue - damage);
+    const threatRelief = computeThreatRelief(
+      snapshot.allyValue,
+      snapshot.enemyValue,
+      remainingEnemy,
+    );
+    let score = inflicted * 0.6 + threatRelief;
+    if (bonusCandidate && bonusCandidate.value > 0) {
+      score += bonusCandidate.value * 0.4;
+    }
+    if (snapshot.allyValue < snapshot.enemyValue) {
+      score += Math.abs(snapshot.allyValue - snapshot.enemyValue) * 0.3;
+    }
     const targets: SpellTargetInstance[] = [cloneTarget(target)];
     if (bonusCandidate && bonusCandidate.value > 0) {
       targets.push(cloneTarget(bonusCandidate.target));
@@ -187,10 +320,29 @@ const evaluateIceShard = (context: CpuSpellContext): SpellEvaluation | null => {
   const bladeSupport = findBestAllyArcanaTarget(context, "blade", "any");
   let best: SpellEvaluation | null = null;
 
-  enemyTargets.forEach(({ target, value }) => {
-    const baseScore = Math.max(0.5, value);
-    const bonus = bladeSupport && bladeSupport.value > 0 ? 1.5 : 0;
-    const score = baseScore + bonus;
+  enemyTargets.forEach(({ target, value, lane }) => {
+    if (value <= 0) return;
+    const snapshot = getLaneSnapshot(context, lane);
+    const threatRelief = computeThreatRelief(
+      snapshot.allyValue,
+      snapshot.enemyValue,
+      0,
+    );
+    if (threatRelief <= 0.1) return;
+    let score = threatRelief;
+    if (!snapshot.allyCard) {
+      score += Math.max(0, snapshot.enemyValue) * 0.25;
+    }
+    if (snapshot.allyValue < snapshot.enemyValue) {
+      score += Math.abs(snapshot.allyValue - snapshot.enemyValue) * 0.4;
+    }
+    const bladeValue = bladeSupport?.value ?? 0;
+    if (bladeSupport && bladeValue > 0) {
+      const initiativePressure = snapshot.allyValue > 0
+        ? snapshot.allyValue * 0.3
+        : Math.max(1, snapshot.enemyValue * 0.2);
+      score += initiativePressure + bladeValue * 0.35;
+    }
     const targets: SpellTargetInstance[] = [cloneTarget(target)];
     if (bladeSupport) {
       targets.push(cloneTarget(bladeSupport.target));
@@ -216,7 +368,17 @@ const evaluateHex = (context: CpuSpellContext): SpellEvaluation | null => {
     const bonus = serpentSupport?.value ?? 0;
     const drain = 2 + bonus;
     const cappedDrain = Math.min(drain, reserve);
-    const score = cappedDrain + bonus * 0.75 + Math.max(0, value) * 0.15;
+    if (cappedDrain <= 0) return;
+    const { self, foe } = getReserveTotals(context);
+    const reserveRelief = computeReserveRelief(
+      self,
+      foe,
+      Math.max(0, foe - cappedDrain),
+    );
+    let score = cappedDrain * 0.5 + reserveRelief + Math.max(0, value) * 0.1;
+    if (serpentSupport && serpentSupport.value > 0) {
+      score += serpentSupport.value * 0.6;
+    }
     const targets: SpellTargetInstance[] = [cloneTarget(target)];
     if (serpentSupport && serpentSupport.value > 0) {
       targets.push(cloneTarget(serpentSupport.target));
@@ -246,15 +408,24 @@ const evaluateKindle = (context: CpuSpellContext): SpellEvaluation | null => {
     const fireSupport = findBestAllyArcanaTarget(context, "fire", "any", exclude);
     const bonus = fireSupport?.value ?? 0;
     const gain = 2 + bonus;
-    let score = gain + (bonus > 0 ? bonus * 0.25 : 0);
+    let score = gain * 0.5 + (bonus > 0 ? bonus * 0.3 : 0);
     if (location === "board") {
-      const foeCard = context.board[foeSide][(candidate as BoardCardTargetOption).lane] ?? null;
-      const foeValue = getCardValue(foeCard);
-      const beforeAdvantage = candidate.value - foeValue;
-      const afterAdvantage = candidate.value + gain - foeValue;
-      score += afterAdvantage - beforeAdvantage;
+      const laneSnapshot = getLaneSnapshot(
+        context,
+        (candidate as BoardCardTargetOption).lane,
+      );
+      const newAllyValue = laneSnapshot.allyValue + gain;
+      const controlGain = computeControlGain(
+        laneSnapshot.allyValue,
+        laneSnapshot.enemyValue,
+        newAllyValue,
+      );
+      score += controlGain;
+      if (laneSnapshot.enemyValue > laneSnapshot.allyValue) {
+        score += Math.abs(laneSnapshot.enemyValue - laneSnapshot.allyValue) * 0.25;
+      }
     } else {
-      score += Math.max(0, candidate.value) * 0.1;
+      score += Math.max(0, candidate.value) * 0.2;
     }
 
     const targets: SpellTargetInstance[] = [cloneTarget(candidate.target)];
@@ -289,9 +460,11 @@ const evaluateMirrorImage = (
     const foeValue = getCardValue(foeCard);
     const bonus = eyeReserve?.value ?? 0;
     const newValue = foeValue + bonus;
-    const improvement = newValue - value;
+    const controlGain = computeControlGain(value, foeValue, newValue);
+    const threatRelief = computeThreatRelief(value, foeValue, foeValue);
+    const improvement = controlGain + threatRelief;
     if (improvement <= 0) return;
-    const score = improvement + Math.max(0, foeValue) * 0.2 + (bonus > 0 ? bonus * 0.25 : 0);
+    const score = improvement + Math.max(0, foeValue) * 0.2 + (bonus > 0 ? bonus * 0.3 : 0);
     const targets: SpellTargetInstance[] = [cloneTarget(target)];
     if (eyeReserve && eyeReserve.value > 0) {
       targets.push(cloneTarget(eyeReserve.target));
@@ -310,6 +483,7 @@ const evaluateSuddenStrike = (
   if (context.initiative === context.casterSide) return null;
   const selfSide = context.casterSide;
   const foeSide = opponentOf(selfSide);
+  const totalThreat = getTotalThreatScore(context);
   let best: SpellEvaluation | null = null;
 
   context.board[selfSide].forEach((card, lane) => {
@@ -317,7 +491,14 @@ const evaluateSuddenStrike = (
     const foeCard = context.board[foeSide][lane];
     const diff = getCardValue(card) - getCardValue(foeCard);
     if (diff <= 0) return;
-    const score = diff + 5;
+    const laneSnapshot = getLaneSnapshot(context, lane);
+    const threatRelief = computeThreatRelief(
+      laneSnapshot.allyValue,
+      laneSnapshot.enemyValue,
+      0,
+    );
+    const initiativeValue = 3 + totalThreat * 0.1;
+    const score = diff * 0.5 + threatRelief + initiativeValue;
     if (!best || score > best.score) {
       best = {
         score,
@@ -334,6 +515,7 @@ const evaluateTimeTwist = (
 ): SpellEvaluation | null => {
   if (context.initiative === context.casterSide) return null;
   const selfSide = context.casterSide;
+  const totalThreat = getTotalThreatScore(context);
   let best: SpellEvaluation | null = null;
 
   context.caster.hand.forEach((card) => {
@@ -341,7 +523,8 @@ const evaluateTimeTwist = (
     const arcana = card.arcana;
     if (arcana !== "eye" && arcana !== "moon") return;
     const value = getCardValue(card);
-    const score = 8 - Math.max(0, value);
+    const initiativeNeed = 6 + totalThreat * 0.12;
+    const score = initiativeNeed - Math.max(0, value) * 0.3;
     if (!best || score > best.score) {
       best = {
         score,
@@ -367,10 +550,10 @@ const evaluateCrosscut = (context: CpuSpellContext): SpellEvaluation | null => {
   reserveTargets.forEach(({ target, value }) => {
     const difference = Math.abs(value - opponentValue);
     if (difference <= 0) return;
-    let score = difference + difference * 0.1;
+    let score = difference * 0.8 + difference * 0.2;
     const targets: SpellTargetInstance[] = [cloneTarget(target)];
     if (bladeSupport) {
-      score += difference * 0.5;
+      score += difference * 0.5 + getTotalThreatScore(context) * 0.05;
       targets.push(cloneTarget(bladeSupport.target));
     }
     if (!best || score > best.score) {
@@ -399,19 +582,22 @@ const evaluateLeech = (context: CpuSpellContext): SpellEvaluation | null => {
       if (!adjacent) return;
       if (adjacent.value <= 0) return;
 
-      const foePrimary = context.board[foeSide][primary.lane] ?? null;
-      const foeAdjacent = context.board[foeSide][lane] ?? null;
-      const foePrimaryValue = getCardValue(foePrimary);
-      const foeAdjacentValue = getCardValue(foeAdjacent);
-
-      const beforeAdvantage =
-        (primary.value - foePrimaryValue) + (adjacent.value - foeAdjacentValue);
-      const transferredAmount = adjacent.value;
-      const afterPrimaryValue = primary.value + transferredAmount;
-      const afterAdjacentValue = Math.max(0, adjacent.value - transferredAmount);
-      const afterAdvantage =
-        (afterPrimaryValue - foePrimaryValue) + (afterAdjacentValue - foeAdjacentValue);
-      const improvement = afterAdvantage - beforeAdvantage;
+      const primarySnapshot = getLaneSnapshot(context, primary.lane);
+      const adjacentSnapshot = getLaneSnapshot(context, lane);
+      const transferredAmount = adjacentSnapshot.allyValue;
+      const afterPrimaryValue = primarySnapshot.allyValue + transferredAmount;
+      const afterAdjacentValue = Math.max(0, adjacentSnapshot.allyValue - transferredAmount);
+      const primaryDelta = computeControlDelta(
+        primarySnapshot.allyValue,
+        primarySnapshot.enemyValue,
+        afterPrimaryValue,
+      );
+      const adjacentDelta = computeControlDelta(
+        adjacentSnapshot.allyValue,
+        adjacentSnapshot.enemyValue,
+        afterAdjacentValue,
+      );
+      const improvement = primaryDelta + adjacentDelta;
 
       const bonus = serpentSupport?.value ?? 0;
       if (improvement <= 0 && bonus <= 0) return;
@@ -443,20 +629,22 @@ const evaluateOffering = (context: CpuSpellContext): SpellEvaluation | null => {
   let best: SpellEvaluation | null = null;
 
   boardTargets.forEach((boardOption) => {
-    const foeCard = context.board[foeSide][boardOption.lane] ?? null;
-    const foeValue = getCardValue(foeCard);
-    const beforeAdvantage = boardOption.value - foeValue;
 
     reserveTargets.forEach((reserveOption) => {
       const value = reserveOption.value;
       if (value <= 0) return;
       const gain = reserveOption.card.arcana === "fire" ? value * 2 : value;
       if (gain <= 0) return;
-      const afterAdvantage = boardOption.value + gain - foeValue;
-      const improvement = afterAdvantage - beforeAdvantage;
+      const snapshot = getLaneSnapshot(context, boardOption.lane);
+      const newAllyValue = snapshot.allyValue + gain;
+      const improvement = computeControlGain(
+        snapshot.allyValue,
+        snapshot.enemyValue,
+        newAllyValue,
+      );
       if (improvement <= 0) return;
       const fireBonus = reserveOption.card.arcana === "fire" ? value : 0;
-      const score = improvement + fireBonus;
+      const score = improvement + fireBonus * 0.6;
       const targets: SpellTargetInstance[] = [
         cloneTarget(boardOption.target),
         cloneTarget(reserveOption.target),
@@ -484,12 +672,20 @@ const evaluatePhantom = (context: CpuSpellContext): SpellEvaluation | null => {
       const second = boardTargets[j];
       const foeFirst = context.board[foeSide][first.lane] ?? null;
       const foeSecond = context.board[foeSide][second.lane] ?? null;
-      const beforeAdvantage =
-        (first.value - getCardValue(foeFirst)) + (second.value - getCardValue(foeSecond));
-      const afterAdvantage =
-        (second.value - getCardValue(foeFirst)) + (first.value - getCardValue(foeSecond));
-      const improvement = afterAdvantage - beforeAdvantage;
-      if (improvement <= 0) continue;
+      const firstSnapshot = getLaneSnapshot(context, first.lane);
+      const secondSnapshot = getLaneSnapshot(context, second.lane);
+      const swapFirstDelta = computeControlDelta(
+        firstSnapshot.allyValue,
+        getCardValue(foeFirst),
+        secondSnapshot.allyValue,
+      );
+      const swapSecondDelta = computeControlDelta(
+        secondSnapshot.allyValue,
+        getCardValue(foeSecond),
+        firstSnapshot.allyValue,
+      );
+      const improvement = swapFirstDelta + swapSecondDelta;
+      if (improvement <= 0.1) continue;
       const targets: SpellTargetInstance[] = [
         cloneTarget(first.target),
         cloneTarget(second.target),
@@ -506,9 +702,12 @@ const evaluatePhantom = (context: CpuSpellContext): SpellEvaluation | null => {
       if (option.card.arcana !== "moon") return;
       const foeCard = context.board[foeSide][option.lane] ?? null;
       const foeValue = getCardValue(foeCard);
-      const beforeAdvantage = option.value - foeValue;
-      const afterAdvantage = moonReserve.value - foeValue;
-      const improvement = afterAdvantage - beforeAdvantage;
+      const snapshot = getLaneSnapshot(context, option.lane);
+      const improvement = computeControlGain(
+        snapshot.allyValue,
+        snapshot.enemyValue,
+        moonReserve.value,
+      );
       if (improvement <= 0) return;
       const filler = boardTargets.find((candidate) => candidate.card.id !== option.card.id);
       if (!filler) return;
@@ -517,7 +716,7 @@ const evaluatePhantom = (context: CpuSpellContext): SpellEvaluation | null => {
         cloneTarget(filler.target),
         cloneTarget(moonReserve.target),
       ];
-      const score = improvement + moonReserve.value * 0.3;
+      const score = improvement + moonReserve.value * 0.25;
       if (!best || score > best.score) {
         best = { score, targets };
       }
