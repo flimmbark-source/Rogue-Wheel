@@ -259,6 +259,7 @@ export default function ThreeWheel_WinsOnly({
     lockedWheelSize,
     log,
     spellHighlights,
+    skillPhase,
   } = state;
 
   const {
@@ -268,6 +269,7 @@ export default function ThreeWheel_WinsOnly({
     HUD_COLORS,
     winGoal,
     isMultiplayer,
+    isSkillMode,
     localWinsCount,
     remoteWinsCount,
     localWon,
@@ -293,6 +295,8 @@ export default function ThreeWheel_WinsOnly({
     handleExitClick,
     applySpellEffects,
     setAnteBet,
+    activateSkillOption,
+    passSkillTurn,
   } = actions;
 
   // --- local UI/Grimoire state (from Spells branch) ---
@@ -1332,6 +1336,54 @@ export default function ThreeWheel_WinsOnly({
               )}
             </div>
           )}
+          {phase === "skill" && isSkillMode && skillPhase && (
+            <div className="flex flex-col items-end gap-2 text-right">
+              <div className="text-sm font-semibold text-slate-200">Skill Phase</div>
+              <div className="text-xs text-slate-300 max-w-xs">
+                {skillPhase.activeSide === localLegacySide
+                  ? "Activate a skill or pass to end your turn."
+                  : `Waiting for ${namesByLegacy[skillPhase.activeSide]}...`}
+              </div>
+              {skillPhase.activeSide === localLegacySide && (
+                <ul className="flex flex-col gap-2 max-w-xs text-left">
+                  {skillPhase.options.length === 0 ? (
+                    <li className="text-xs text-slate-400">No ready skills.</li>
+                  ) : (
+                    skillPhase.options.map((option) => (
+                      <li key={option.card.id} className="rounded border border-slate-700 bg-slate-800/70 p-2 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-semibold text-slate-100 truncate">
+                            {option.card.name ?? `Card ${option.lane + 1}`}
+                          </div>
+                          <button
+                            type="button"
+                            className="rounded bg-emerald-400 px-2 py-0.5 text-[11px] font-semibold text-slate-900 disabled:opacity-50"
+                            onClick={() => activateSkillOption(option.lane)}
+                            disabled={!option.canActivate}
+                          >
+                            Activate
+                          </button>
+                        </div>
+                        <div className="mt-1 text-slate-300">{option.description}</div>
+                        {!option.canActivate && option.reason ? (
+                          <div className="mt-1 text-[11px] text-rose-300">{option.reason}</div>
+                        ) : null}
+                      </li>
+                    ))
+                  )}
+                </ul>
+              )}
+              {skillPhase.activeSide === localLegacySide && (
+                <button
+                  type="button"
+                  onClick={passSkillTurn}
+                  className="self-end rounded bg-slate-700 px-2.5 py-0.5 text-xs font-semibold text-slate-200 hover:bg-slate-600"
+                >
+                  Pass
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Grimoire button + popover/modal */}
           {isGrimoireMode && (
@@ -1565,6 +1617,8 @@ export default function ThreeWheel_WinsOnly({
                 isAwaitingSpellTarget={isAwaitingSpellTarget}
                 variant="grouped"
                 spellHighlightedCardIds={spellHighlightedCardIds}
+                skillExhausted={skillPhase?.exhausted ?? null}
+                isSkillMode={isSkillMode}
               />
             </div>
           ))}
