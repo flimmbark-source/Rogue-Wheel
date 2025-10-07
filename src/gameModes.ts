@@ -35,10 +35,10 @@ export const GAME_MODE_DETAILS: Record<
     ],
   },
   skill: {
-    title: "Skill Mode",
-    subtitle: "Tap cards in play to exhaust them for unique abilities.",
+    title: "Skills",
+    subtitle: "Tap cards in play to use for unique abilities.",
     highlights: [
-      "Cards exhaust to trigger abilities based on their number.",
+      "Cards trigger abilities based on their number.",
     ],
   },
 };
