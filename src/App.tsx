@@ -145,8 +145,9 @@ const SKILL_TARGET_SPECS: Record<AbilityKind, SkillTargetSpec> = {
     prompt: "Select a friendly lane to boost.",
   },
   reserveBoost: {
-    kind: "reserve",
-    prompt: "Select a positive reserve card to consume for a boost.",
+    kind: "reserveThenLane",
+    reservePrompt: "Select a positive reserve card to consume for a boost.",
+    lanePrompt: "Select a friendly lane to receive the reserve boost.",
     requirePositiveReserve: true,
   },
 };
@@ -1289,13 +1290,24 @@ export default function ThreeWheel_WinsOnly({
           return;
         }
         if (spec.kind === "reserveThenLane" && skillTargeting.pendingReserveCardId) {
-          useSkillAbility(localLegacySide, laneIndex, {
-            type: "reserveToLane",
-            cardId: skillTargeting.pendingReserveCardId,
-            laneIndex: selection.laneIndex,
-          });
-          setSkillTargeting(null);
-          return;
+          if (skillTargeting.ability === "swapReserve") {
+            useSkillAbility(localLegacySide, laneIndex, {
+              type: "reserveToLane",
+              cardId: skillTargeting.pendingReserveCardId,
+              laneIndex: selection.laneIndex,
+            });
+            setSkillTargeting(null);
+            return;
+          }
+          if (skillTargeting.ability === "reserveBoost") {
+            useSkillAbility(localLegacySide, laneIndex, {
+              type: "reserveBoost",
+              cardId: skillTargeting.pendingReserveCardId,
+              laneIndex: selection.laneIndex,
+            });
+            setSkillTargeting(null);
+            return;
+          }
         }
       }
     },

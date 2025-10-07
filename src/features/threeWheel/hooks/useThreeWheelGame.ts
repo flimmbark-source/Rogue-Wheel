@@ -123,7 +123,8 @@ type SkillLane = {
 export type SkillAbilityTarget =
   | { type: "reserve"; cardId: string }
   | { type: "lane"; laneIndex: number }
-  | { type: "reserveToLane"; cardId: string; laneIndex: number };
+  | { type: "reserveToLane"; cardId: string; laneIndex: number }
+  | { type: "reserveBoost"; cardId: string; laneIndex: number };
 
 type SkillState = {
   enabled: boolean;
@@ -1908,7 +1909,9 @@ export function useThreeWheelGame({
           break;
         }
         case "reserveBoost": {
-          if (target?.type !== "reserve" || !skillCard) break;
+          if (target?.type !== "reserveBoost" || !skillCard) break;
+          const targetLaneIndex = target.laneIndex;
+          if (!Number.isInteger(targetLaneIndex)) break;
           const fighter = getFighterSnapshot(side);
           const reserveIndex = fighter.hand.findIndex((card) => card.id === target.cardId);
           if (reserveIndex === -1) break;
@@ -1932,17 +1935,17 @@ export function useThreeWheelGame({
               enemy: [...sideAssignments.enemy],
             };
             const laneArr = side === "player" ? nextAssign.player : nextAssign.enemy;
-            const laneCard = laneArr[laneIndex];
+            const laneCard = laneArr[targetLaneIndex];
             if (laneCard) {
               const updatedCard = { ...laneCard } as Card;
               const baseValue = typeof updatedCard.number === "number" ? updatedCard.number : 0;
               updatedCard.number = baseValue + storedReserveValue;
-              laneArr[laneIndex] = updatedCard;
+              laneArr[targetLaneIndex] = updatedCard;
               concludeAssignUpdate(nextAssign);
-              recalcWheelForLane(nextAssign, laneIndex);
+              recalcWheelForLane(nextAssign, targetLaneIndex);
             }
             appendLog(
-              `${actorName} infused lane ${laneIndex + 1} with +${storedReserveValue} from reserve.`,
+              `${actorName} infused lane ${targetLaneIndex + 1} with +${storedReserveValue} from reserve.`,
             );
           } else {
             appendLog(`${actorName} exhausted a reserve card with no value to boost.`);
