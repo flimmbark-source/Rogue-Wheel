@@ -1,4 +1,4 @@
-export const GAME_MODE_OPTIONS = ["grimoire", "ante"] as const;
+export const GAME_MODE_OPTIONS = ["skill", "grimoire", "ante"] as const;
 
 export type GameModeOption = (typeof GAME_MODE_OPTIONS)[number];
 
@@ -7,6 +7,7 @@ export type GameMode = GameModeOption[];
 export const DEFAULT_GAME_MODE: GameMode = [];
 
 export const GAME_MODE_LABELS: Record<GameModeOption, string> = {
+  skill: "Skill Mode",
   grimoire: "Grimoire",
   ante: "Ante",
 };
@@ -19,6 +20,14 @@ export const GAME_MODE_DETAILS: Record<
     highlights: string[];
   }
 > = {
+  skill: {
+    title: "Skill Mode",
+    subtitle: "Unlock lane abilities between rounds for tactical plays.",
+    highlights: [
+      "Board cards grant one-shot abilities during the Skill Phase.",
+      "Swap, reroll, and boost using reserve tactics before combat.",
+    ],
+  },
   grimoire: {
     title: "Grimoire",
     subtitle: "Adds spells, which can alter match outcomes.",
