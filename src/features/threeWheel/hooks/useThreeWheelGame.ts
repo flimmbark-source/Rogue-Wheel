@@ -115,6 +115,10 @@ type SkillLane = {
   exhausted: boolean;
 };
 
+export type SkillAbilityTarget =
+  | { type: "reserve"; cardId: string }
+  | { type: "lane"; laneIndex: number };
+
 type SkillState = {
   enabled: boolean;
   completed: boolean;
@@ -204,7 +208,7 @@ export type ThreeWheelGameActions = {
   applySpellEffects: (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => void;
   setAnteBet: (bet: number) => void;
   handleSkillConfirm: () => void;
-  useSkillAbility: (side: LegacySide, laneIndex: number) => void;
+  useSkillAbility: (side: LegacySide, laneIndex: number, target?: SkillAbilityTarget) => void;
 };
 
 export type ThreeWheelGameReturn = {
@@ -1763,7 +1767,8 @@ export function useThreeWheelGame({
   }, [isSkillMode, tryRevealRound]);
 
   const useSkillAbility = useCallback(
-    (side: LegacySide, laneIndex: number) => {
+    (side: LegacySide, laneIndex: number, target?: SkillAbilityTarget) => {
+      void target;
       let usedAbility: AbilityKind | null = null;
       setSkillState((prev) => {
         const lanes = prev.lanes[side];
