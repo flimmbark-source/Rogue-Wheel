@@ -29,7 +29,7 @@ interface PhaseLimits {
 }
 
 interface TargetSpec {
-  kind: "reserve" | "friendlyLane";
+  kind: "reserve" | "friendlyLane" | "reserveThenLane";
   count: number;
 }
 
@@ -79,18 +79,25 @@ type OptionAvailability = {
 };
 
 const abilityConfigs: Record<AbilityKind, AbilityConfig> = {
-  swapReserve: { kind: "swapReserve", usesPerPhase: 1, targetsRequired: 1 },
+  swapReserve: { kind: "swapReserve", usesPerPhase: 1, targetsRequired: 2 },
   rerollReserve: { kind: "rerollReserve", usesPerPhase: 1, targetsRequired: 1 },
   boostCard: { kind: "boostCard", usesPerPhase: 1, targetsRequired: 1 },
   reserveBoost: { kind: "reserveBoost", usesPerPhase: 1, targetsRequired: 1 },
 };
 
 const abilityTargetSpecs: Record<AbilityKind, TargetSpec> = {
-  swapReserve: { kind: "reserve", count: 1 },
+  swapReserve: { kind: "reserveThenLane", count: 2 },
   rerollReserve: { kind: "reserve", count: 1 },
   boostCard: { kind: "friendlyLane", count: 1 },
   reserveBoost: { kind: "reserve", count: 1 },
 };
+
+function targetKindForIndex(spec: TargetSpec, index: number): "reserve" | "friendlyLane" {
+  if (spec.kind === "reserveThenLane") {
+    return index === 0 ? "reserve" : "friendlyLane";
+  }
+  return spec.kind;
+}
 
 function cloneCard(card: Card | null): Card | null {
   return card ? { ...card } : null;
@@ -396,6 +403,14 @@ function pickTarget(state: SkillPhaseState, target: string | number): SkillPhase
   if (targeting.selectedTargets.length >= targeting.targetSpec.count) {
     throw new Error("All targets already selected");
   }
+  const stageIndex = targeting.selectedTargets.length;
+  const stageKind = targetKindForIndex(targeting.targetSpec, stageIndex);
+  if (stageKind === "reserve" && typeof target !== "string") {
+    throw new Error("Expected reserve card target");
+  }
+  if (stageKind === "friendlyLane" && typeof target !== "number") {
+    throw new Error("Expected lane index target");
+  }
   const nextTargets = [...targeting.selectedTargets, target];
   const targetingNext = { ...targeting, selectedTargets: nextTargets };
   const next = withUpdatedState(state, { targeting: targetingNext });
@@ -435,21 +450,31 @@ function consumeLaneUse(lanes: Lane[], laneIndex: number): Lane[] {
   return updated;
 }
 
-function applySwapReserve(state: SkillPhaseState, laneIndex: number, cardId: string): SkillPhaseState {
+function applySwapReserve(
+  state: SkillPhaseState,
+  laneIndex: number,
+  targetLaneIndex: number,
+  cardId: string
+): SkillPhaseState {
   const lane = state.lanes.find((l) => l.index === laneIndex);
   if (!lane || !lane.card) throw new Error("Invalid swap lane");
   const side = lane.side;
+  const targetLane = state.lanes.find((l) => l.index === targetLaneIndex && l.side === side);
+  if (!targetLane) throw new Error("Invalid target lane");
   const reserves = cloneReserves(state.reserves);
   const reserve = reserves[side];
   const idx = findReserveIndex(reserve, cardId);
   if (idx === -1) throw new Error("Reserve card not found");
-  const reserveCard = reserve[idx];
-  reserve[idx] = { ...lane.card };
-  const newLaneCard = { ...reserveCard };
+  const [reserveCard] = reserve.splice(idx, 1);
+  const displaced = targetLane.card ? { ...targetLane.card } : null;
+  if (displaced) {
+    reserve.push(displaced);
+  }
   const lanes = cloneLanes(state.lanes);
-  const laneMut = lanes.find((l) => l.index === laneIndex)!;
-  laneMut.card = newLaneCard;
-  laneMut.boost = lane.boost;
+  const laneMut = lanes.find((l) => l.index === targetLaneIndex && l.side === side);
+  if (!laneMut) throw new Error("Target lane missing");
+  laneMut.card = { ...reserveCard };
+  laneMut.boost = targetLane.boost;
   laneMut.ability = assignLaneAbility(laneMut.card);
   const updatedLimits = cloneLimits(state.limits);
   return withUpdatedState(state, {
@@ -520,19 +545,25 @@ function confirmActivation(state: SkillPhaseState): SkillPhaseState {
   const side = state.lanes.find((l) => l.index === laneIndex)?.side;
   if (!side) throw new Error("Invalid lane");
   let nextState: SkillPhaseState = state;
-  const [target] = targeting.selectedTargets;
   switch (targeting.ability) {
-    case "swapReserve":
-      nextState = applySwapReserve(nextState, laneIndex, String(target));
+    case "swapReserve": {
+      const [reserveTarget, laneTarget] = targeting.selectedTargets;
+      nextState = applySwapReserve(
+        nextState,
+        laneIndex,
+        Number(laneTarget),
+        String(reserveTarget)
+      );
       break;
+    }
     case "rerollReserve":
-      nextState = applyRerollReserve(nextState, laneIndex, String(target));
+      nextState = applyRerollReserve(nextState, laneIndex, String(targeting.selectedTargets[0]));
       break;
     case "boostCard":
-      nextState = applyBoostCard(nextState, laneIndex, Number(target));
+      nextState = applyBoostCard(nextState, laneIndex, Number(targeting.selectedTargets[0]));
       break;
     case "reserveBoost":
-      nextState = applyReserveBoost(nextState, laneIndex, String(target));
+      nextState = applyReserveBoost(nextState, laneIndex, String(targeting.selectedTargets[0]));
       break;
     default:
       throw new Error("Unknown ability");
@@ -609,10 +640,12 @@ function evaluateLaneScore(lane: Lane, opponentLane: Lane | undefined): number {
 function aiChooseAction(
   state: SkillPhaseState,
   side: Side
-): { type: "activate" | "pass"; laneIndex?: number; chosenTarget?: string | number } {
+): { type: "activate" | "pass"; laneIndex?: number; chosenTargets?: Array<string | number> } {
   const options = computeLaneAvailability(state, side).filter((o) => o.available && o.ability);
   let bestScore = -Infinity;
-  let bestAction: { type: "activate" | "pass"; laneIndex?: number; chosenTarget?: string | number } = { type: "pass" };
+  let bestAction: { type: "activate" | "pass"; laneIndex?: number; chosenTargets?: Array<string | number> } = {
+    type: "pass",
+  };
   for (const option of options) {
     const lane = state.lanes.find((l) => l.index === option.laneIndex && l.side === side);
     if (!lane || !lane.card || !option.ability) continue;
@@ -651,23 +684,31 @@ function aiChooseAction(
     }
     if (score > bestScore && score > 0) {
       bestScore = score;
-      let chosenTarget: string | number | undefined;
+      let chosenTargets: Array<string | number> | undefined;
       if (option.ability === "boostCard") {
-        chosenTarget = lane.index;
+        chosenTargets = [lane.index];
       } else if (option.ability === "reserveBoost") {
         const reserves = state.reserves[side].filter((c) => c.printed > 0);
         if (reserves.length > 0) {
-          chosenTarget = reserves.reduce((a, b) => (a.printed > b.printed ? a : b)).id;
+          chosenTargets = [reserves.reduce((a, b) => (a.printed > b.printed ? a : b)).id];
         }
       } else if (option.ability === "swapReserve") {
         const reserves = state.reserves[side];
-        chosenTarget = reserves.reduce((a, b) => (a.printed > b.printed ? a : b)).id;
+        if (reserves.length > 0) {
+          const bestReserve = reserves.reduce((a, b) => (a.printed > b.printed ? a : b));
+          chosenTargets = [bestReserve.id, lane.index];
+        }
       } else if (option.ability === "rerollReserve") {
         const reserves = state.reserves[side];
-        chosenTarget = reserves[0]?.id;
+        if (reserves[0]) {
+          chosenTargets = [reserves[0].id];
+        }
       }
-      if (chosenTarget !== undefined) {
-        bestAction = { type: "activate", laneIndex: option.laneIndex, chosenTarget };
+      if (
+        chosenTargets &&
+        chosenTargets.length === abilityTargetSpecs[option.ability].count
+      ) {
+        bestAction = { type: "activate", laneIndex: option.laneIndex, chosenTargets };
       }
     }
   }
@@ -843,6 +884,7 @@ test("Swap reserve exchanges cards", () => {
   );
   state = beginActivation(state, "you", 0);
   state = pickTarget(state, "res");
+  state = pickTarget(state, 0);
   state = confirmActivation(state);
   const lane = state.lanes.find((l) => l.index === 0)!;
   expect(lane.card?.id === "res", "Lane card should now be reserve card");
@@ -909,7 +951,13 @@ test("AI prefers deterministic boost", () => {
     20
   );
   const action = aiChooseAction(state, "rival");
-  expect(action.type === "activate" && action.laneIndex === 0 && action.chosenTarget === "boost", "AI should choose reserve boost");
+  const firstTarget = action.chosenTargets?.[0];
+  expect(
+    action.type === "activate" &&
+      action.laneIndex === 0 &&
+      firstTarget === "boost",
+    "AI should choose reserve boost"
+  );
 });
 
 test("Deterministic outcomes with same seed", () => {

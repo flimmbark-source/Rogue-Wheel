@@ -110,16 +110,31 @@ const SKILL_ABILITY_LABELS: Record<AbilityKind, string> = {
   reserveBoost: "Reserve Boost",
 };
 
-type SkillTargetSpec = {
-  kind: "reserve" | "friendlyLane";
+type ReserveTargetSpec = {
+  kind: "reserve";
   prompt: string;
   requirePositiveReserve?: boolean;
 };
 
+type FriendlyLaneTargetSpec = {
+  kind: "friendlyLane";
+  prompt: string;
+};
+
+type ReserveThenLaneTargetSpec = {
+  kind: "reserveThenLane";
+  reservePrompt: string;
+  lanePrompt: string;
+  requirePositiveReserve?: boolean;
+};
+
+type SkillTargetSpec = ReserveTargetSpec | FriendlyLaneTargetSpec | ReserveThenLaneTargetSpec;
+
 const SKILL_TARGET_SPECS: Record<AbilityKind, SkillTargetSpec> = {
   swapReserve: {
-    kind: "reserve",
-    prompt: "Select a reserve card to swap with this lane.",
+    kind: "reserveThenLane",
+    reservePrompt: "Select a reserve card to swap into a lane.",
+    lanePrompt: "Select a lane to receive the reserve card.",
   },
   rerollReserve: {
     kind: "reserve",
@@ -141,6 +156,8 @@ type SkillTargetingState = {
   laneIndex: number;
   ability: AbilityKind;
   spec: SkillTargetSpec;
+  activeKind: "reserve" | "friendlyLane";
+  pendingReserveCardId?: string | null;
 };
 
 type SkillTargetSelection =
@@ -1136,23 +1153,29 @@ export default function ThreeWheel_WinsOnly({
         side: skillTargeting.side,
         laneIndex: skillTargeting.laneIndex,
         ability: skillTargeting.ability,
-        specKind: skillTargeting.spec.kind,
+        specKind: skillTargeting.activeKind,
       }
     : null;
 
   const skillTargetableReserveIds = useMemo(() => {
     if (!skillTargeting || skillTargeting.side !== localLegacySide) return null;
-    if (skillTargeting.spec.kind !== "reserve") return null;
+    if (skillTargeting.activeKind !== "reserve") return null;
+    const requiresPositiveReserve =
+      skillTargeting.spec.kind === "reserve"
+        ? skillTargeting.spec.requirePositiveReserve
+        : skillTargeting.spec.kind === "reserveThenLane"
+          ? skillTargeting.spec.requirePositiveReserve
+          : undefined;
     const cards = localLegacySide === "player" ? player.hand : enemy.hand;
     const allowed = cards.filter((card) =>
-      skillTargeting.spec.requirePositiveReserve ? isReserveBoostTarget(card) : true,
+      requiresPositiveReserve ? isReserveBoostTarget(card) : true,
     );
     return new Set(allowed.map((card) => card.id));
   }, [enemy.hand, localLegacySide, player.hand, skillTargeting]);
 
   const skillTargetableLaneIndexes = useMemo(() => {
     if (!skillTargeting || skillTargeting.side !== localLegacySide) return null;
-    if (skillTargeting.spec.kind !== "friendlyLane") return null;
+    if (skillTargeting.activeKind !== "friendlyLane") return null;
     const lanes = assign[localLegacySide];
     const result = new Set<number>();
     lanes.forEach((card, idx) => {
@@ -1163,7 +1186,14 @@ export default function ThreeWheel_WinsOnly({
     return result;
   }, [assign, localLegacySide, skillTargeting]);
 
-  const skillTargetPrompt = skillTargeting ? skillTargeting.spec.prompt : "";
+  const skillTargetPrompt = (() => {
+    if (!skillTargeting) return "";
+    const { spec, activeKind } = skillTargeting;
+    if (spec.kind === "reserveThenLane") {
+      return activeKind === "reserve" ? spec.reservePrompt : spec.lanePrompt;
+    }
+    return spec.prompt;
+  })();
   const skillAbilityLabel = skillTargeting ? SKILL_ABILITY_LABELS[skillTargeting.ability] : "";
   const skillAbilityDescription = useMemo(() => {
     if (!skillTargeting) return "";
@@ -1176,27 +1206,48 @@ export default function ThreeWheel_WinsOnly({
       if (!skillPhaseActive) return;
       const spec = SKILL_TARGET_SPECS[ability];
       if (!spec) return;
-      if (skillTargeting && skillTargeting.side === localLegacySide && skillTargeting.laneIndex === laneIndex) {
+      if (
+        skillTargeting &&
+        skillTargeting.side === localLegacySide &&
+        skillTargeting.laneIndex === laneIndex
+      ) {
         setSkillTargeting(null);
         return;
       }
 
-      if (spec.kind === "reserve") {
+      const needsReserveSelection =
+        spec.kind === "reserve" || spec.kind === "reserveThenLane";
+      if (needsReserveSelection) {
         const handCards = localLegacySide === "player" ? player.hand : enemy.hand;
+        const requirePositive =
+          spec.kind === "reserve" || spec.kind === "reserveThenLane"
+            ? spec.requirePositiveReserve
+            : undefined;
         const available = handCards.filter((card) =>
-          spec.requirePositiveReserve ? isReserveBoostTarget(card) : true,
+          requirePositive ? isReserveBoostTarget(card) : true,
         );
         if (available.length === 0) {
           return;
         }
-      } else if (spec.kind === "friendlyLane") {
+      }
+
+      const needsFriendlyLaneSelection =
+        spec.kind === "friendlyLane" || spec.kind === "reserveThenLane";
+      if (needsFriendlyLaneSelection) {
         const lanes = assign[localLegacySide];
         if (!lanes.some((card) => Boolean(card))) {
           return;
         }
       }
 
-      setSkillTargeting({ side: localLegacySide, laneIndex, ability, spec });
+      setSkillTargeting({
+        side: localLegacySide,
+        laneIndex,
+        ability,
+        spec,
+        activeKind: spec.kind === "friendlyLane" ? "friendlyLane" : "reserve",
+        pendingReserveCardId: null,
+      });
     },
     [assign, enemy.hand, localLegacySide, player.hand, skillPhaseActive, skillTargeting],
   );
@@ -1209,16 +1260,43 @@ export default function ThreeWheel_WinsOnly({
     (selection: SkillTargetSelection) => {
       if (!skillTargeting) return;
       if (skillTargeting.side !== localLegacySide) return;
-      const { spec, laneIndex } = skillTargeting;
-      if (spec.kind === "reserve" && selection.type === "reserve") {
-        useSkillAbility(localLegacySide, laneIndex, { type: "reserve", cardId: selection.cardId });
-        setSkillTargeting(null);
-        return;
+      const { spec, laneIndex, activeKind } = skillTargeting;
+      if (activeKind === "reserve" && selection.type === "reserve") {
+        if (spec.kind === "reserve") {
+          useSkillAbility(localLegacySide, laneIndex, {
+            type: "reserve",
+            cardId: selection.cardId,
+          });
+          setSkillTargeting(null);
+          return;
+        }
+        if (spec.kind === "reserveThenLane") {
+          setSkillTargeting({
+            ...skillTargeting,
+            activeKind: "friendlyLane",
+            pendingReserveCardId: selection.cardId,
+          });
+          return;
+        }
       }
-      if (spec.kind === "friendlyLane" && selection.type === "lane") {
-        useSkillAbility(localLegacySide, laneIndex, { type: "lane", laneIndex: selection.laneIndex });
-        setSkillTargeting(null);
-        return;
+      if (activeKind === "friendlyLane" && selection.type === "lane") {
+        if (spec.kind === "friendlyLane") {
+          useSkillAbility(localLegacySide, laneIndex, {
+            type: "lane",
+            laneIndex: selection.laneIndex,
+          });
+          setSkillTargeting(null);
+          return;
+        }
+        if (spec.kind === "reserveThenLane" && skillTargeting.pendingReserveCardId) {
+          useSkillAbility(localLegacySide, laneIndex, {
+            type: "reserveToLane",
+            cardId: skillTargeting.pendingReserveCardId,
+            laneIndex: selection.laneIndex,
+          });
+          setSkillTargeting(null);
+          return;
+        }
       }
     },
     [localLegacySide, skillTargeting, useSkillAbility],
