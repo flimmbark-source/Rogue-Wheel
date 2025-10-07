@@ -1600,7 +1600,7 @@ export default function ThreeWheel_WinsOnly({
       </div>
 
       {skillPhaseMessage && (
-        <div className="relative z-10 -mt-2 mb-2 flex justify-center px-2">
+        <div className="relative z+10 -mt+20 mb+20 flex justify-center px-2">
           <div className="max-w-md rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-200 shadow">
             <div className="flex flex-wrap items-center justify-center gap-2 text-center">
               <span className="block">{skillPhaseMessage}</span>
@@ -1623,11 +1623,6 @@ export default function ThreeWheel_WinsOnly({
         className="relative z-0 flex h-full items-center justify-center -translate-y-[36px] sm:-translate-y-6 lg:-translate-y-8"
         style={{ paddingBottom: handClearance }}
       >
-        {skillPhaseMessage && (
-          <div className="pointer-events-none absolute left-1/2 top-2 z-20 -translate-x-1/2 text-center text-xs font-semibold text-slate-200 drop-shadow">
-            {skillPhaseMessage}
-          </div>
-        )}
         <div
           ref={wheelPanelContainerRef}
           className="mx-auto flex h-full flex-col items-center justify-center gap-0 rounded-xl border border-transparent p-2 shadow"
