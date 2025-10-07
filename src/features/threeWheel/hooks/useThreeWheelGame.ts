@@ -751,7 +751,6 @@ export function useThreeWheelGame({
   const [skillPhaseView, setSkillPhaseView] = useState<SkillPhaseView | null>(null);
   const [skillTargeting, setSkillTargeting] = useState<SkillTargetingState | null>(null);
   const skillTargetingRef = useRef<SkillTargetingState | null>(skillTargeting);
-  const reserveCycleCountsRef = useRef<SideState<number>>({ player: 0, enemy: 0 });
   useEffect(() => {
     skillTargetingRef.current = skillTargeting;
   }, [skillTargeting]);
@@ -1144,7 +1143,6 @@ export function useThreeWheelGame({
     if (nextPhase === "ended") {
       clearRematchVotes();
     }
-    reserveCycleCountsRef.current = { player: 0, enemy: 0 };
   }, [clearRematchVotes, setPhase]);
 
   const advanceSkillTurn = useCallback(
@@ -1277,7 +1275,6 @@ export function useThreeWheelGame({
         nextState = { ...initialState, activeSide: otherSide };
       }
 
-      reserveCycleCountsRef.current = { player: 0, enemy: 0 };
       updateReservePreview();
       setSkillState(nextState);
       setPhase("skill");
@@ -1581,9 +1578,6 @@ export function useThreeWheelGame({
         ...prev,
         passed: { ...prev.passed, [side]: true },
       };
-      if (reserveCycleCountsRef.current[side]) {
-        reserveCycleCountsRef.current = { ...reserveCycleCountsRef.current, [side]: 0 };
-      }
       const advanced = advanceSkillTurn(updatedState);
       return advanced ?? null;
     });
