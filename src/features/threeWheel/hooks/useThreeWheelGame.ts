@@ -331,6 +331,15 @@ export function useThreeWheelGame({
     skillStateRef.current = skillState;
   }, [skillState]);
 
+  const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>({
+    player: [null, null, null],
+    enemy: [null, null, null],
+  });
+  const assignRef = useRef(assign);
+  useEffect(() => {
+    assignRef.current = assign;
+  }, [assign]);
+
   useEffect(() => {
     setSkillState((prev) => {
       if (prev.enabled === isSkillMode) {
@@ -681,20 +690,12 @@ export function useThreeWheelGame({
   const roundStartTokensRef = useRef<[number, number, number] | null>([0, 0, 0]);
   const [active] = useState<[boolean, boolean, boolean]>([true, true, true]);
   const [wheelHUD, setWheelHUD] = useState<[string | null, string | null, string | null]>([null, null, null]);
-  const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>({
-    player: [null, null, null],
-    enemy: [null, null, null],
-  });
   const [laneChillStacks, setLaneChillStacks] = useState<LaneChillStacks>({
     player: [0, 0, 0],
     enemy: [0, 0, 0],
   });
   const laneChillRef = useRef(laneChillStacks);
-  const assignRef = useRef(assign);
   const roundAnalysisRef = useRef<RoundAnalysis | null>(null);
-  useEffect(() => {
-    assignRef.current = assign;
-  }, [assign]);
   useEffect(() => {
     laneChillRef.current = laneChillStacks;
   }, [laneChillStacks]);
