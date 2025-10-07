@@ -52,6 +52,7 @@ export function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
     deck: [...f.deck],
     hand: [],
     discard: [...f.discard, ...played, ...leftovers],
+    exhaust: [...f.exhaust],
   };
 
   const refilled = refillTo(next, 5);

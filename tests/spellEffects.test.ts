@@ -126,12 +126,14 @@ const opponentOf = (side: LegacySide): LegacySide => (side === "player" ? "enemy
       { id: "ph2", name: "Guard", number: 5, tags: [] },
     ],
     discard: [],
+    exhaust: [],
   };
   let enemyFighter: Fighter = {
     name: "Target",
     deck: [],
     hand: [{ id: "eh1", name: "Shade", number: 4, tags: [] }],
     discard: [],
+    exhaust: [],
   };
 
   const payload: SpellEffectPayload = {

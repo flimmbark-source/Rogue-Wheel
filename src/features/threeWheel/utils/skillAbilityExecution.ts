@@ -1,5 +1,5 @@
 import type { AbilityKind } from "../../../game/skills.js";
-import { getReserveBoostValue } from "../../../game/skills.js";
+import { getCurrentSkillCardValue, getReserveBoostValue } from "../../../game/skills.js";
 import type { Card, Fighter, LegacySide } from "../../../game/types.js";
 import type { AssignmentState } from "../../../game/spellEngine.js";
 
@@ -121,7 +121,12 @@ export const applySkillAbilityEffect = (
         if (idx === -1) return prev;
         const [removed] = nextHand.splice(idx, 1);
         const nextDiscard = removed ? [...prev.discard, removed] : [...prev.discard];
-        const base: Fighter = { ...prev, hand: nextHand, discard: nextDiscard };
+        const base: Fighter = {
+          ...prev,
+          hand: nextHand,
+          discard: nextDiscard,
+          exhaust: [...prev.exhaust],
+        };
         const afterDraw = drawOne(base);
         if (afterDraw.hand.length > base.hand.length) {
           drawnCard = afterDraw.hand[afterDraw.hand.length - 1] ?? null;
@@ -150,13 +155,15 @@ export const applySkillAbilityEffect = (
       if (!existing) {
         return { success: false, failureReason: "There is no card on that lane." };
       }
-      if (storedSkillValue === 0) {
+      const dynamicSkillValue = skillCard ? getCurrentSkillCardValue(skillCard) : undefined;
+      const boostAmount = dynamicSkillValue !== undefined ? dynamicSkillValue : storedSkillValue;
+      if (boostAmount === 0) {
         return { success: false, failureReason: "The skill card has no boost value." };
       }
 
       const updatedCard = { ...existing } as Card;
       const currentValue = typeof updatedCard.number === "number" ? updatedCard.number : 0;
-      updatedCard.number = currentValue + storedSkillValue;
+      updatedCard.number = currentValue + boostAmount;
 
       const nextAssign: AssignmentState<Card> = {
         player: [...sideAssignments.player],
@@ -167,7 +174,7 @@ export const applySkillAbilityEffect = (
 
       concludeAssignUpdate(nextAssign);
       recalcWheelForLane(nextAssign, targetLane);
-      appendLog(`${actorName} boosted lane ${targetLane + 1} by ${storedSkillValue}.`);
+      appendLog(`${actorName} boosted lane ${targetLane + 1} by ${boostAmount}.`);
       return { success: true };
     }
     case "reserveBoost": {
@@ -195,8 +202,8 @@ export const applySkillAbilityEffect = (
         const idx = nextHand.findIndex((card) => card.id === target.cardId);
         if (idx === -1) return prev;
         const [removed] = nextHand.splice(idx, 1);
-        const nextDiscard = removed ? [...prev.discard, removed] : [...prev.discard];
-        return { ...prev, hand: nextHand, discard: nextDiscard };
+        const nextExhaust = removed ? [...prev.exhaust, removed] : [...prev.exhaust];
+        return { ...prev, hand: nextHand, exhaust: nextExhaust };
       });
 
       updateReservePreview();

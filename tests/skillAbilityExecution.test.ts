@@ -16,7 +16,7 @@ const makeAssignments = (player: Array<Card | null>): AssignmentState<Card> => (
   enemy: [null, null, null],
 });
 
-const blankFighter: Fighter = { name: "Tester", deck: [], hand: [], discard: [] };
+const blankFighter: Fighter = { name: "Tester", deck: [], hand: [], discard: [], exhaust: [] };
 
 const makeOptions = (
   overrides: Partial<SkillAbilityEffectOptions>,
@@ -112,6 +112,43 @@ const makeOptions = (
 }
 
 {
+  let updatedAssignments: AssignmentState<Card> | null = null;
+  const logs: string[] = [];
+  const laneCard: Card = { id: "lane-card", name: "Lane", tags: [], number: 1 };
+  const skillCard: Card = {
+    id: "skill-card",
+    name: "Skill",
+    tags: [],
+    baseNumber: 4,
+    number: 7,
+  };
+
+  const options = makeOptions({
+    storedSkillValue: 4,
+    skillCard,
+    sideAssignments: makeAssignments([laneCard, null, null]),
+    concludeAssignUpdate: (nextAssign) => {
+      updatedAssignments = nextAssign;
+    },
+    recalcWheelForLane: () => {
+      /* noop */
+    },
+    appendLog: (msg) => {
+      logs.push(msg);
+    },
+  });
+
+  const result = applySkillAbilityEffect(options);
+  assert.equal(result.success, true);
+  assert.deepEqual(logs, ["Hero boosted lane 1 by 7."]);
+  const ensuredAssignments: AssignmentState<Card> = updatedAssignments!;
+  const boosted = ensuredAssignments.player[0];
+  assert.equal(boosted?.number, 8, "lane should gain the current skill card value");
+
+  console.log("skill ability uses current value test passed");
+}
+
+{
   let reservePreviewCalls = 0;
   const logs: string[] = [];
   const firstReserve: Card = { id: "reserve-1", name: "First", tags: [], number: 4 };
@@ -125,6 +162,7 @@ const makeOptions = (
     deck: [...draws],
     hand: [firstReserve, secondReserve],
     discard: [],
+    exhaust: [],
   };
 
   const baseOptions = makeOptions({
@@ -141,6 +179,7 @@ const makeOptions = (
         ...fighter,
         deck: rest,
         hand: [...fighter.hand, next],
+        exhaust: [...fighter.exhaust],
       } satisfies Fighter;
     },
     updateReservePreview: () => {
@@ -172,4 +211,56 @@ const makeOptions = (
   );
 
   console.log("reroll reserve triggers preview update twice test passed");
+}
+
+{
+  const laneCard: Card = { id: "lane", name: "Lane", tags: [], number: 3 };
+  const reserveCard: Card = { id: "reserve", name: "Reserve", tags: [], number: 5, baseNumber: 5 };
+  const skillCard: Card = { id: "skill", name: "Skill", tags: [], number: 6, baseNumber: 6 };
+  let fighterState: Fighter = {
+    name: "Infuser",
+    deck: [],
+    hand: [reserveCard],
+    discard: [],
+    exhaust: [],
+  };
+  let updatedAssignments: AssignmentState<Card> | null = null;
+
+  const options = makeOptions({
+    ability: "reserveBoost",
+    skillCard,
+    target: { type: "reserveBoost", cardId: reserveCard.id, laneIndex: 0 },
+    sideAssignments: makeAssignments([laneCard, null, null]),
+    getFighterSnapshot: () => fighterState,
+    updateFighter: (_side, updater) => {
+      fighterState = updater(fighterState);
+    },
+    updateReservePreview: () => {
+      /* noop */
+    },
+    appendLog: () => {
+      /* noop */
+    },
+    concludeAssignUpdate: (nextAssign) => {
+      updatedAssignments = nextAssign;
+    },
+    recalcWheelForLane: () => {
+      /* noop */
+    },
+  });
+
+  const result = applySkillAbilityEffect(options);
+  assert.equal(result.success, true);
+  assert.equal(fighterState.hand.length, 0, "reserve card should be removed from hand");
+  assert.deepEqual(fighterState.discard, [], "reserve card should not enter discard");
+  assert.deepEqual(
+    fighterState.exhaust.map((card) => card.id),
+    [reserveCard.id],
+    "reserve card should be exhausted",
+  );
+  const ensuredAssignments: AssignmentState<Card> = updatedAssignments!;
+  const boostedLane = ensuredAssignments.player[0];
+  assert.equal(boostedLane?.number, 8, "lane should gain the reserve card's value");
+
+  console.log("reserve boost exhausts reserve card test passed");
 }

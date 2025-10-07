@@ -29,6 +29,10 @@ export function getSkillCardValue(card: Card): number {
   return 0;
 }
 
+export function getCurrentSkillCardValue(card: Card): number | undefined {
+  return sanitizeNumber(card.number);
+}
+
 export function deriveAbilityForCard(printed: number): AbilityKind {
   if (printed >= 6) {
     return "reserveBoost";
@@ -92,7 +96,10 @@ const ABILITY_DESCRIPTIONS: Record<AbilityKind, (card?: Card) => string> = {
   rerollReserve: () =>
     "Discard a reserve card, draw a new one, then recalc reserve. You may repeat once.",
   boostCard: (card) => {
-    const value = Math.abs(getSkillCardValue(card ?? ({} as Card)));
+    const currentValue = getCurrentSkillCardValue(card ?? ({} as Card));
+    const value = Math.abs(
+      currentValue !== undefined ? currentValue : getSkillCardValue(card ?? ({} as Card)),
+    );
     return `Add ${value} to a friendly card in play.`;
   },
   reserveBoost: (card) => {

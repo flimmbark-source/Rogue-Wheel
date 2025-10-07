@@ -63,6 +63,7 @@ export type Fighter = {
   deck: Card[];
   hand: Card[];
   discard: Card[];
+  exhaust: Card[];
 };
 
 export type Phase =
