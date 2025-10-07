@@ -56,6 +56,10 @@ export default memo(function StSCard({
 }: StSCardProps) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
   const arcana = useMemo(() => getCardArcana(card), [card]);
+  const arcanaColorClass = useMemo(
+    () => ARCANA_COLOR_CLASS[arcana] ?? "text-slate-200",
+    [arcana],
+  );
 
   return (
     <button
@@ -92,11 +96,11 @@ export default memo(function StSCard({
       <div className="absolute inset-px rounded-[10px] bg-slate-900/85 backdrop-blur-[1px] border border-slate-700/70" />
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         {isSplit(card) ? (
-          <div className="mt-1 text-xl font-extrabold text-white/90 leading-none text-center">
+          <div className={`mt-1 text-xl font-extrabold leading-none text-center ${arcanaColorClass}`}>
             <div>{fmtNum(card.leftValue!)}<span className="opacity-60">|</span>{fmtNum(card.rightValue!)}</div>
           </div>
         ) : (
-          <div className="mt+10 text-3xl font-extrabold text-white/90">
+          <div className={`mt+10 text-3xl font-extrabold ${arcanaColorClass}`}>
             {fmtNum(card.number as number)}
           </div>
         )}
