@@ -12,7 +12,7 @@ function coerceFiniteNumber(value: unknown): number | null {
   return null;
 }
 
-export type SkillAbility = "swapReserve" | "rerollReserve" | "boostSelf" | "reserveBoost";
+export type SkillAbility = "swapReserve" | "rerollReserve" | "boostCard" | "reserveBoost";
 
 export function getSkillCardValue(card: Card | null | undefined): number | null {
   if (!card) return null;
@@ -34,7 +34,7 @@ export function determineSkillAbility(card: Card | null): SkillAbility | null {
   if (value === null) return null;
   if (value <= 0) return "swapReserve";
   if (value === 1 || value === 2) return "rerollReserve";
-  if (value === 3 || value === 4) return "boostSelf";
+  if (value === 3 || value === 4) return "boostCard";
   return "reserveBoost";
 }
 
@@ -55,7 +55,7 @@ export function describeSkillAbility(ability: SkillAbility, card: Card): string 
       return "Swap this card with any reserve card, replacing it on the board.";
     case "rerollReserve":
       return "Discard a reserve card you select and draw a replacement.";
-    case "boostSelf":
+    case "boostCard":
       return `Add ${value} to a card in play.`;
     case "reserveBoost":
       return "Exhaust a reserve card to add its value to a card in play, exhausting it in the process.";
@@ -67,7 +67,7 @@ export function describeSkillAbility(ability: SkillAbility, card: Card): string 
 export const SKILL_ABILITY_COLORS: Record<SkillAbility, string> = {
   swapReserve: "text-amber-300",
   rerollReserve: "text-sky-300",
-  boostSelf: "text-rose-300",
+  boostCard: "text-rose-300",
   reserveBoost: "text-emerald-300",
 };
 
@@ -76,6 +76,7 @@ export const SKILL_ABILITY_COLOR_HEX: Record<SkillAbility, string> = {
   rerollReserve: "#3c99c4ff", // sky-500
   boostSelf: "#fda4af", // rose-300
   reserveBoost: "#25d38dff", // emerald-200
+
 };
 
 export function getSkillAbilityColorClass(card: Card | null): string | null {

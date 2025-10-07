@@ -89,6 +89,7 @@ export interface WheelPanelProps {
   skillPhaseActiveSide?: LegacySide | null;
   skillOptions?: SkillOptionView[];
   skillTargeting?: SkillTargetingState | null;
+  onSkillTargetSelect?: (selection: { laneIndex: number }) => void;
 }
 
 const slotWidthPx = 80;
@@ -148,6 +149,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   skillPhaseActiveSide = null,
   skillOptions = [],
   skillTargeting = null,
+  onSkillTargetSelect,
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -286,14 +288,24 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     if (!slot.card) return null;
     const card = slot.card;
     const isSpellAffected = spellHighlightSet.has(card.id);
-    const awaitingSkillTarget = Boolean(
+    const awaitingSkillReserveTarget = Boolean(
       isSkillMode &&
         skillTargeting &&
         skillTargeting.side === localLegacySide &&
         skillTargeting.kind === "reserve",
     );
+    const awaitingSkillLaneTarget = Boolean(
+      isSkillMode &&
+        skillTargeting &&
+        skillTargeting.side === localLegacySide &&
+        skillTargeting.kind === "lane",
+    );
+    const awaitingSkillTarget = awaitingSkillReserveTarget || awaitingSkillLaneTarget;
     const isSkillPendingLane = Boolean(
       awaitingSkillTarget && skillTargeting?.laneIndex === index && skillTargeting?.side === localLegacySide,
+    );
+    const isSkillTargetCandidate = Boolean(
+      awaitingSkillLaneTarget && slot.side === localLegacySide && slot.card,
     );
     const canInteractNormally =
       !awaitingSpellTarget &&
@@ -312,11 +324,16 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     const canActivateSkill = !awaitingSkillTarget && Boolean(skillOption?.canActivate);
     const skillHint = skillOption && !skillOption.canActivate ? skillOption.reason : undefined;
 
-    const cardInteractable = canInteractNormally || slotTargetable || canActivateSkill;
+    const cardInteractable =
+      canInteractNormally || slotTargetable || canActivateSkill || isSkillTargetCandidate;
 
     const handlePick = () => {
       if (slotTargetable && slot.card) {
         onSpellTargetSelect?.({ side: slot.side, lane: index, card: slot.card, location: "board" });
+        return;
+      }
+      if (awaitingSkillLaneTarget && isSkillTargetCandidate) {
+        onSkillTargetSelect?.({ laneIndex: index });
         return;
       }
       if (skillOption && canActivateSkill) {
@@ -380,8 +397,10 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         onDragEnd={handleDragEnd}
         onPointerDown={handlePointerDown}
         onTouchStart={handleTouchStart}
-        className={slotTargetable ? "ring-2 ring-sky-400" : undefined}
-        spellTargetable={slotTargetable}
+        className={
+          slotTargetable || isSkillTargetCandidate ? "ring-2 ring-sky-400" : undefined
+        }
+        spellTargetable={slotTargetable || isSkillTargetCandidate}
         style={cardStyle}
         showSkillColor={isSkillMode}
         data-skill-exhausted={exhausted ? "true" : undefined}
