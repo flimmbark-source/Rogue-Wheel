@@ -73,9 +73,10 @@ export const SKILL_ABILITY_COLORS: Record<SkillAbility, string> = {
 
 export const SKILL_ABILITY_COLOR_HEX: Record<SkillAbility, string> = {
   swapReserve: "#fcd34d", // amber-300
-  rerollReserve: "#7dd3fc", // sky-300
-  boostCard: "#fda4af", // rose-300
-  reserveBoost: "#6ee7b7", // emerald-300
+  rerollReserve: "#3c99c4ff", // sky-500
+  boostSelf: "#fda4af", // rose-300
+  reserveBoost: "#25d38dff", // emerald-200
+
 };
 
 export function getSkillAbilityColorClass(card: Card | null): string | null {
