@@ -24,11 +24,7 @@ import {
 import { DEFAULT_GAME_MODE, normalizeGameMode, type GameMode } from "../../../gameModes";
 import { easeInOutCubic, inSection, createSeededRng } from "../../../game/math";
 import { genWheelSections } from "../../../game/wheel";
-import {
-  determineSkillAbility,
-  type AbilityKind,
-  type SkillTargetSelection,
-} from "../../../game/skills";
+import { determineSkillAbility, type AbilityKind } from "../../../game/skills";
 import {
   makeFighter,
   refillTo,
@@ -208,7 +204,7 @@ export type ThreeWheelGameActions = {
   applySpellEffects: (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => void;
   setAnteBet: (bet: number) => void;
   handleSkillConfirm: () => void;
-  useSkillAbility: (side: LegacySide, laneIndex: number, targets?: SkillTargetSelection[]) => void;
+  useSkillAbility: (side: LegacySide, laneIndex: number) => void;
 };
 
 export type ThreeWheelGameReturn = {
@@ -1807,7 +1803,7 @@ export function useThreeWheelGame({
   }, [setPhase]);
 
   const useSkillAbility = useCallback(
-    (side: LegacySide, laneIndex: number, _targets: SkillTargetSelection[] = []) => {
+    (side: LegacySide, laneIndex: number) => {
       let usedAbility: AbilityKind | null = null;
       setSkillState((prev) => {
         const lanes = prev.lanes[side];
