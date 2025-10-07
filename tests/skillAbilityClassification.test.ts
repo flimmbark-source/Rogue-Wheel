@@ -37,8 +37,8 @@ const makeCard = (overrides: Partial<Record<keyof Card, unknown>>): Card => {
 
 {
   const card = makeCard({ baseNumber: "3" as unknown as number });
-  assert.equal(determineSkillAbility(card), "boostSelf");
-  assert.equal(describeSkillAbility("boostSelf", card), "Add 3 to a card in play.");
+  assert.equal(determineSkillAbility(card), "boostCard");
+  assert.equal(describeSkillAbility("boostCard", card), "Add 3 to a card in play.");
 }
 
 {
@@ -59,7 +59,7 @@ const makeCard = (overrides: Partial<Record<keyof Card, unknown>>): Card => {
 {
   const card = makeCard({ number: -7, baseNumber: 4 });
   assert.equal(getSkillCardValue(card), 4);
-  assert.equal(determineSkillAbility(card), "boostSelf");
+  assert.equal(determineSkillAbility(card), "boostCard");
   assert.equal(isReserveBoostTarget(card), true);
 }
 
@@ -75,3 +75,5 @@ const makeCard = (overrides: Partial<Record<keyof Card, unknown>>): Card => {
   assert.equal(getSkillCardValue(card), 2);
   assert.equal(determineSkillAbility(card), "rerollReserve");
 }
+
+console.log("skill ability classification tests passed");

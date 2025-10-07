@@ -142,12 +142,22 @@ export type SkillTargetingState =
       ability: "swapReserve" | "reserveBoost" | "rerollReserve";
       side: LegacySide;
       laneIndex: number;
+    }
+  | {
+      kind: "lane";
+      ability: "boostCard";
+      side: LegacySide;
+      laneIndex: number;
     };
 
 export type SkillTargetSelection =
   | {
       kind: "reserve";
       cardId: string;
+    }
+  | {
+      kind: "lane";
+      laneIndex: number;
     };
 
 export type ThreeWheelGameState = {
@@ -1028,7 +1038,17 @@ export function useThreeWheelGame({
           }
           return { ok: true };
         }
-        case "boostSelf": {
+        case "boostCard": {
+          const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
+          const source = lane[laneIndex];
+          const boostValue = getSkillCardValue(source) ?? 0;
+          if (boostValue <= 0) {
+            return { ok: false, reason: "No boost value." };
+          }
+          const hasTarget = lane.some((card) => !!card);
+          if (!hasTarget) {
+            return { ok: false, reason: "No cards to boost." };
+          }
           return { ok: true };
         }
         case "reserveBoost": {
@@ -1233,8 +1253,13 @@ export function useThreeWheelGame({
 
         const requiresReserveTarget =
           ability === "swapReserve" || ability === "reserveBoost" || ability === "rerollReserve";
+        const requiresLaneTarget = ability === "boostCard";
         if (requiresReserveTarget && side === localLegacySide) {
           setSkillTargeting({ kind: "reserve", ability, side, laneIndex });
+          return prev;
+        }
+        if (requiresLaneTarget && side === localLegacySide) {
+          setSkillTargeting({ kind: "lane", ability: "boostCard", side, laneIndex });
           return prev;
         }
 
@@ -1266,14 +1291,16 @@ export function useThreeWheelGame({
             }
             break;
           }
-          case "boostSelf": {
+          case "boostCard": {
             const currentCard = side === "player" ? assignRef.current.player[laneIndex] : assignRef.current.enemy[laneIndex];
             const value = currentCard ? getSkillCardValue(currentCard) ?? 0 : 0;
             if (value !== 0) {
               success = boostLaneCard(side, laneIndex, value);
             }
             if (success) {
-              appendLog(`${namesByLegacy[side]} empowered their card by ${fmtNum(value)}.`);
+              appendLog(
+                `${namesByLegacy[side]} boosted lane ${laneIndex + 1} by ${fmtNum(value)} power.`,
+              );
             }
             break;
           }
@@ -1316,10 +1343,7 @@ export function useThreeWheelGame({
               ...updatedState,
               passed: { ...updatedState.passed, [side]: true },
             };
-            reserveCycleCountsRef.current = { ...reserveCycleCountsRef.current, [side]: 0 };
           }
-        } else if (reserveCycleCountsRef.current[side]) {
-          reserveCycleCountsRef.current = { ...reserveCycleCountsRef.current, [side]: 0 };
         }
 
         const advanced = advanceSkillTurn(updatedState);
@@ -1398,6 +1422,32 @@ export function useThreeWheelGame({
             }
             break;
           }
+          case "boostCard": {
+            if (selection.kind !== "lane") {
+              success = false;
+              break;
+            }
+            const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
+            const source = lane[laneIndex];
+            const boostValue = source ? getSkillCardValue(source) ?? 0 : 0;
+            if (boostValue <= 0) {
+              success = false;
+              break;
+            }
+            const targetLaneIndex = selection.laneIndex;
+            const targetCard = lane[targetLaneIndex];
+            if (!targetCard) {
+              success = false;
+              break;
+            }
+            success = boostLaneCard(side, targetLaneIndex, boostValue);
+            if (success) {
+              appendLog(
+                `${namesByLegacy[side]} boosted lane ${targetLaneIndex + 1} by ${fmtNum(boostValue)} power.`,
+              );
+            }
+            break;
+          }
           default:
             break;
         }
@@ -1431,10 +1481,7 @@ export function useThreeWheelGame({
               ...updatedState,
               passed: { ...updatedState.passed, [side]: true },
             };
-            reserveCycleCountsRef.current = { ...reserveCycleCountsRef.current, [side]: 0 };
           }
-        } else if (reserveCycleCountsRef.current[side]) {
-          reserveCycleCountsRef.current = { ...reserveCycleCountsRef.current, [side]: 0 };
         }
 
         const advanced = advanceSkillTurn(updatedState);
@@ -1580,7 +1627,7 @@ export function useThreeWheelGame({
           score = expectedGain;
           break;
         }
-        case "boostSelf": {
+        case "boostCard": {
           const boostValue = getSkillCardValue(card) ?? 0;
           if (boostValue <= 0) {
             score = Number.NEGATIVE_INFINITY;
