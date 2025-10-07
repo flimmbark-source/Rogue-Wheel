@@ -754,6 +754,10 @@ export function useThreeWheelGame({
   const [skillPhaseView, setSkillPhaseView] = useState<SkillPhaseView | null>(null);
   const [skillTargeting, setSkillTargeting] = useState<SkillTargetingState | null>(null);
   const skillTargetingRef = useRef<SkillTargetingState | null>(skillTargeting);
+  const updateSkillTargeting = useCallback((next: SkillTargetingState | null) => {
+    skillTargetingRef.current = next;
+    setSkillTargeting(next);
+  }, []);
   useEffect(() => {
     skillTargetingRef.current = skillTargeting;
   }, [skillTargeting]);
@@ -1110,15 +1114,15 @@ export function useThreeWheelGame({
 
   useEffect(() => {
     if (!skillState || phaseRef.current !== "skill") {
-      setSkillTargeting(null);
+      updateSkillTargeting(null);
     }
-  }, [skillState]);
+  }, [skillState, updateSkillTargeting]);
 
   useEffect(() => {
     if (phase !== "skill") {
-      setSkillTargeting(null);
+      updateSkillTargeting(null);
     }
-  }, [phase]);
+  }, [phase, updateSkillTargeting]);
 
   const hasSkillActions = useCallback(
     (side: LegacySide, state: SkillPhaseState): boolean => {
@@ -1358,7 +1362,7 @@ export function useThreeWheelGame({
           ability === "swapReserve" || ability === "reserveBoost" || ability === "rerollReserve";
         const requiresLaneTarget = ability === "boostCard";
         if (requiresReserveTarget && side === localLegacySide) {
-          setSkillTargeting({
+          updateSkillTargeting({
             kind: "reserve",
             ability,
             side,
@@ -1369,7 +1373,7 @@ export function useThreeWheelGame({
           return prev;
         }
         if (requiresLaneTarget && side === localLegacySide) {
-          setSkillTargeting({
+          updateSkillTargeting({
             kind: "lane",
             ability: "boostCard",
             side,
@@ -1467,6 +1471,7 @@ export function useThreeWheelGame({
       swapCardWithReserve,
       updateReservePreview,
       localLegacySide,
+      updateSkillTargeting,
     ],
   );
 
@@ -1593,9 +1598,9 @@ export function useThreeWheelGame({
       }
 
       if (nextTargetingState) {
-        setSkillTargeting(nextTargetingState);
+        updateSkillTargeting(nextTargetingState);
       } else if (shouldClearTargeting) {
-        setSkillTargeting(null);
+        updateSkillTargeting(null);
       }
     },
     [
@@ -1609,6 +1614,7 @@ export function useThreeWheelGame({
       spendSkillActivation,
       swapCardWithReserve,
       updateReservePreview,
+      updateSkillTargeting,
     ],
   );
 
@@ -1625,8 +1631,8 @@ export function useThreeWheelGame({
         return finalizeSkillActivation(prev, targeting.side, targeting.laneIndex, targeting.ability);
       });
     }
-    setSkillTargeting(null);
-  }, [finalizeSkillActivation]);
+    updateSkillTargeting(null);
+  }, [finalizeSkillActivation, updateSkillTargeting]);
 
   const passSkillTurn = useCallback(() => {
     setSkillState((prev) => {
@@ -1642,8 +1648,8 @@ export function useThreeWheelGame({
       const advanced = advanceSkillTurn(updatedState);
       return advanced ?? null;
     });
-    setSkillTargeting(null);
-  }, [advanceSkillTurn, appendLog, namesByLegacy]);
+    updateSkillTargeting(null);
+  }, [advanceSkillTurn, appendLog, namesByLegacy, updateSkillTargeting]);
 
   useEffect(() => {
     if (!isSkillMode) return;
