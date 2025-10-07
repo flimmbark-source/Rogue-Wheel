@@ -38,6 +38,7 @@ import {
   determineSkillAbility,
   getReserveBoostValue,
   getSkillCardValue,
+  getSkillTargetCount,
   isReserveBoostTarget,
   type SkillAbility,
 } from "../../../game/skills";
@@ -56,6 +57,7 @@ import {
 } from "./roundOutcomeSummary";
 
 export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine";
+export type { SkillTargetingState, SkillTargetSelection } from "../skills/types";
 
 export type MPIntent =
   | { type: "assign"; lane: number; side: LegacySide; card: Card }
@@ -115,57 +117,21 @@ const createEmptySpellHighlights = (): SpellHighlightState => ({
   reserve: { player: false, enemy: false },
 });
 
-type SkillOption = {
-  lane: number;
-  card: Card;
-  ability: SkillAbility;
-  description: string;
-  canActivate: boolean;
-  reason?: string;
-};
-
-type SkillPhaseState = {
-  activeSide: LegacySide;
-  exhausted: SideState<[boolean, boolean, boolean]>;
-  usesRemaining: SideState<[number, number, number]>;
-  passed: SideState<boolean>;
-};
-
-type SkillPhaseView = {
-  activeSide: LegacySide;
-  exhausted: SideState<[boolean, boolean, boolean]>;
-  usesRemaining: SideState<[number, number, number]>;
-  passed: SideState<boolean>;
-  options: SkillOption[];
-};
-
-export type SkillTargetingState =
-  | {
-      kind: "reserve";
-      ability: "swapReserve" | "reserveBoost" | "rerollReserve";
-      side: LegacySide;
-      laneIndex: number;
-      targetsRemaining: number;
-      targetsTotal: number;
-    }
-  | {
-      kind: "lane";
-      ability: "boostCard";
-      side: LegacySide;
-      laneIndex: number;
-      targetsRemaining: number;
-      targetsTotal: number;
-    };
-
-export type SkillTargetSelection =
-  | {
-      kind: "reserve";
-      cardId: string;
-    }
-  | {
-      kind: "lane";
-      laneIndex: number;
-    };
+import {
+  applyExhaustion as applySkillExhaustion,
+  advanceSkillTurn as advanceSkillTurnMachine,
+  createSkillPhaseState,
+  decrementSkillUse,
+  markPassed as markSkillPassed,
+  toSnapshot as snapshotSkillPhase,
+  type SkillPhaseState as SkillMachineState,
+} from "../skills/skillPhaseMachine";
+import type {
+  SkillOption,
+  SkillPhaseView,
+  SkillTargetingState,
+  SkillTargetSelection,
+} from "../skills/types";
 
 export type ThreeWheelGameState = {
   player: Fighter;
@@ -748,8 +714,8 @@ export function useThreeWheelGame({
 
   const [spellHighlights, setSpellHighlights] = useState<SpellHighlightState>(() => createEmptySpellHighlights());
   const spellHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [skillState, setSkillState] = useState<SkillPhaseState | null>(null);
-  const skillStateRef = useRef<SkillPhaseState | null>(skillState);
+  const [skillState, setSkillState] = useState<SkillMachineState | null>(null);
+  const skillStateRef = useRef<SkillMachineState | null>(skillState);
   const reserveCycleCountsRef = useRef<SideState<number>>({ player: 0, enemy: 0 });
   const postSkillPhaseRef = useRef<CorePhase>("roundEnd");
   const [skillPhaseView, setSkillPhaseView] = useState<SkillPhaseView | null>(null);
@@ -1024,31 +990,54 @@ export function useThreeWheelGame({
     [getFighterSnapshot, updateFighter],
   );
 
+  const getReserveTargetIds = useCallback(
+    (side: LegacySide, ability: SkillAbility): string[] => {
+      const fighter = getFighterSnapshot(side);
+      const reserveCards = fighter.hand;
+      switch (ability) {
+        case "swapReserve":
+        case "rerollReserve":
+          return reserveCards.map((card) => card.id);
+        case "reserveBoost":
+          return reserveCards.filter((card) => isReserveBoostTarget(card)).map((card) => card.id);
+        default:
+          return [];
+      }
+    },
+    [getFighterSnapshot],
+  );
+
   const canUseSkillAbility = useCallback(
-    (side: LegacySide, laneIndex: number, ability: SkillAbility, state: SkillPhaseState): {
+    (side: LegacySide, laneIndex: number, ability: SkillAbility, state: SkillMachineState): {
       ok: boolean;
       reason?: string;
     } => {
-      const exhausted = state.exhausted[side][laneIndex];
-      if (exhausted) {
+      if (state.passed[side]) {
+        return { ok: false, reason: "Passed." };
+      }
+
+      const laneState = state.lanes[side][laneIndex];
+      if (!laneState || laneState.ability !== ability) {
+        return { ok: false, reason: "Unavailable." };
+      }
+      if (laneState.exhausted) {
         return { ok: false, reason: "Exhausted." };
       }
-      const remainingUses = state.usesRemaining[side][laneIndex];
-      if (remainingUses <= 0) {
+      if (laneState.usesRemaining <= 0) {
         return { ok: false, reason: "No uses remaining." };
       }
-      const fighter = getFighterSnapshot(side);
-      const reserveCards = fighter.hand;
 
       switch (ability) {
         case "swapReserve": {
-          if (!reserveCards.length) {
+          const reserveIds = getReserveTargetIds(side, ability);
+          if (!reserveIds.length) {
             return { ok: false, reason: "No reserve cards." };
           }
           return { ok: true };
         }
         case "rerollReserve": {
-          if (!reserveCards.length) {
+          const reserveIds = getReserveTargetIds(side, ability);
+          if (!reserveIds.length) {
             return { ok: false, reason: "Reserve is empty." };
           }
           return { ok: true };
@@ -1067,8 +1056,8 @@ export function useThreeWheelGame({
           return { ok: true };
         }
         case "reserveBoost": {
-          const hasReserveTarget = reserveCards.some((card) => isReserveBoostTarget(card));
-          if (!hasReserveTarget) {
+          const reserveIds = getReserveTargetIds(side, ability);
+          if (!reserveIds.length) {
             return { ok: false, reason: "Need an eligible reserve card." };
           }
           return { ok: true };
@@ -1077,13 +1066,14 @@ export function useThreeWheelGame({
           return { ok: false };
       }
     },
-    [getFighterSnapshot],
+    [assignRef, getReserveTargetIds],
   );
 
   const computeSkillPhaseView = useCallback(
-    (state: SkillPhaseState | null): SkillPhaseView | null => {
+    (state: SkillMachineState | null): SkillPhaseView | null => {
       if (!state) return null;
-      const activeSide = state.activeSide;
+      const snapshot = snapshotSkillPhase(state);
+      const activeSide = snapshot.activeSide;
       const options: SkillOption[] = [];
       if (activeSide === localLegacySide) {
         const lane = activeSide === "player" ? assignRef.current.player : assignRef.current.enemy;
@@ -1103,10 +1093,7 @@ export function useThreeWheelGame({
         });
       }
       return {
-        activeSide,
-        exhausted: state.exhausted,
-        usesRemaining: state.usesRemaining,
-        passed: state.passed,
+        ...snapshot,
         options,
       };
     },
@@ -1130,22 +1117,13 @@ export function useThreeWheelGame({
   }, [phase, updateSkillTargeting]);
 
   const hasSkillActions = useCallback(
-    (side: LegacySide, state: SkillPhaseState): boolean => {
-      if (state.passed[side]) return false;
-      const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
-      for (let i = 0; i < lane.length; i++) {
-        const card = lane[i];
-        if (!card) continue;
-        const ability = determineSkillAbility(card);
-        if (!ability) continue;
-        const availability = canUseSkillAbility(side, i, ability, state);
-        if (availability.ok) {
-          return true;
-        }
-      }
-      return false;
+    (side: LegacySide, state: SkillMachineState): boolean => {
+      return state.lanes[side].some((lane, laneIndex) => {
+        if (!lane.ability) return false;
+        return canUseSkillAbility(side, laneIndex, lane.ability, state).ok;
+      });
     },
-    [assignRef, canUseSkillAbility],
+    [canUseSkillAbility],
   );
 
   const finishSkillPhase = useCallback(() => {
@@ -1159,151 +1137,49 @@ export function useThreeWheelGame({
   }, [clearRematchVotes, setPhase]);
 
   const advanceSkillTurn = useCallback(
-    (state: SkillPhaseState): SkillPhaseState | null => {
-      const current = state.activeSide;
-      const other: LegacySide = current === "player" ? "enemy" : "player";
-      const currentHas = hasSkillActions(current, state);
-      const otherHas = hasSkillActions(other, state);
-      if (!currentHas && !otherHas) {
+    (state: SkillMachineState): SkillMachineState | null => {
+      const result = advanceSkillTurnMachine(state, {
+        canUseAbility: (side, laneIndex, ability) => canUseSkillAbility(side, laneIndex, ability, state).ok,
+      });
+      if (result.finished) {
         finishSkillPhase();
         return null;
       }
-      let nextSide: LegacySide;
-      if (!currentHas && otherHas) {
-        nextSide = other;
-      } else if (currentHas && !otherHas) {
-        nextSide = current;
-      } else if (otherHas) {
-        nextSide = other;
-      } else {
-        nextSide = current;
-      }
-      if (!hasSkillActions(nextSide, state)) {
-        const fallback: LegacySide = nextSide === current ? other : current;
-        if (hasSkillActions(fallback, state)) {
-          nextSide = fallback;
-        } else {
-          finishSkillPhase();
-          return null;
-        }
-      }
-      if (nextSide !== state.activeSide) {
-        return { ...state, activeSide: nextSide };
-      }
-      return state;
+      return result.state;
     },
-    [finishSkillPhase, hasSkillActions],
+    [canUseSkillAbility, finishSkillPhase],
   );
 
   const finalizeSkillActivation = useCallback(
     (
-      state: SkillPhaseState,
+      state: SkillMachineState,
       side: LegacySide,
       laneIndex: number,
       ability: SkillAbility,
-    ): SkillPhaseState | null => {
-      const updatedExhaustedSide = [...state.exhausted[side]] as [boolean, boolean, boolean];
-      const shouldExhaust = state.usesRemaining[side][laneIndex] <= 0;
-      updatedExhaustedSide[laneIndex] = shouldExhaust;
-      let updatedState: SkillPhaseState = {
-        ...state,
-        exhausted: { ...state.exhausted, [side]: updatedExhaustedSide },
-      };
+    ): SkillMachineState | null => {
+      let updatedState = applySkillExhaustion(state, side, laneIndex);
 
       if (ability === "rerollReserve") {
         const currentCounts = reserveCycleCountsRef.current;
         const nextCount = (currentCounts[side] ?? 0) + 1;
         reserveCycleCountsRef.current = { ...currentCounts, [side]: nextCount };
-        if (nextCount >= 2 && !state.passed[side]) {
+        if (nextCount >= 2 && !updatedState.passed[side]) {
           appendLog(`${namesByLegacy[side]} passes their skill activations.`);
-          updatedState = {
-            ...updatedState,
-            passed: { ...updatedState.passed, [side]: true },
-          };
+          updatedState = markSkillPassed(updatedState, side);
         }
       }
 
-      const advanced = advanceSkillTurn(updatedState);
-      return advanced ?? null;
-    },
-    [advanceSkillTurn, appendLog, namesByLegacy],
-  );
-
-  const computeSkillTargetCount = useCallback((ability: SkillAbility, card: Card | null): number => {
-    if (ability === "rerollReserve") {
-      const value = getSkillCardValue(card);
-      if (typeof value === "number" && Number.isFinite(value)) {
-        const floored = Math.floor(value);
-        if (floored >= 2) return 2;
-        if (floored >= 1) return 1;
+      const result = advanceSkillTurnMachine(updatedState, {
+        canUseAbility: (checkSide, laneIdx, nextAbility) =>
+          canUseSkillAbility(checkSide, laneIdx, nextAbility, updatedState).ok,
+      });
+      if (result.finished) {
+        finishSkillPhase();
+        return null;
       }
-      return 1;
-    }
-    return 1;
-  }, []);
-
-  const createInitialSkillExhausted = useCallback((): SideState<[boolean, boolean, boolean]> => {
-    const playerFlags = assignRef.current.player.map((card) => !card || !determineSkillAbility(card)) as [
-      boolean,
-      boolean,
-      boolean,
-    ];
-    const enemyFlags = assignRef.current.enemy.map((card) => !card || !determineSkillAbility(card)) as [
-      boolean,
-      boolean,
-      boolean,
-    ];
-    return { player: playerFlags, enemy: enemyFlags };
-  }, [assignRef]);
-
-  const createInitialSkillUsageState = useCallback((): {
-    exhausted: SideState<[boolean, boolean, boolean]>;
-    usesRemaining: SideState<[number, number, number]>;
-  } => {
-    const exhausted = createInitialSkillExhausted();
-
-    const computeInitialUses = (lane: (Card | null)[]): [number, number, number] =>
-      lane.map((card) => {
-        const ability = determineSkillAbility(card);
-        if (!ability) return 0;
-        if (ability === "rerollReserve") {
-          const value = getSkillCardValue(card);
-          if (typeof value === "number" && Number.isFinite(value)) {
-            const floored = Math.floor(value);
-            if (floored >= 2) return 2;
-            if (floored >= 1) return 1;
-          }
-          return 1;
-        }
-        return 1;
-      }) as [number, number, number];
-
-    const usesRemaining: SideState<[number, number, number]> = {
-      player: computeInitialUses(assignRef.current.player),
-      enemy: computeInitialUses(assignRef.current.enemy),
-    };
-
-    reserveCycleCountsRef.current = { player: 0, enemy: 0 };
-
-    return { exhausted, usesRemaining };
-  }, [assignRef, createInitialSkillExhausted]);
-
-  const spendSkillActivation = useCallback(
-    (state: SkillPhaseState, side: LegacySide, laneIndex: number): SkillPhaseState => {
-      const remaining = state.usesRemaining[side][laneIndex];
-      if (remaining <= 0) {
-        return state;
-      }
-
-      const updatedSideUses = [...state.usesRemaining[side]] as [number, number, number];
-      updatedSideUses[laneIndex] = Math.max(0, remaining - 1);
-
-      return {
-        ...state,
-        usesRemaining: { ...state.usesRemaining, [side]: updatedSideUses },
-      };
+      return result.state;
     },
-    [],
+    [appendLog, canUseSkillAbility, finishSkillPhase, namesByLegacy],
   );
 
   const updateReservePreview = useCallback(() => {
@@ -1319,33 +1195,44 @@ export function useThreeWheelGame({
         return false;
       }
 
-      const { exhausted, usesRemaining } = createInitialSkillUsageState();
       const initialActive = options?.activeSide ?? initiative;
-      const initialState: SkillPhaseState = {
-        activeSide: initialActive,
-        exhausted,
-        usesRemaining,
-        passed: { player: false, enemy: false },
-      };
-      const currentHas = hasSkillActions(initialState.activeSide, initialState);
-      const otherSide: LegacySide = initialState.activeSide === "player" ? "enemy" : "player";
-      const otherHas = hasSkillActions(otherSide, initialState);
+      const assignSnapshot = {
+        player: [...assignRef.current.player],
+        enemy: [...assignRef.current.enemy],
+      } as const;
+
+      let nextState = createSkillPhaseState(assignSnapshot, initialActive);
+      if (!nextState) {
+        setSkillState(null);
+        return false;
+      }
+
+      const currentHas = hasSkillActions(nextState.activeSide, nextState);
+      const otherSide: LegacySide = nextState.activeSide === "player" ? "enemy" : "player";
+      const otherHas = hasSkillActions(otherSide, nextState);
       if (!currentHas && !otherHas) {
         setSkillState(null);
         return false;
       }
 
-      let nextState = initialState;
       if (!currentHas && otherHas) {
-        nextState = { ...initialState, activeSide: otherSide };
+        nextState = { ...nextState, activeSide: otherSide };
       }
 
+      reserveCycleCountsRef.current = { player: 0, enemy: 0 };
       updateReservePreview();
       setSkillState(nextState);
       setPhase("skill");
       return true;
     },
-    [createInitialSkillUsageState, hasSkillActions, initiative, isMultiplayer, setPhase, updateReservePreview],
+    [
+      assignRef,
+      hasSkillActions,
+      initiative,
+      isMultiplayer,
+      setPhase,
+      updateReservePreview,
+    ],
   );
 
   const activateSkillOption = useCallback(
@@ -1363,31 +1250,46 @@ export function useThreeWheelGame({
         const availability = canUseSkillAbility(side, laneIndex, ability, prev);
         if (!availability.ok) return prev;
 
-        const targetCount = computeSkillTargetCount(ability, card);
+        const targetCount = getSkillTargetCount(card, ability);
+        if (targetCount <= 0) {
+          return prev;
+        }
         const requiresReserveTarget =
           ability === "swapReserve" || ability === "reserveBoost" || ability === "rerollReserve";
         const requiresLaneTarget = ability === "boostCard";
-        if (requiresReserveTarget && side === localLegacySide) {
-          updateSkillTargeting({
-            kind: "reserve",
-            ability,
-            side,
-            laneIndex,
-            targetsRemaining: targetCount,
-            targetsTotal: targetCount,
-          });
-          return prev;
+        if (requiresReserveTarget) {
+          const candidateIds = getReserveTargetIds(side, ability);
+          if (!candidateIds.length) {
+            return prev;
+          }
+          if (side === localLegacySide) {
+            updateSkillTargeting({
+              kind: "reserve",
+              ability,
+              side,
+              laneIndex,
+              targetsRemaining: targetCount,
+              targetsTotal: targetCount,
+            });
+            return prev;
+          }
         }
-        if (requiresLaneTarget && side === localLegacySide) {
-          updateSkillTargeting({
-            kind: "lane",
-            ability: "boostCard",
-            side,
-            laneIndex,
-            targetsRemaining: targetCount,
-            targetsTotal: targetCount,
-          });
-          return prev;
+        if (requiresLaneTarget) {
+          const hasTarget = lane.some((candidate) => !!candidate);
+          if (!hasTarget) {
+            return prev;
+          }
+          if (side === localLegacySide) {
+            updateSkillTargeting({
+              kind: "lane",
+              ability: "boostCard",
+              side,
+              laneIndex,
+              targetsRemaining: targetCount,
+              targetsTotal: targetCount,
+            });
+            return prev;
+          }
         }
 
         let success = false;
@@ -1454,7 +1356,7 @@ export function useThreeWheelGame({
           return prev;
         }
 
-        const spentState = spendSkillActivation(prev, side, laneIndex);
+        const spentState = decrementSkillUse(prev, side, laneIndex);
 
         if (ability === "swapReserve" || ability === "rerollReserve" || ability === "reserveBoost") {
           updateReservePreview();
@@ -1468,12 +1370,13 @@ export function useThreeWheelGame({
       appendLog,
       boostLaneCard,
       canUseSkillAbility,
-      computeSkillTargetCount,
+      decrementSkillUse,
       exhaustReserveForBoost,
       finalizeSkillActivation,
+      getReserveTargetIds,
+      getSkillTargetCount,
       namesByLegacy,
       rerollReserve,
-      spendSkillActivation,
       swapCardWithReserve,
       updateReservePreview,
       localLegacySide,
@@ -1498,6 +1401,10 @@ export function useThreeWheelGame({
 
         const side = targeting.side;
         const laneIndex = targeting.laneIndex;
+        const availability = canUseSkillAbility(side, laneIndex, targeting.ability, prev);
+        if (!availability.ok) {
+          return prev;
+        }
         let success = false;
 
         switch (targeting.ability) {
@@ -1577,7 +1484,7 @@ export function useThreeWheelGame({
           return prev;
         }
 
-        const spentState = spendSkillActivation(prev, side, laneIndex);
+        const spentState = decrementSkillUse(prev, side, laneIndex);
 
         actionSucceeded = true;
         abilityUsed = targeting.ability;
@@ -1613,11 +1520,11 @@ export function useThreeWheelGame({
       appendLog,
       boostLaneCard,
       finalizeSkillActivation,
+      decrementSkillUse,
       exhaustReserveForBoost,
       getFighterSnapshot,
       namesByLegacy,
       rerollReserve,
-      spendSkillActivation,
       swapCardWithReserve,
       updateReservePreview,
       updateSkillTargeting,
@@ -1647,15 +1554,12 @@ export function useThreeWheelGame({
       const side = prev.activeSide;
       if (prev.passed[side]) return prev;
       appendLog(`${namesByLegacy[side]} passes their skill activations.`);
-      const updatedState: SkillPhaseState = {
-        ...prev,
-        passed: { ...prev.passed, [side]: true },
-      };
+      const updatedState = markSkillPassed(prev, side);
       const advanced = advanceSkillTurn(updatedState);
       return advanced ?? null;
     });
     updateSkillTargeting(null);
-  }, [advanceSkillTurn, appendLog, namesByLegacy, updateSkillTargeting]);
+  }, [advanceSkillTurn, appendLog, markSkillPassed, namesByLegacy, updateSkillTargeting]);
 
   useEffect(() => {
     if (!isSkillMode) return;
