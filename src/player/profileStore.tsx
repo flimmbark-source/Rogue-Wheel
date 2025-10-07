@@ -598,7 +598,13 @@ export function starterDeck(): Card[] {
 }
 
 export function drawOne(f: Fighter): Fighter {
-  const next = { ...f, deck: [...f.deck], hand: [...f.hand], discard: [...f.discard] };
+  const next = {
+    ...f,
+    deck: [...f.deck],
+    hand: [...f.hand],
+    discard: [...f.discard],
+    exhaust: [...f.exhaust],
+  };
   if (next.deck.length === 0 && next.discard.length > 0) {
     next.deck = shuffle(next.discard);
     next.discard = [];
@@ -621,11 +627,11 @@ export function freshFive(f: Fighter): Fighter {
   const pool = shuffle([...f.deck, ...f.hand, ...f.discard]);
   const hand = pool.slice(0, 5);
   const deck = pool.slice(5);
-  return { name: f.name, hand, deck, discard: [] };
+  return { name: f.name, hand, deck, discard: [], exhaust: [...f.exhaust] };
 }
 
 /** Make a fighter using the ACTIVE profile deck (draw 5 to start). */
 export function makeFighter(name: string): Fighter {
   const deck = buildActiveDeckAsCards();
-  return refillTo({ name, deck, hand: [], discard: [] }, 5);
+  return refillTo({ name, deck, hand: [], discard: [], exhaust: [] }, 5);
 }

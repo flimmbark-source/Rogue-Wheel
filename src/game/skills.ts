@@ -29,6 +29,10 @@ export function getSkillCardValue(card: Card): number {
   return 0;
 }
 
+export function getCurrentSkillCardValue(card: Card): number | undefined {
+  return sanitizeNumber(card.number);
+}
+
 export function deriveAbilityForCard(printed: number): AbilityKind {
   if (printed >= 6) {
     return "reserveBoost";

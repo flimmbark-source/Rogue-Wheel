@@ -38,6 +38,7 @@ const cpuCaster: Fighter = {
     createCard("moon-reserve", "Moon Trinket", 0, "moon"),
   ],
   discard: [],
+  exhaust: [],
 };
 
 const playerOpponent: Fighter = {
@@ -45,6 +46,7 @@ const playerOpponent: Fighter = {
   deck: [],
   hand: [createCard("hero-reserve", "Guard Reserve", 1, "fire")],
   discard: [],
+  exhaust: [],
 };
 
 const board: AssignmentState<Card> = {

@@ -1337,6 +1337,7 @@ export function useThreeWheelGame({
       deck: [...f.deck],
       hand: [],
       discard: [...f.discard, ...played, ...leftovers],
+      exhaust: [...f.exhaust],
     };
 
     const refilled = refillTo(next, 5);
