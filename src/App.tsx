@@ -119,6 +119,13 @@ const SKILL_ABILITY_LABELS: Record<AbilityKind, string> = {
 const formatSkillAbility = (ability: AbilityKind | null) =>
   ability ? SKILL_ABILITY_LABELS[ability] ?? ability : "No ability";
 
+type SkillLaneDetail = {
+  ability: AbilityKind | null;
+  exhausted: boolean;
+  description: string | null;
+  label: string | null;
+};
+
 function createWheelSideState<T>(value: T): WheelSideState<T> {
   return [
     { player: value, enemy: value },
@@ -1144,17 +1151,20 @@ export default function ThreeWheel_WinsOnly({
       }
     : null;
   const skillPhaseActive = isSkillMode && phaseForLogic === "skill";
-  const skillPhaseCompleted = skill.completed;
-  const skillLaneDetails = useMemo(
-    () =>
-      (skill.lanes[localLegacySide] ?? []).map((lane, laneIndex) => {
-        const card = assign[localLegacySide][laneIndex];
+  const skillLaneDetails = useMemo(() => {
+    const sides: LegacySide[] = ["player", "enemy"];
+    return sides.reduce((acc, side) => {
+      const lanes = skill.lanes[side] ?? [];
+      acc[side] = lanes.map((lane, laneIndex) => {
+        const card = assign[side][laneIndex];
         const ability = lane?.ability ?? null;
         const description = ability ? describeSkillAbility(ability, card ?? undefined) : null;
-        return {
+        const label = ability ? formatSkillAbility(ability) : null;
+        const detail: SkillLaneDetail = {
           ability,
           exhausted: lane?.exhausted ?? true,
           description,
+          label,
         };
       }),
     [assign, localLegacySide, skill.lanes],
@@ -1524,6 +1534,19 @@ export default function ThreeWheel_WinsOnly({
               )}
             </div>
           )}
+          {phase === "skill" && (
+            <div className="flex flex-col items-end gap-1 text-right">
+              <div className="text-[11px] text-amber-200 leading-tight">
+                {skillPhaseMessage}
+              </div>
+              <button
+                onClick={handleSkillConfirm}
+                className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold hover:bg-amber-300 transition"
+              >
+                Continue to battle
+              </button>
+            </div>
+          )}
           {phase === "roundEnd" && (
             <div className="flex flex-col items-end gap-1">
               <button
@@ -1841,6 +1864,12 @@ export default function ThreeWheel_WinsOnly({
                 isAwaitingSkillTarget={isAwaitingSkillTarget}
                 variant="grouped"
                 spellHighlightedCardIds={spellHighlightedCardIds}
+                skillPhaseActive={skillPhaseActive}
+                skillInfo={{
+                  player: skillLaneDetails.player?.[i] ?? null,
+                  enemy: skillLaneDetails.enemy?.[i] ?? null,
+                }}
+                onSkillActivate={useSkillAbility}
               />
             </div>
           ))}

@@ -1386,6 +1386,27 @@ export function useThreeWheelGame({
     attemptAutoReveal();
   }, [attemptAutoReveal, resolveVotes]);
 
+  useEffect(() => {
+    if (!isSkillMode) return;
+    if (phase !== "skill") return;
+
+    const hasReadyAbility = (["player", "enemy"] as LegacySide[]).some((side) =>
+      (skillState.lanes[side] ?? []).some((lane) => lane.ability && !lane.exhausted),
+    );
+
+    if (hasReadyAbility) {
+      return;
+    }
+
+    setSkillState((prev) => {
+      if (prev.completed) return prev;
+      const next = { ...prev, completed: true };
+      skillStateRef.current = next;
+      return next;
+    });
+    setPhase("roundEnd");
+  }, [isSkillMode, phase, setPhase, setSkillState, skillState]);
+
   function resolveRound(
     enemyPicks?: (Card | null)[],
     options?: {
@@ -1462,6 +1483,30 @@ export function useThreeWheelGame({
         clearRematchVotes();
         setPhase("ended");
         return;
+      }
+
+      if (isSkillMode) {
+        const hasReadyAbility = (["player", "enemy"] as LegacySide[]).some((side) =>
+          (skillStateRef.current.lanes[side] ?? []).some((lane) => lane.ability && !lane.exhausted),
+        );
+
+        if (hasReadyAbility) {
+          setSkillState((prev) => {
+            if (!prev.completed) return prev;
+            const next = { ...prev, completed: false };
+            skillStateRef.current = next;
+            return next;
+          });
+          setPhase("skill");
+          return;
+        }
+
+        setSkillState((prev) => {
+          if (prev.completed) return prev;
+          const next = { ...prev, completed: true };
+          skillStateRef.current = next;
+          return next;
+        });
       }
 
       setPhase("roundEnd");
@@ -1751,11 +1796,6 @@ export function useThreeWheelGame({
   ]);
 
   const handleSkillConfirm = useCallback(() => {
-    if (!isSkillMode) {
-      tryRevealRound({ force: true });
-      return;
-    }
-
     setSkillState((prev) => {
       if (prev.completed) return prev;
       const next = { ...prev, completed: true };
@@ -1763,8 +1803,8 @@ export function useThreeWheelGame({
       return next;
     });
 
-    tryRevealRound({ force: true });
-  }, [isSkillMode, tryRevealRound]);
+    setPhase("roundEnd");
+  }, [setPhase]);
 
   const useSkillAbility = useCallback(
     (side: LegacySide, laneIndex: number, _targets: SkillTargetSelection[] = []) => {
