@@ -14,6 +14,36 @@ function coerceFiniteNumber(value: unknown): number | null {
 
 export type SkillAbility = "swapReserve" | "rerollReserve" | "boostCard" | "reserveBoost";
 
+function computeRerollUses(card: Card | null | undefined): number {
+  const value = getSkillCardValue(card);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const floored = Math.floor(value);
+    if (floored >= 2) return 2;
+    if (floored >= 1) return 1;
+  }
+  return 1;
+}
+
+export function getSkillMaxUses(card: Card | null | undefined): number {
+  const ability = determineSkillAbility(card ?? null);
+  if (!ability) return 0;
+  if (ability === "rerollReserve") {
+    return computeRerollUses(card);
+  }
+  return 1;
+}
+
+export function getSkillTargetCount(
+  card: Card | null | undefined,
+  ability: SkillAbility | null,
+): number {
+  if (!ability) return 0;
+  if (ability === "rerollReserve") {
+    return computeRerollUses(card);
+  }
+  return 1;
+}
+
 export function getSkillCardValue(card: Card | null | undefined): number | null {
   if (!card) return null;
   const baseValue = coerceFiniteNumber(card.baseNumber);
