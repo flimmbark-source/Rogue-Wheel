@@ -132,10 +132,6 @@ button[aria-label^="Card"] > div:nth-child(2) {
   background-color: transparent;
   border: none;
 }
-button[aria-label^="Card"] .text-3xl:not([data-skill-color="true"]) {
-  color: #f5e7c4;
-}
-
 [data-spells-enabled="false"] .card-arcana {
   display: none;
 }

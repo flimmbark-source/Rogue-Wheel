@@ -3,12 +3,6 @@ import React, { memo, useMemo } from "react";
 import type { Arcana, Card } from "../game/types";
 import { getArcanaIcon, getCardArcana } from "../game/arcana";
 import { fmtNum, isSplit } from "../game/values";
-import {
-  SKILL_ABILITY_COLORS,
-  SKILL_ABILITY_COLOR_HEX,
-  determineSkillAbility,
-  type SkillAbility,
-} from "../game/skills";
 
 const ARCANA_COLOR_CLASS: Record<Arcana, string> = {
   fire: "text-orange-300",
@@ -40,7 +34,6 @@ type StSCardProps = {
   ariaLabel?: string;
   ariaPressed?: React.AriaAttributes["aria-pressed"];
   onClick?: React.MouseEventHandler<HTMLButtonElement>;
-  showSkillColor?: boolean;
 } & Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
   "onClick" | "children" | "className" | "disabled" | "aria-label" | "aria-pressed"
@@ -58,30 +51,11 @@ export default memo(function StSCard({
   ariaLabel,
   ariaPressed,
   onClick,
-  showSkillColor = false,
   style,
   ...buttonProps
 }: StSCardProps) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
   const arcana = useMemo(() => getCardArcana(card), [card]);
-  const { skillNumberClass, skillNumberHex, skillAbility } = useMemo<{
-    skillNumberClass: string | null;
-    skillNumberHex: string | null;
-    skillAbility: SkillAbility | null;
-  }>(() => {
-    if (!showSkillColor) {
-      return { skillNumberClass: null, skillNumberHex: null, skillAbility: null };
-    }
-    const ability = determineSkillAbility(card);
-    if (!ability) {
-      return { skillNumberClass: null, skillNumberHex: null, skillAbility: null };
-    }
-    return {
-      skillNumberClass: SKILL_ABILITY_COLORS[ability],
-      skillNumberHex: SKILL_ABILITY_COLOR_HEX[ability],
-      skillAbility: ability,
-    };
-  }, [card, showSkillColor]);
 
   return (
     <button
@@ -122,12 +96,7 @@ export default memo(function StSCard({
             <div>{fmtNum(card.leftValue!)}<span className="opacity-60">|</span>{fmtNum(card.rightValue!)}</div>
           </div>
         ) : (
-          <div
-            className={`mt+10 text-3xl font-extrabold ${skillNumberClass ?? "text-white/90"}`}
-            data-skill-color={skillNumberClass ? "true" : undefined}
-            data-skill-ability={skillAbility ?? undefined}
-            style={skillNumberHex ? { color: skillNumberHex } : undefined}
-          >
+          <div className="mt+10 text-3xl font-extrabold text-white/90">
             {fmtNum(card.number as number)}
           </div>
         )}
