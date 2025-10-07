@@ -361,6 +361,13 @@ export default function ThreeWheel_WinsOnly({
     [handleSkillTargetSelect],
   );
 
+  const handleSkillLaneSelect = useCallback(
+    ({ laneIndex }: { laneIndex: number }) => {
+      handleSkillTargetSelect({ kind: "lane", laneIndex });
+    },
+    [handleSkillTargetSelect],
+  );
+
   const handleSkillTargetCancel = useCallback(() => {
     cancelSkillTargeting();
   }, [cancelSkillTargeting]);
@@ -1096,6 +1103,8 @@ export default function ThreeWheel_WinsOnly({
         return "Select a reserve card to cycle.";
       case "reserveBoost":
         return "Select a reserve card to exhaust for a boost.";
+      case "boostCard":
+        return "Select a card to boost.";
       default:
         return "";
     }
@@ -1684,6 +1693,7 @@ export default function ThreeWheel_WinsOnly({
                   })) ?? []
                 }
                 skillTargeting={skillTargeting}
+                onSkillTargetSelect={handleSkillLaneSelect}
               />
             </div>
           ))}
