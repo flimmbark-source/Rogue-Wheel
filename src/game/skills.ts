@@ -76,7 +76,6 @@ export const SKILL_ABILITY_COLOR_HEX: Record<SkillAbility, string> = {
   rerollReserve: "#3c99c4ff", // sky-500
   boostCard: "#fda4af", // rose-300
   reserveBoost: "#25d38dff", // emerald-200
-
 };
 
 export function getSkillAbilityColorClass(card: Card | null): string | null {
