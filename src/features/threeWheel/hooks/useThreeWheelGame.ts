@@ -1196,15 +1196,34 @@ export function useThreeWheelGame({
         exhausted: { ...state.exhausted, [side]: updatedExhaustedSide },
       };
 
+      if (ability === "rerollReserve") {
+        const currentCounts = reserveCycleCountsRef.current;
+        const nextCount = (currentCounts[side] ?? 0) + 1;
+        reserveCycleCountsRef.current = { ...currentCounts, [side]: nextCount };
+        if (nextCount >= 2 && !state.passed[side]) {
+          appendLog(`${namesByLegacy[side]} passes their skill activations.`);
+          updatedState = {
+            ...updatedState,
+            passed: { ...updatedState.passed, [side]: true },
+          };
+        }
+      }
+
       const advanced = advanceSkillTurn(updatedState);
       return advanced ?? null;
     },
-    [advanceSkillTurn],
+    [advanceSkillTurn, appendLog, namesByLegacy],
   );
 
-  const computeSkillTargetCount = useCallback((ability: SkillAbility, _card: Card | null): number => {
+  const computeSkillTargetCount = useCallback((ability: SkillAbility, card: Card | null): number => {
     if (ability === "rerollReserve") {
-      return 2;
+      const value = getSkillCardValue(card);
+      if (typeof value === "number" && Number.isFinite(value)) {
+        const floored = Math.floor(value);
+        if (floored >= 2) return 2;
+        if (floored >= 1) return 1;
+      }
+      return 1;
     }
     return 1;
   }, []);

@@ -76,4 +76,17 @@ const makeCard = (overrides: Partial<Record<keyof Card, unknown>>): Card => {
   assert.equal(determineSkillAbility(card), "rerollReserve");
 }
 
+{
+  const cards = [
+    makeCard({ id: "positive", number: 5, baseNumber: 5 }),
+    makeCard({ id: "zero", number: 0, baseNumber: 0 }),
+    makeCard({ id: "negative", number: -2, baseNumber: -2 }),
+    makeCard({ id: "basePositive", number: -7, baseNumber: 4 }),
+  ];
+  const reserveBoostTargets = cards
+    .filter((card) => isReserveBoostTarget(card))
+    .map((card) => card.id);
+  assert.deepEqual(reserveBoostTargets, ["positive", "basePositive"]);
+}
+
 console.log("skill ability classification tests passed");
