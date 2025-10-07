@@ -93,7 +93,7 @@ import {
 import { countSymbolsFromCards, getVisibleSpellsForHand } from "./game/grimoire";
 import StSCard from "./components/StSCard";
 import { chooseCpuSpellResponse, type CpuSpellDecision } from "./game/ai/grimoireCpu";
-import { describeSkillAbility, isReserveBoostTarget, type AbilityKind } from "./game/skills";
+import { isReserveBoostTarget, type AbilityKind } from "./game/skills";
 
 // ---- Local aliases/types/state helpers
 type AblyRealtime = InstanceType<typeof Realtime>;
@@ -1206,12 +1206,6 @@ export default function ThreeWheel_WinsOnly({
     return spec.prompt;
   })();
   const skillAbilityLabel = skillTargeting ? SKILL_ABILITY_LABELS[skillTargeting.ability] : "";
-  const skillAbilityDescription = useMemo(() => {
-    if (!skillTargeting) return "";
-    const laneCard = assign[skillTargeting.side][skillTargeting.laneIndex];
-    return describeSkillAbility(skillTargeting.ability, laneCard ?? undefined);
-  }, [assign, skillTargeting]);
-
   const beginSkillTargeting = useCallback(
     (laneIndex: number, ability: AbilityKind) => {
       if (!skillPhaseActive) return;
@@ -1433,10 +1427,7 @@ export default function ThreeWheel_WinsOnly({
         <div className="pointer-events-none fixed inset-x-0 top-[132px] z-[82] flex justify-center px-3">
           <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-amber-400/70 bg-slate-900/95 px-3 py-2 shadow-2xl">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[13px] font-semibold text-amber-100">{skillAbilityLabel}</div>
-                <div className="text-[11px] text-amber-200/90 leading-snug">{skillAbilityDescription}</div>
-              </div>
+              <div className="text-[13px] font-semibold text-amber-100">{skillAbilityLabel}</div>
               <button
                 type="button"
                 onClick={cancelSkillTargeting}
@@ -1445,7 +1436,7 @@ export default function ThreeWheel_WinsOnly({
                 Cancel
               </button>
             </div>
-            <div className="mt-2 text-[11px] leading-snug text-amber-100/90">{skillTargetPrompt}</div>
+            <div className="mt-2 text-[11px] leading-snug text-amber-200/90">{skillTargetPrompt}</div>
           </div>
         </div>
       ) : null}
