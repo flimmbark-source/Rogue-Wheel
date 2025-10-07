@@ -749,6 +749,7 @@ export function useThreeWheelGame({
   const spellHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [skillState, setSkillState] = useState<SkillPhaseState | null>(null);
   const skillStateRef = useRef<SkillPhaseState | null>(skillState);
+  const reserveCycleCountsRef = useRef<SideState<number>>({ player: 0, enemy: 0 });
   const postSkillPhaseRef = useRef<CorePhase>("roundEnd");
   const [skillPhaseView, setSkillPhaseView] = useState<SkillPhaseView | null>(null);
   const [skillTargeting, setSkillTargeting] = useState<SkillTargetingState | null>(null);
@@ -1245,6 +1246,56 @@ export function useThreeWheelGame({
     return { player: playerFlags, enemy: enemyFlags };
   }, [assignRef]);
 
+  const createInitialSkillUsageState = useCallback((): {
+    exhausted: SideState<[boolean, boolean, boolean]>;
+    usesRemaining: SideState<[number, number, number]>;
+  } => {
+    const exhausted = createInitialSkillExhausted();
+
+    const computeInitialUses = (lane: (Card | null)[]): [number, number, number] =>
+      lane.map((card) => {
+        const ability = determineSkillAbility(card);
+        if (!ability) return 0;
+        if (ability === "rerollReserve") {
+          const value = getSkillCardValue(card);
+          if (typeof value === "number" && Number.isFinite(value)) {
+            const floored = Math.floor(value);
+            if (floored >= 2) return 2;
+            if (floored >= 1) return 1;
+          }
+          return 1;
+        }
+        return 1;
+      }) as [number, number, number];
+
+    const usesRemaining: SideState<[number, number, number]> = {
+      player: computeInitialUses(assignRef.current.player),
+      enemy: computeInitialUses(assignRef.current.enemy),
+    };
+
+    reserveCycleCountsRef.current = { player: 0, enemy: 0 };
+
+    return { exhausted, usesRemaining };
+  }, [assignRef, createInitialSkillExhausted]);
+
+  const spendSkillActivation = useCallback(
+    (state: SkillPhaseState, side: LegacySide, laneIndex: number): SkillPhaseState => {
+      const remaining = state.usesRemaining[side][laneIndex];
+      if (remaining <= 0) {
+        return state;
+      }
+
+      const updatedSideUses = [...state.usesRemaining[side]] as [number, number, number];
+      updatedSideUses[laneIndex] = Math.max(0, remaining - 1);
+
+      return {
+        ...state,
+        usesRemaining: { ...state.usesRemaining, [side]: updatedSideUses },
+      };
+    },
+    [],
+  );
+
   const updateReservePreview = useCallback(() => {
     const playerReserve = computeReserveSum("player", assignRef.current.player);
     const enemyReserve = computeReserveSum("enemy", assignRef.current.enemy);
@@ -1399,7 +1450,7 @@ export function useThreeWheelGame({
           updateReservePreview();
         }
 
-        const advanced = finalizeSkillActivation(prev, side, laneIndex, ability);
+        const advanced = finalizeSkillActivation(spentState, side, laneIndex, ability);
         return advanced ?? null;
       });
     },
@@ -1412,6 +1463,7 @@ export function useThreeWheelGame({
       finalizeSkillActivation,
       namesByLegacy,
       rerollReserve,
+      spendSkillActivation,
       swapCardWithReserve,
       updateReservePreview,
       localLegacySide,
@@ -1514,6 +1566,8 @@ export function useThreeWheelGame({
           return prev;
         }
 
+        const spentState = spendSkillActivation(prev, side, laneIndex);
+
         actionSucceeded = true;
         abilityUsed = targeting.ability;
 
@@ -1522,11 +1576,11 @@ export function useThreeWheelGame({
 
         if (!isFinalSelection) {
           nextTargetingState = { ...targeting, targetsRemaining };
-          return prev;
+          return spentState;
         }
 
         shouldClearTargeting = true;
-        const advanced = finalizeSkillActivation(prev, side, laneIndex, targeting.ability);
+        const advanced = finalizeSkillActivation(spentState, side, laneIndex, targeting.ability);
         return advanced ?? null;
       });
 
@@ -1552,6 +1606,7 @@ export function useThreeWheelGame({
       getFighterSnapshot,
       namesByLegacy,
       rerollReserve,
+      spendSkillActivation,
       swapCardWithReserve,
       updateReservePreview,
     ],
