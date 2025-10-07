@@ -369,28 +369,35 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       startTouchDrag(card, e);
     };
 
+    const isExhausted = Boolean(skillState?.exhausted);
+    const rotationClass = `inline-block transition-transform duration-200 ease-out ${
+      isExhausted ? "rotate-90" : ""
+    }`;
+
     return (
-      <StSCard
-        card={card}
-        size="sm"
-        disabled={!cardInteractable}
-        selected={isSlotSelected || isSkillAbilityLane}
-        spellAffected={isSpellAffected}
-        onPick={handlePick}
-        draggable={allowDrag}
-        onDragStart={allowDrag ? handleDragStart : undefined}
-        onDragEnd={allowDrag ? handleDragEnd : undefined}
-        onPointerDown={handlePointerDown}
-        onTouchStart={handleTouchStart}
-        className={
-          slotTargetable
-            ? "ring-2 ring-sky-400"
-            : laneTargetableForSkill || isSkillAbilityLane
-            ? "ring-2 ring-amber-300"
-            : undefined
-        }
-        spellTargetable={slotTargetable || laneTargetableForSkill}
-      />
+      <div className={rotationClass} data-exhausted={isExhausted ? "true" : undefined}>
+        <StSCard
+          card={card}
+          size="sm"
+          disabled={!cardInteractable}
+          selected={isSlotSelected || isSkillAbilityLane}
+          spellAffected={isSpellAffected}
+          onPick={handlePick}
+          draggable={allowDrag}
+          onDragStart={allowDrag ? handleDragStart : undefined}
+          onDragEnd={allowDrag ? handleDragEnd : undefined}
+          onPointerDown={handlePointerDown}
+          onTouchStart={handleTouchStart}
+          className={
+            slotTargetable
+              ? "ring-2 ring-sky-400"
+              : laneTargetableForSkill || isSkillAbilityLane
+              ? "ring-2 ring-amber-300"
+              : undefined
+          }
+          spellTargetable={slotTargetable || laneTargetableForSkill}
+        />
+      </div>
     );
   };
 

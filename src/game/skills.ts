@@ -30,7 +30,7 @@ export function getSkillCardValue(card: Card): number {
 }
 
 export function deriveAbilityForCard(printed: number): AbilityKind {
-  if (printed >= 5) {
+  if (printed >= 6) {
     return "reserveBoost";
   }
 
@@ -88,17 +88,17 @@ export function isReserveBoostTarget(card: Card): boolean {
 }
 
 const ABILITY_DESCRIPTIONS: Record<AbilityKind, (card?: Card) => string> = {
-  swapReserve: () => "Swap this card with one from your reserve.",
-  rerollReserve: () => "Discard a reserve card and draw a new one.",
+  swapReserve: () => "Swap this lane card with one from your reserve.",
+  rerollReserve: () => "Discard a reserve card, draw a new one, then recalc reserve (repeat once).",
   boostCard: (card) => {
     const value = Math.abs(getSkillCardValue(card ?? ({} as Card)));
-    return `Add ${value} to a card in play.`;
+    return `Add ${value} to a friendly card in play.`;
   },
   reserveBoost: (card) => {
     const value = getReserveBoostValue(card ?? ({} as Card));
     return value > 0
-      ? `Consume a reserve worth ${value} to boost this lane.`
-      : "Consume a positive reserve to boost this lane.";
+      ? `Exhaust a positive reserve worth ${value} to boost this lane.`
+      : "Exhaust a positive reserve to boost this lane.";
   },
 };
 
