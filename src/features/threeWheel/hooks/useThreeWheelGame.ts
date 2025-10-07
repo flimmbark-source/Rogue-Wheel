@@ -753,7 +753,6 @@ export function useThreeWheelGame({
   const [skillPhaseView, setSkillPhaseView] = useState<SkillPhaseView | null>(null);
   const [skillTargeting, setSkillTargeting] = useState<SkillTargetingState | null>(null);
   const skillTargetingRef = useRef<SkillTargetingState | null>(skillTargeting);
-  const reserveCycleCountsRef = useRef<SideState<number>>({ player: 0, enemy: 0 });
   useEffect(() => {
     skillTargetingRef.current = skillTargeting;
   }, [skillTargeting]);
@@ -1216,7 +1215,7 @@ export function useThreeWheelGame({
       const advanced = advanceSkillTurn(updatedState);
       return advanced ?? null;
     },
-    [advanceSkillTurn, appendLog, namesByLegacy, reserveCycleCountsRef],
+    [advanceSkillTurn, appendLog, namesByLegacy],
   );
 
   const computeSkillTargetCount = useCallback((ability: SkillAbility, card: Card | null): number => {
@@ -1232,7 +1231,7 @@ export function useThreeWheelGame({
     return 1;
   }, []);
 
-  const createInitialSkillUsageState = useCallback((): SideState<[boolean, boolean, boolean]> => {
+  const createInitialSkillExhausted = useCallback((): SideState<[boolean, boolean, boolean]> => {
     const playerFlags = assignRef.current.player.map((card) => !card || !determineSkillAbility(card)) as [
       boolean,
       boolean,
@@ -1259,8 +1258,6 @@ export function useThreeWheelGame({
         return false;
       }
 
-      
-      reserveCycleCountsRef.current = { player: 0, enemy: 0 };
       const { exhausted, usesRemaining } = createInitialSkillUsageState();
       const initialActive = options?.activeSide ?? initiative;
       const initialState: SkillPhaseState = {
@@ -1287,15 +1284,7 @@ export function useThreeWheelGame({
       setPhase("skill");
       return true;
     },
-    [
-      createInitialSkillUsageState,
-      hasSkillActions,
-      initiative,
-      isMultiplayer,
-      reserveCycleCountsRef,
-      setPhase,
-      updateReservePreview,
-    ],
+    [createInitialSkillUsageState, hasSkillActions, initiative, isMultiplayer, setPhase, updateReservePreview],
   );
 
   const activateSkillOption = useCallback(
