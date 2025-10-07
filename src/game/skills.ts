@@ -1,5 +1,5 @@
 import type { Card } from "./types";
-import { fmtNum } from "./values";
+import { fmtNum } from "./values.js";
 
 function coerceFiniteNumber(value: unknown): number | null {
   if (typeof value === "number") {
@@ -16,13 +16,13 @@ export type SkillAbility = "swapReserve" | "rerollReserve" | "boostSelf" | "rese
 
 export function getSkillCardValue(card: Card | null | undefined): number | null {
   if (!card) return null;
-  const numberValue = coerceFiniteNumber(card.number);
-  if (numberValue !== null) {
-    return numberValue;
-  }
   const baseValue = coerceFiniteNumber(card.baseNumber);
   if (baseValue !== null) {
     return baseValue;
+  }
+  const numberValue = coerceFiniteNumber(card.number);
+  if (numberValue !== null) {
+    return numberValue;
   }
   return null;
 }
@@ -41,10 +41,7 @@ export function determineSkillAbility(card: Card | null): SkillAbility | null {
 export function isReserveBoostTarget(card: Card | null | undefined): boolean {
   const value = getSkillCardValue(card);
   if (value === null) return false;
-  if (value > 0) {
-    return true;
-  }
-  return determineSkillAbility(card ?? null) !== null;
+  return value > 0;
 }
 
 export function describeSkillAbility(ability: SkillAbility, card: Card): string {
