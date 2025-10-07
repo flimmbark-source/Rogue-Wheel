@@ -122,7 +122,8 @@ type SkillLane = {
 
 export type SkillAbilityTarget =
   | { type: "reserve"; cardId: string }
-  | { type: "lane"; laneIndex: number };
+  | { type: "lane"; laneIndex: number }
+  | { type: "reserveToLane"; cardId: string; laneIndex: number };
 
 type SkillState = {
   enabled: boolean;
@@ -1822,16 +1823,20 @@ export function useThreeWheelGame({
 
       switch (usedAbility) {
         case "swapReserve": {
-          if (!skillCard || target?.type !== "reserve") break;
+          if (!skillCard || target?.type !== "reserveToLane") break;
+          const targetLaneIndex = target.laneIndex;
+          if (!Number.isInteger(targetLaneIndex)) break;
           const fighter = getFighterSnapshot(side);
           const reserveIndex = fighter.hand.findIndex((card) => card.id === target.cardId);
           if (reserveIndex === -1) break;
           const reserveCard = fighter.hand[reserveIndex];
+          const laneSourceArr = side === "player" ? sideAssignments.player : sideAssignments.enemy;
+          const displacedCard = laneSourceArr[targetLaneIndex] ?? null;
 
           updateFighter(side, (prev) => {
             const nextHand = prev.hand.filter((card) => card.id !== target.cardId);
-            if (!nextHand.some((card) => card.id === skillCard.id)) {
-              nextHand.push(skillCard);
+            if (displacedCard && !nextHand.some((card) => card.id === displacedCard.id)) {
+              nextHand.push({ ...displacedCard });
             }
             return { ...prev, hand: nextHand };
           });
@@ -1841,11 +1846,11 @@ export function useThreeWheelGame({
             enemy: [...sideAssignments.enemy],
           };
           const laneArr = side === "player" ? nextAssign.player : nextAssign.enemy;
-          laneArr[laneIndex] = { ...reserveCard };
+          laneArr[targetLaneIndex] = { ...reserveCard };
           concludeAssignUpdate(nextAssign);
-          recalcWheelForLane(nextAssign, laneIndex);
+          recalcWheelForLane(nextAssign, targetLaneIndex);
           updateReservePreview();
-          appendLog(`${actorName} swapped a reserve card onto lane ${laneIndex + 1}.`);
+          appendLog(`${actorName} swapped a reserve card onto lane ${targetLaneIndex + 1}.`);
           break;
         }
         case "rerollReserve": {
