@@ -39,7 +39,10 @@ const makeCard = (overrides: Partial<Record<keyof Card, unknown>>): Card => {
 {
   const card = makeCard({ baseNumber: "3" as unknown as number });
   assert.equal(determineSkillAbility(card), "boostCard");
-  assert.equal(describeSkillAbility("boostCard", card), "Add 3 to a card in play.");
+  assert.equal(
+    describeSkillAbility("boostCard", card),
+    "Add 3 to a friendly card in play.",
+  );
 }
 
 {

@@ -24,7 +24,12 @@ import {
 import { DEFAULT_GAME_MODE, normalizeGameMode, type GameMode } from "../../../gameModes";
 import { easeInOutCubic, inSection, createSeededRng } from "../../../game/math";
 import { genWheelSections } from "../../../game/wheel";
-import { determineSkillAbility, type AbilityKind } from "../../../game/skills";
+import {
+  determineSkillAbility,
+  getReserveBoostValue,
+  getSkillCardValue,
+  type AbilityKind,
+} from "../../../game/skills";
 import {
   makeFighter,
   refillTo,
@@ -880,6 +885,17 @@ export function useThreeWheelGame({
     useRef<WheelHandle | null>(null),
     useRef<WheelHandle | null>(null),
   ];
+
+  const recalcWheelForLane = useCallback(
+    (assignments: AssignmentState<Card>, index: number) => {
+      if (index < 0 || index >= assignments.player.length) return;
+      const playerValue = modSlice(cardWheelValue(assignments.player[index] as Card | null));
+      const enemyValue = modSlice(cardWheelValue(assignments.enemy[index] as Card | null));
+      const total = modSlice(playerValue + enemyValue);
+      wheelRefs[index]?.current?.setVisualToken?.(total);
+    },
+    [wheelRefs],
+  );
 
   const assignToWheelFor = useCallback(
     (side: LegacySide, laneIndex: number, card: Card) => {
@@ -1765,7 +1781,11 @@ export function useThreeWheelGame({
 
   const useSkillAbility = useCallback(
     (side: LegacySide, laneIndex: number, target?: SkillAbilityTarget) => {
-      void target;
+      const assignments = assignRef.current;
+      const laneCards = assignments[side];
+      const skillCard = laneCards?.[laneIndex] ?? null;
+      const storedSkillValue = skillCard ? getSkillCardValue(skillCard) : 0;
+
       let usedAbility: AbilityKind | null = null;
       setSkillState((prev) => {
         const lanes = prev.lanes[side];
@@ -1785,11 +1805,165 @@ export function useThreeWheelGame({
         return next;
       });
 
-      if (usedAbility) {
-        appendLog(`${namesByLegacy[side]} used ${usedAbility}.`);
+      if (!usedAbility) {
+        return;
       }
+
+      const actorName = namesByLegacy[side];
+      const sideAssignments: AssignmentState<Card> = {
+        player: [...assignments.player],
+        enemy: [...assignments.enemy],
+      };
+
+      const concludeAssignUpdate = (nextAssign: AssignmentState<Card>) => {
+        assignRef.current = nextAssign;
+        setAssign(() => nextAssign);
+      };
+
+      switch (usedAbility) {
+        case "swapReserve": {
+          if (!skillCard || target?.type !== "reserve") break;
+          const fighter = getFighterSnapshot(side);
+          const reserveIndex = fighter.hand.findIndex((card) => card.id === target.cardId);
+          if (reserveIndex === -1) break;
+          const reserveCard = fighter.hand[reserveIndex];
+
+          updateFighter(side, (prev) => {
+            const nextHand = prev.hand.filter((card) => card.id !== target.cardId);
+            if (!nextHand.some((card) => card.id === skillCard.id)) {
+              nextHand.push(skillCard);
+            }
+            return { ...prev, hand: nextHand };
+          });
+
+          const nextAssign: AssignmentState<Card> = {
+            player: [...sideAssignments.player],
+            enemy: [...sideAssignments.enemy],
+          };
+          const laneArr = side === "player" ? nextAssign.player : nextAssign.enemy;
+          laneArr[laneIndex] = { ...reserveCard };
+          concludeAssignUpdate(nextAssign);
+          recalcWheelForLane(nextAssign, laneIndex);
+          updateReservePreview();
+          appendLog(`${actorName} swapped a reserve card onto lane ${laneIndex + 1}.`);
+          break;
+        }
+        case "rerollReserve": {
+          if (target?.type !== "reserve") break;
+          const fighter = getFighterSnapshot(side);
+          const reserveIndex = fighter.hand.findIndex((card) => card.id === target.cardId);
+          if (reserveIndex === -1) break;
+          const discarded = fighter.hand[reserveIndex];
+          let drawnCard: Card | null = null;
+
+          updateFighter(side, (prev) => {
+            const nextHand = [...prev.hand];
+            const idx = nextHand.findIndex((card) => card.id === target.cardId);
+            if (idx === -1) return prev;
+            const [removed] = nextHand.splice(idx, 1);
+            const nextDiscard = removed ? [...prev.discard, removed] : [...prev.discard];
+            const base: Fighter = { ...prev, hand: nextHand, discard: nextDiscard };
+            const afterDraw = drawOne(base);
+            if (afterDraw.hand.length > base.hand.length) {
+              drawnCard = afterDraw.hand[afterDraw.hand.length - 1] ?? null;
+            }
+            return afterDraw;
+          });
+
+          updateReservePreview();
+          const drawnLabel = drawnCard ? ` and drew ${drawnCard.number ?? 0}` : "";
+          appendLog(
+            `${actorName} discarded ${discarded.number ?? 0} from reserve${drawnLabel}.`,
+          );
+          break;
+        }
+        case "boostCard": {
+          if (target?.type !== "lane" || !Number.isInteger(target.laneIndex)) break;
+          const targetLane = target.laneIndex;
+          const laneArr = side === "player" ? sideAssignments.player : sideAssignments.enemy;
+          const existing = laneArr[targetLane];
+          if (!existing || storedSkillValue === 0) break;
+          const updatedCard = { ...existing } as Card;
+          const currentValue = typeof updatedCard.number === "number" ? updatedCard.number : 0;
+          updatedCard.number = currentValue + storedSkillValue;
+          laneArr[targetLane] = updatedCard;
+
+          const nextAssign: AssignmentState<Card> = {
+            player: [...sideAssignments.player],
+            enemy: [...sideAssignments.enemy],
+          };
+          if (side === "player") nextAssign.player = [...laneArr];
+          else nextAssign.enemy = [...laneArr];
+
+          concludeAssignUpdate(nextAssign);
+          recalcWheelForLane(nextAssign, targetLane);
+          appendLog(
+            `${actorName} boosted lane ${targetLane + 1} by ${storedSkillValue}.`,
+          );
+          break;
+        }
+        case "reserveBoost": {
+          if (target?.type !== "reserve" || !skillCard) break;
+          const fighter = getFighterSnapshot(side);
+          const reserveIndex = fighter.hand.findIndex((card) => card.id === target.cardId);
+          if (reserveIndex === -1) break;
+          const reserveCard = fighter.hand[reserveIndex];
+          const storedReserveValue = Math.max(0, getReserveBoostValue(reserveCard));
+
+          updateFighter(side, (prev) => {
+            const nextHand = [...prev.hand];
+            const idx = nextHand.findIndex((card) => card.id === target.cardId);
+            if (idx === -1) return prev;
+            const [removed] = nextHand.splice(idx, 1);
+            const nextDiscard = removed ? [...prev.discard, removed] : [...prev.discard];
+            return { ...prev, hand: nextHand, discard: nextDiscard };
+          });
+
+          updateReservePreview();
+
+          if (storedReserveValue > 0) {
+            const nextAssign: AssignmentState<Card> = {
+              player: [...sideAssignments.player],
+              enemy: [...sideAssignments.enemy],
+            };
+            const laneArr = side === "player" ? nextAssign.player : nextAssign.enemy;
+            const laneCard = laneArr[laneIndex];
+            if (laneCard) {
+              const updatedCard = { ...laneCard } as Card;
+              const baseValue = typeof updatedCard.number === "number" ? updatedCard.number : 0;
+              updatedCard.number = baseValue + storedReserveValue;
+              laneArr[laneIndex] = updatedCard;
+              concludeAssignUpdate(nextAssign);
+              recalcWheelForLane(nextAssign, laneIndex);
+            }
+            appendLog(
+              `${actorName} infused lane ${laneIndex + 1} with +${storedReserveValue} from reserve.`,
+            );
+          } else {
+            appendLog(`${actorName} exhausted a reserve card with no value to boost.`);
+          }
+          break;
+        }
+        default:
+          break;
+      }
+
+      appendLog(`${actorName} used ${usedAbility}.`);
     },
-    [appendLog, namesByLegacy],
+    [
+      appendLog,
+      assignRef,
+      drawOne,
+      getFighterSnapshot,
+      getReserveBoostValue,
+      getSkillCardValue,
+      namesByLegacy,
+      recalcWheelForLane,
+      setAssign,
+      setSkillState,
+      updateFighter,
+      updateReservePreview,
+    ],
   );
 
   const handleNextClick = useCallback(() => {
