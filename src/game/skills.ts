@@ -89,7 +89,8 @@ export function isReserveBoostTarget(card: Card): boolean {
 
 const ABILITY_DESCRIPTIONS: Record<AbilityKind, (card?: Card) => string> = {
   swapReserve: () => "Swap this lane card with one from your reserve.",
-  rerollReserve: () => "Discard a reserve card, draw a new one, then recalc reserve (repeat once).",
+  rerollReserve: () =>
+    "Discard a reserve card, draw a new one, then recalc reserve. You may repeat once.",
   boostCard: (card) => {
     const value = Math.abs(getSkillCardValue(card ?? ({} as Card)));
     return `Add ${value} to a friendly card in play.`;

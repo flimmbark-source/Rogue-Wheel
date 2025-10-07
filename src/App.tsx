@@ -138,7 +138,7 @@ const SKILL_TARGET_SPECS: Record<AbilityKind, SkillTargetSpec> = {
   },
   rerollReserve: {
     kind: "reserve",
-    prompt: "Select a reserve card to discard and draw a new one.",
+    prompt: "Select a reserve card to discard and draw a new one (up to twice).",
   },
   boostCard: {
     kind: "friendlyLane",
@@ -1189,7 +1189,17 @@ export default function ThreeWheel_WinsOnly({
 
   const skillTargetPrompt = (() => {
     if (!skillTargeting) return "";
-    const { spec, activeKind } = skillTargeting;
+    const { spec, activeKind, ability, side, laneIndex } = skillTargeting;
+    if (
+      ability === "rerollReserve" &&
+      spec.kind === "reserve" &&
+      activeKind === "reserve"
+    ) {
+      const laneState = skill.lanes[side]?.[laneIndex];
+      if (laneState && !laneState.exhausted && laneState.usesRemaining === 1) {
+        return "Select a second reserve to discard, or cancel to keep the rest.";
+      }
+    }
     if (spec.kind === "reserveThenLane") {
       return activeKind === "reserve" ? spec.reservePrompt : spec.lanePrompt;
     }
@@ -1264,10 +1274,17 @@ export default function ThreeWheel_WinsOnly({
       const { spec, laneIndex, activeKind } = skillTargeting;
       if (activeKind === "reserve" && selection.type === "reserve") {
         if (spec.kind === "reserve") {
-          useSkillAbility(localLegacySide, laneIndex, {
+          const result = useSkillAbility(localLegacySide, laneIndex, {
             type: "reserve",
             cardId: selection.cardId,
           });
+          if (
+            skillTargeting.ability === "rerollReserve" &&
+            result.success &&
+            !result.exhausted
+          ) {
+            return;
+          }
           setSkillTargeting(null);
           return;
         }

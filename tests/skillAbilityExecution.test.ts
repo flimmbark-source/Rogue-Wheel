@@ -110,3 +110,66 @@ const makeOptions = (
 
   console.log("skill ability execution success test passed");
 }
+
+{
+  let reservePreviewCalls = 0;
+  const logs: string[] = [];
+  const firstReserve: Card = { id: "reserve-1", name: "First", tags: [], number: 4 };
+  const secondReserve: Card = { id: "reserve-2", name: "Second", tags: [], number: 7 };
+  const draws: Card[] = [
+    { id: "draw-1", name: "Draw One", tags: [], number: 9 },
+    { id: "draw-2", name: "Draw Two", tags: [], number: 3 },
+  ];
+  let fighterState: Fighter = {
+    name: "Reroller",
+    deck: [...draws],
+    hand: [firstReserve, secondReserve],
+    discard: [],
+  };
+
+  const baseOptions = makeOptions({
+    ability: "rerollReserve",
+    target: { type: "reserve", cardId: firstReserve.id },
+    getFighterSnapshot: () => fighterState,
+    updateFighter: (_side, updater) => {
+      fighterState = updater(fighterState);
+    },
+    drawOne: (fighter) => {
+      if (fighter.deck.length === 0) return fighter;
+      const [next, ...rest] = fighter.deck;
+      return {
+        ...fighter,
+        deck: rest,
+        hand: [...fighter.hand, next],
+      } satisfies Fighter;
+    },
+    updateReservePreview: () => {
+      reservePreviewCalls += 1;
+    },
+    appendLog: (msg) => {
+      logs.push(msg);
+    },
+  });
+
+  const firstResult = applySkillAbilityEffect({
+    ...baseOptions,
+    target: { type: "reserve", cardId: firstReserve.id },
+  });
+  assert.equal(firstResult.success, true);
+  assert.equal(reservePreviewCalls, 1, "first reroll should update the reserve preview");
+
+  const secondResult = applySkillAbilityEffect({
+    ...baseOptions,
+    target: { type: "reserve", cardId: secondReserve.id },
+  });
+  assert.equal(secondResult.success, true);
+  assert.equal(reservePreviewCalls, 2, "second reroll should also update the reserve preview");
+
+  assert.equal(
+    fighterState.hand.length >= 2,
+    true,
+    "hand should still contain at least two cards after rerolls",
+  );
+
+  console.log("reroll reserve triggers preview update twice test passed");
+}
