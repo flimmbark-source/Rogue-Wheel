@@ -24,6 +24,7 @@ import {
 import { DEFAULT_GAME_MODE, normalizeGameMode, type GameMode } from "../../../gameModes";
 import { easeInOutCubic, inSection, createSeededRng } from "../../../game/math";
 import { genWheelSections } from "../../../game/wheel";
+import { determineSkillAbility, type AbilityKind } from "../../../game/skills";
 import {
   makeFighter,
   refillTo,
@@ -46,6 +47,7 @@ import {
   type RoundAnalysis,
   type WheelOutcome,
 } from "./roundOutcomeSummary";
+import { decideRevealFlow } from "../utils/skillPhase";
 
 export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine";
 
@@ -107,6 +109,25 @@ const createEmptySpellHighlights = (): SpellHighlightState => ({
   reserve: { player: false, enemy: false },
 });
 
+type SkillLane = {
+  ability: AbilityKind | null;
+  cardId: string | null;
+  exhausted: boolean;
+};
+
+type SkillState = {
+  enabled: boolean;
+  completed: boolean;
+  lanes: Record<LegacySide, SkillLane[]>;
+};
+
+const createEmptySkillLane = (): SkillLane => ({ ability: null, cardId: null, exhausted: true });
+
+const createSkillLanes = (): Record<LegacySide, SkillLane[]> => ({
+  player: [createEmptySkillLane(), createEmptySkillLane(), createEmptySkillLane()],
+  enemy: [createEmptySkillLane(), createEmptySkillLane(), createEmptySkillLane()],
+});
+
 
 export type ThreeWheelGameState = {
   player: Fighter;
@@ -141,6 +162,7 @@ export type ThreeWheelGameState = {
   ptrDragType: "pointer" | "touch" | null;
   log: GameLogEntry[];
   spellHighlights: SpellHighlightState;
+  skill: SkillState;
 };
 
 export type ThreeWheelGameDerived = {
@@ -158,6 +180,7 @@ export type ThreeWheelGameDerived = {
   winnerName: string | null;
   localName: string;
   remoteName: string;
+  isSkillMode: boolean;
   canReveal: boolean;
 };
 
@@ -180,6 +203,8 @@ export type ThreeWheelGameActions = {
   handleExitClick: () => void;
   applySpellEffects: (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => void;
   setAnteBet: (bet: number) => void;
+  handleSkillConfirm: () => void;
+  useSkillAbility: (side: LegacySide, laneIndex: number) => void;
 };
 
 export type ThreeWheelGameReturn = {
@@ -246,6 +271,7 @@ export function useThreeWheelGame({
 
   const currentGameMode = normalizeGameMode(gameMode ?? DEFAULT_GAME_MODE);
   const isAnteMode = currentGameMode.includes("ante");
+  const isSkillMode = currentGameMode.includes("skill");
 
   const hostLegacySide: LegacySide = (() => {
     if (!hostId) return "player";
@@ -295,6 +321,85 @@ export function useThreeWheelGame({
     bets: { player: 0, enemy: 0 },
     odds: { player: 1.2, enemy: 1.2 },
   }));
+  const [skillState, setSkillState] = useState<SkillState>(() => ({
+    enabled: isSkillMode,
+    completed: !isSkillMode,
+    lanes: createSkillLanes(),
+  }));
+  const skillStateRef = useRef(skillState);
+  useEffect(() => {
+    skillStateRef.current = skillState;
+  }, [skillState]);
+
+  const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>({
+    player: [null, null, null],
+    enemy: [null, null, null],
+  });
+  const assignRef = useRef(assign);
+  useEffect(() => {
+    assignRef.current = assign;
+  }, [assign]);
+
+  useEffect(() => {
+    setSkillState((prev) => {
+      if (prev.enabled === isSkillMode) {
+        return prev;
+      }
+      return {
+        enabled: isSkillMode,
+        completed: !isSkillMode,
+        lanes: isSkillMode ? prev.lanes : createSkillLanes(),
+      };
+    });
+  }, [isSkillMode]);
+
+  useEffect(() => {
+    setSkillState((prev) => {
+      if (!isSkillMode) {
+        if (!prev.enabled && prev.completed) {
+          return prev;
+        }
+        return { enabled: false, completed: true, lanes: createSkillLanes() };
+      }
+
+      let changed = prev.enabled !== isSkillMode;
+      const nextLanes: Record<LegacySide, SkillLane[]> = {
+        player: [...prev.lanes.player],
+        enemy: [...prev.lanes.enemy],
+      };
+
+      const sides: LegacySide[] = ["player", "enemy"];
+      for (const side of sides) {
+        for (let i = 0; i < nextLanes[side].length; i++) {
+          const card = assign[side][i];
+          const ability: AbilityKind | null = card ? determineSkillAbility(card) : null;
+          const cardId = card?.id ?? null;
+          const lane = nextLanes[side][i];
+          if (!lane || lane.cardId !== cardId || lane.ability !== ability) {
+            nextLanes[side][i] = {
+              ability,
+              cardId,
+              exhausted: ability ? false : true,
+            };
+            changed = true;
+          } else if (!ability && !lane.exhausted) {
+            nextLanes[side][i] = { ability: null, cardId, exhausted: true };
+            changed = true;
+          }
+        }
+      }
+
+      if (!changed) {
+        return prev;
+      }
+
+      return {
+        enabled: true,
+        completed: prev.completed,
+        lanes: nextLanes,
+      };
+    });
+  }, [assign, isSkillMode]);
   const [freezeLayout, setFreezeLayout] = useState(false);
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
   const [phase, setPhase] = useState<CorePhase>("choose");
@@ -585,20 +690,12 @@ export function useThreeWheelGame({
   const roundStartTokensRef = useRef<[number, number, number] | null>([0, 0, 0]);
   const [active] = useState<[boolean, boolean, boolean]>([true, true, true]);
   const [wheelHUD, setWheelHUD] = useState<[string | null, string | null, string | null]>([null, null, null]);
-  const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>({
-    player: [null, null, null],
-    enemy: [null, null, null],
-  });
   const [laneChillStacks, setLaneChillStacks] = useState<LaneChillStacks>({
     player: [0, 0, 0],
     enemy: [0, 0, 0],
   });
   const laneChillRef = useRef(laneChillStacks);
-  const assignRef = useRef(assign);
   const roundAnalysisRef = useRef<RoundAnalysis | null>(null);
-  useEffect(() => {
-    assignRef.current = assign;
-  }, [assign]);
   useEffect(() => {
     laneChillRef.current = laneChillStacks;
   }, [laneChillStacks]);
@@ -1252,9 +1349,25 @@ export function useThreeWheelGame({
     [broadcastLocalReserve, canReveal, isMultiplayer, wheelSize]
   );
 
+  const tryRevealRound = useCallback(
+    (opts?: { force?: boolean }) => {
+      const decision = decideRevealFlow({
+        currentPhase: phaseRef.current,
+        isSkillMode,
+        skillCompleted: skillStateRef.current.completed,
+      });
+      if (!opts?.force && decision === "skillPhase") {
+        setPhase((prev) => (prev === "skill" ? prev : "skill"));
+        return false;
+      }
+      return revealRoundCore(opts);
+    },
+    [isSkillMode, revealRoundCore],
+  );
+
   const onReveal = useCallback(() => {
-    revealRoundCore();
-  }, [revealRoundCore]);
+    tryRevealRound();
+  }, [tryRevealRound]);
 
   const attemptAutoReveal = useCallback(() => {
     if (!isMultiplayer) return;
@@ -1262,8 +1375,8 @@ export function useThreeWheelGame({
     if (!canReveal) return;
     const votes = resolveVotesRef.current;
     if (!votes.player || !votes.enemy) return;
-    revealRoundCore();
-  }, [canReveal, isMultiplayer, phase, revealRoundCore]);
+    tryRevealRound();
+  }, [canReveal, isMultiplayer, phase, tryRevealRound]);
 
   useEffect(() => {
     attemptAutoReveal();
@@ -1438,6 +1551,14 @@ export function useThreeWheelGame({
       reservePenaltiesRef.current = { player: 0, enemy: 0 };
       reserveReportsRef.current = { player: null, enemy: null };
 
+      const resetSkill: SkillState = {
+        enabled: isSkillMode,
+        completed: !isSkillMode,
+        lanes: createSkillLanes(),
+      };
+      skillStateRef.current = resetSkill;
+      setSkillState(resetSkill);
+
       setPhase("choose");
       setRound((r) => r + 1);
 
@@ -1450,6 +1571,7 @@ export function useThreeWheelGame({
       generateWheelSet,
       phase,
       setDragOverWheel,
+      isSkillMode,
     ]
   );
 
@@ -1602,12 +1724,13 @@ export function useThreeWheelGame({
     if (phase !== "choose" || !canReveal) return;
 
     if (!isMultiplayer) {
-      onReveal();
+      tryRevealRound();
       return;
     }
 
     markResolveVote(localLegacySide);
     sendIntent({ type: "reveal", side: localLegacySide });
+    tryRevealRound();
     setTimeout(() => {
       attemptAutoReveal();
     }, 0);
@@ -1617,11 +1740,55 @@ export function useThreeWheelGame({
     isMultiplayer,
     localLegacySide,
     markResolveVote,
-    onReveal,
     phase,
     resolveVotes,
     sendIntent,
+    tryRevealRound,
   ]);
+
+  const handleSkillConfirm = useCallback(() => {
+    if (!isSkillMode) {
+      tryRevealRound({ force: true });
+      return;
+    }
+
+    setSkillState((prev) => {
+      if (prev.completed) return prev;
+      const next = { ...prev, completed: true };
+      skillStateRef.current = next;
+      return next;
+    });
+
+    tryRevealRound({ force: true });
+  }, [isSkillMode, tryRevealRound]);
+
+  const useSkillAbility = useCallback(
+    (side: LegacySide, laneIndex: number) => {
+      let usedAbility: AbilityKind | null = null;
+      setSkillState((prev) => {
+        const lanes = prev.lanes[side];
+        const lane = lanes?.[laneIndex];
+        if (!lane || !lane.ability || lane.exhausted) {
+          return prev;
+        }
+        usedAbility = lane.ability;
+        const updatedLane: SkillLane = { ...lane, exhausted: true };
+        const updatedLanesForSide = [...lanes];
+        updatedLanesForSide[laneIndex] = updatedLane;
+        const next: SkillState = {
+          ...prev,
+          lanes: { ...prev.lanes, [side]: updatedLanesForSide },
+        };
+        skillStateRef.current = next;
+        return next;
+      });
+
+      if (usedAbility) {
+        appendLog(`${namesByLegacy[side]} used ${usedAbility}.`);
+      }
+    },
+    [appendLog, namesByLegacy],
+  );
 
   const handleNextClick = useCallback(() => {
     if (phase !== "roundEnd") return;
@@ -1929,6 +2096,7 @@ export function useThreeWheelGame({
     ptrDragType,
     log,
     spellHighlights,
+    skill: skillState,
   };
 
   const derived: ThreeWheelGameDerived = {
@@ -1946,6 +2114,7 @@ export function useThreeWheelGame({
     winnerName,
     localName,
     remoteName,
+    isSkillMode,
     canReveal,
   };
 
@@ -1968,6 +2137,8 @@ export function useThreeWheelGame({
     handleExitClick,
     applySpellEffects,
     setAnteBet,
+    handleSkillConfirm,
+    useSkillAbility,
   };
 
   return { state, derived, refs, actions };

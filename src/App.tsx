@@ -93,6 +93,7 @@ import {
 import { countSymbolsFromCards, getVisibleSpellsForHand } from "./game/grimoire";
 import StSCard from "./components/StSCard";
 import { chooseCpuSpellResponse, type CpuSpellDecision } from "./game/ai/grimoireCpu";
+import { describeSkillAbility, type AbilityKind } from "./game/skills";
 
 // ---- Local aliases/types/state helpers
 type AblyRealtime = InstanceType<typeof Realtime>;
@@ -101,6 +102,16 @@ type LegacySide = "player" | "enemy";
 
 type SideState<T> = Record<LegacySide, T>;
 type WheelSideState<T> = [SideState<T>, SideState<T>, SideState<T>];
+
+const SKILL_ABILITY_LABELS: Record<AbilityKind, string> = {
+  swapReserve: "Swap Reserve",
+  rerollReserve: "Reroll Reserve",
+  boostCard: "Boost Card",
+  reserveBoost: "Reserve Boost",
+};
+
+const formatSkillAbility = (ability: AbilityKind | null) =>
+  ability ? SKILL_ABILITY_LABELS[ability] ?? ability : "No ability";
 
 function createWheelSideState<T>(value: T): WheelSideState<T> {
   return [
@@ -259,6 +270,7 @@ export default function ThreeWheel_WinsOnly({
     lockedWheelSize,
     log,
     spellHighlights,
+    skill,
   } = state;
 
   const {
@@ -274,6 +286,7 @@ export default function ThreeWheel_WinsOnly({
     winnerName,
     localName,
     remoteName,
+    isSkillMode: hookSkillMode,
     canReveal,
   } = derived;
 
@@ -293,6 +306,8 @@ export default function ThreeWheel_WinsOnly({
     handleExitClick,
     applySpellEffects,
     setAnteBet,
+    handleSkillConfirm,
+    useSkillAbility,
   } = actions;
 
   // --- local UI/Grimoire state (from Spells branch) ---
@@ -302,6 +317,7 @@ export default function ThreeWheel_WinsOnly({
   );
   const isGrimoireMode = activeGameModes.includes("grimoire");
   const isAnteMode = activeGameModes.includes("ante");
+  const isSkillMode = activeGameModes.includes("skill") || hookSkillMode;
   const effectiveGameMode = activeGameModes.length > 0 ? activeGameModes.join("+") : "classic";
   const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
 
@@ -1005,6 +1021,7 @@ export default function ThreeWheel_WinsOnly({
     "classic-mode",
     isGrimoireMode && "grimoire-mode",
     isAnteMode && "ante-mode",
+    isSkillMode && "skill-mode",
   ]
     .filter(Boolean)
     .join(" ");
@@ -1052,6 +1069,22 @@ export default function ThreeWheel_WinsOnly({
         }
       })()
     : "";
+  const skillPhaseActive = isSkillMode && phaseForLogic === "skill";
+  const skillPhaseCompleted = skill.completed;
+  const skillLaneDetails = useMemo(
+    () =>
+      (skill.lanes[localLegacySide] ?? []).map((lane, laneIndex) => {
+        const card = assign[localLegacySide][laneIndex];
+        const ability = lane?.ability ?? null;
+        const description = ability ? describeSkillAbility(ability, card ?? undefined) : null;
+        return {
+          ability,
+          exhausted: lane?.exhausted ?? true,
+          description,
+        };
+      }),
+    [assign, localLegacySide, skill.lanes],
+  );
   const hudAccentColor = HUD_COLORS[localLegacySide];
 
   useEffect(() => {
@@ -1496,6 +1529,63 @@ export default function ThreeWheel_WinsOnly({
         </div>
 
       </div>
+
+      {isSkillMode && (
+        <div className="mb-3 sm:mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-100 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <div className="font-semibold tracking-wide uppercase text-[11px]">Skill Phase</div>
+            <div className="text-[11px] font-semibold">
+              {skillPhaseActive ? (
+                <span className="text-amber-200 animate-pulse">Active now</span>
+              ) : skillPhaseCompleted ? (
+                <span className="text-emerald-200">Resolved</span>
+              ) : (
+                <span className="text-amber-200/90">Will trigger before combat</span>
+              )}
+            </div>
+          </div>
+          <ul className="mt-2 space-y-1">
+            {skillLaneDetails.map((lane, laneIndex) => {
+              const abilityLabel = formatSkillAbility(lane.ability);
+              const helperText = lane.description ?? "No ability this round.";
+              const canUseAbility = Boolean(lane.ability) && !lane.exhausted;
+              return (
+                <li key={laneIndex} className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <div className="font-semibold text-[11px]">Lane {laneIndex + 1}: {abilityLabel}</div>
+                    <div className="text-[11px] text-amber-100/80 leading-snug">{helperText}</div>
+                  </div>
+                  {lane.ability ? (
+                    canUseAbility ? (
+                      <button
+                        type="button"
+                        onClick={() => useSkillAbility(localLegacySide, laneIndex)}
+                        disabled={!skillPhaseActive}
+                        className="rounded-full border border-amber-400/60 bg-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-50 transition disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-500/30"
+                      >
+                        {skillPhaseActive ? "Use" : "Ready"}
+                      </button>
+                    ) : (
+                      <span className="rounded-full border border-amber-200/30 px-2 py-0.5 text-[10px] text-amber-200/80">Spent</span>
+                    )
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          {skillPhaseActive && (
+            <div className="mt-2 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={handleSkillConfirm}
+                className="rounded-full bg-amber-400 px-3 py-1 text-[12px] font-semibold text-slate-900 shadow-sm transition hover:bg-amber-300"
+              >
+                Continue to battle
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* HUD */}
       <div className="relative z-10 mb-3 sm:mb-4">
