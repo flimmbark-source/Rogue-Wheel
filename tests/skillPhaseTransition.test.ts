@@ -14,20 +14,40 @@ assert.equal(
 
 assert.equal(
   decideRevealFlow({ currentPhase: choosePhase, isSkillMode: true, skillCompleted: false }),
-  "revealRound",
-  "Skill Mode no longer pauses the reveal flow before combat.",
+  "skillPhase",
+  "Skill Mode should enter the Skill Phase before combat when unresolved.",
 );
 
 assert.equal(
   decideRevealFlow({ currentPhase: choosePhase, isSkillMode: true, skillCompleted: true }),
   "revealRound",
-  "Skill Mode continues to reveal even after abilities resolve.",
+  "Skill Mode should continue to reveal once the Skill Phase is complete.",
 );
 
 assert.equal(
   decideRevealFlow({ currentPhase: roundEndPhase, isSkillMode: true, skillCompleted: false }),
   "revealRound",
-  "Non-choose phases still bypass any additional flow.",
+  "Non-choose phases should bypass the Skill Phase entirely.",
 );
+
+type ModeScenario = {
+  label: string;
+  phase: CorePhase;
+  skillCompleted: boolean;
+  expected: ReturnType<typeof decideRevealFlow>;
+};
+
+const grimoireRegressionCases: ModeScenario[] = [
+  { label: "Grimoire choose", phase: "choose", skillCompleted: true, expected: "revealRound" },
+  { label: "Ante roundEnd", phase: "roundEnd", skillCompleted: false, expected: "revealRound" },
+];
+
+grimoireRegressionCases.forEach(({ label, phase, skillCompleted, expected }) => {
+  assert.equal(
+    decideRevealFlow({ currentPhase: phase, isSkillMode: false, skillCompleted }),
+    expected,
+    `${label} should continue to match pre-skill behaviour.`,
+  );
+});
 
 console.log("Skill phase transition checks passed.");

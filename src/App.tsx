@@ -113,13 +113,6 @@ const SKILL_ABILITY_LABELS: Record<AbilityKind, string> = {
 const formatSkillAbility = (ability: AbilityKind | null) =>
   ability ? SKILL_ABILITY_LABELS[ability] ?? ability : "No ability";
 
-type SkillLaneDetail = {
-  ability: AbilityKind | null;
-  exhausted: boolean;
-  description: string | null;
-  label: string | null;
-};
-
 function createWheelSideState<T>(value: T): WheelSideState<T> {
   return [
     { player: value, enemy: value },
@@ -1077,36 +1070,21 @@ export default function ThreeWheel_WinsOnly({
       })()
     : "";
   const skillPhaseActive = isSkillMode && phaseForLogic === "skill";
-  const skillLaneDetails = useMemo(() => {
-    const sides: LegacySide[] = ["player", "enemy"];
-    return sides.reduce((acc, side) => {
-      const lanes = skill.lanes[side] ?? [];
-      acc[side] = lanes.map((lane, laneIndex) => {
-        const card = assign[side][laneIndex];
+  const skillPhaseCompleted = skill.completed;
+  const skillLaneDetails = useMemo(
+    () =>
+      (skill.lanes[localLegacySide] ?? []).map((lane, laneIndex) => {
+        const card = assign[localLegacySide][laneIndex];
         const ability = lane?.ability ?? null;
         const description = ability ? describeSkillAbility(ability, card ?? undefined) : null;
-        const label = ability ? formatSkillAbility(ability) : null;
-        const detail: SkillLaneDetail = {
+        return {
           ability,
           exhausted: lane?.exhausted ?? true,
           description,
-          label,
         };
-        return detail;
-      });
-      return acc;
-    }, {} as Record<LegacySide, SkillLaneDetail[]>);
-  }, [assign, skill.lanes]);
-
-  const localSkillLaneDetails = skillLaneDetails[localLegacySide] ?? [];
-  const remoteSkillLaneDetails = skillLaneDetails[remoteLegacySide] ?? [];
-  const localSkillReady = localSkillLaneDetails.some((lane) => lane.ability && !lane.exhausted);
-  const remoteSkillReady = remoteSkillLaneDetails.some((lane) => lane.ability && !lane.exhausted);
-  const skillPhaseMessage = localSkillReady
-    ? "Click a ready card to use its skill."
-    : remoteSkillReady
-    ? "Waiting for rival skill activations…"
-    : "No skills available this round.";
+      }),
+    [assign, localLegacySide, skill.lanes],
+  );
   const hudAccentColor = HUD_COLORS[localLegacySide];
 
   useEffect(() => {
@@ -1373,19 +1351,6 @@ export default function ThreeWheel_WinsOnly({
               )}
             </div>
           )}
-          {phase === "skill" && (
-            <div className="flex flex-col items-end gap-1 text-right">
-              <div className="text-[11px] text-amber-200 leading-tight">
-                {skillPhaseMessage}
-              </div>
-              <button
-                onClick={handleSkillConfirm}
-                className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold hover:bg-amber-300 transition"
-              >
-                Continue to battle
-              </button>
-            </div>
-          )}
           {phase === "roundEnd" && (
             <div className="flex flex-col items-end gap-1">
               <button
@@ -1564,6 +1529,64 @@ export default function ThreeWheel_WinsOnly({
         </div>
 
       </div>
+
+      {isSkillMode && (
+        <div className="mb-3 sm:mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-100 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <div className="font-semibold tracking-wide uppercase text-[11px]">Skill Phase</div>
+            <div className="text-[11px] font-semibold">
+              {skillPhaseActive ? (
+                <span className="text-amber-200 animate-pulse">Active now</span>
+              ) : skillPhaseCompleted ? (
+                <span className="text-emerald-200">Resolved</span>
+              ) : (
+                <span className="text-amber-200/90">Will trigger before combat</span>
+              )}
+            </div>
+          </div>
+          <ul className="mt-2 space-y-1">
+            {skillLaneDetails.map((lane, laneIndex) => {
+              const abilityLabel = formatSkillAbility(lane.ability);
+              const helperText = lane.description ?? "No ability this round.";
+              const canUseAbility = Boolean(lane.ability) && !lane.exhausted;
+              return (
+                <li key={laneIndex} className="flex items-start justify-between gap-2">
+                  <div className="flex-1">
+                    <div className="font-semibold text-[11px]">Lane {laneIndex + 1}: {abilityLabel}</div>
+                    <div className="text-[11px] text-amber-100/80 leading-snug">{helperText}</div>
+                  </div>
+                  {lane.ability ? (
+                    canUseAbility ? (
+                      <button
+                        type="button"
+                        onClick={() => useSkillAbility(localLegacySide, laneIndex)}
+                        disabled={!skillPhaseActive}
+                        className="rounded-full border border-amber-400/60 bg-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-50 transition disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-500/30"
+                      >
+                        {skillPhaseActive ? "Use" : "Ready"}
+                      </button>
+                    ) : (
+                      <span className="rounded-full border border-amber-200/30 px-2 py-0.5 text-[10px] text-amber-200/80">Spent</span>
+                    )
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          {skillPhaseActive && (
+            <div className="mt-2 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={handleSkillConfirm}
+                className="rounded-full bg-amber-400 px-3 py-1 text-[12px] font-semibold text-slate-900 shadow-sm transition hover:bg-amber-300"
+              >
+                Continue to battle
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* HUD */}
       <div className="relative z-10 mb-3 sm:mb-4">
         <HUDPanels
@@ -1633,12 +1656,6 @@ export default function ThreeWheel_WinsOnly({
                 isAwaitingSpellTarget={isAwaitingSpellTarget}
                 variant="grouped"
                 spellHighlightedCardIds={spellHighlightedCardIds}
-                skillPhaseActive={skillPhaseActive}
-                skillInfo={{
-                  player: skillLaneDetails.player?.[i] ?? null,
-                  enemy: skillLaneDetails.enemy?.[i] ?? null,
-                }}
-                onSkillActivate={useSkillAbility}
               />
             </div>
           ))}
