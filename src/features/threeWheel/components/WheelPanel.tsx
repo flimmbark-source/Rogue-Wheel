@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import CanvasWheel, { WheelHandle } from "../../../components/CanvasWheel";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter, Phase, Section } from "../../../game/types";
+import type { AbilityKind } from "../../../game/skills";
 import {
   type SpellDefinition,
   type SpellTargetInstance,
@@ -23,6 +24,13 @@ export type { LegacySide } from "../utils/slotVisibility";
 type SlotView = { side: LegacySide; card: Card | null; name: string };
 
 type SideState<T> = Record<LegacySide, T>;
+
+type SkillLaneMeta = {
+  ability: AbilityKind | null;
+  label: string | null;
+  description: string | null;
+  exhausted: boolean;
+};
 
 interface Theme {
   panelBg: string;
@@ -80,6 +88,9 @@ export interface WheelPanelProps {
   onWheelTargetSelect?: (wheelIndex: number) => void;
   isAwaitingSpellTarget: boolean;
   variant?: "standalone" | "grouped";
+  skillPhaseActive?: boolean;
+  skillInfo?: Partial<Record<LegacySide, SkillLaneMeta | null>>;
+  onSkillActivate?: (side: LegacySide, laneIndex: number) => void;
 }
 
 const slotWidthPx = 80;
@@ -133,6 +144,9 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   isAwaitingSpellTarget,
   variant = "standalone",
   spellHighlightedCardIds,
+  skillPhaseActive = false,
+  skillInfo,
+  onSkillActivate,
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -175,6 +189,26 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
 
   const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
   const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
+
+  const getSkillInfoForSide = (side: LegacySide): SkillLaneMeta | null => {
+    const info = skillInfo?.[side] ?? null;
+    return info ?? null;
+  };
+
+  const leftSkillInfo = getSkillInfoForSide("player");
+  const rightSkillInfo = getSkillInfoForSide("enemy");
+
+  const isSkillReadyForSide = (side: LegacySide, info: SkillLaneMeta | null): boolean =>
+    Boolean(
+      skillPhaseActive &&
+        side === localLegacySide &&
+        info &&
+        info.ability &&
+        !info.exhausted,
+    );
+
+  const leftSkillReady = isSkillReadyForSide("player", leftSkillInfo);
+  const rightSkillReady = isSkillReadyForSide("enemy", rightSkillInfo);
 
   const leftSlotOwnership: SpellTargetOwnership | null = pendingSpell
     ? leftSlot.side === pendingSpell.side
@@ -259,21 +293,27 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     slot: SlotView,
     isSlotSelected: boolean,
     slotTargetable: boolean,
+    skillMeta: SkillLaneMeta | null,
+    skillReady: boolean,
   ) => {
     if (!slot.card) return null;
     const card = slot.card;
     const isSpellAffected = spellHighlightSet.has(card.id);
-    const canInteractNormally =
+    const canAssignDuringChoose =
       !awaitingSpellTarget && slot.side === localLegacySide && phase === "choose" && isWheelActive;
 
-    const cardInteractable = canInteractNormally || slotTargetable;
+    const cardInteractable = canAssignDuringChoose || slotTargetable || skillReady;
 
     const handlePick = () => {
       if (slotTargetable && slot.card) {
         onSpellTargetSelect?.({ side: slot.side, lane: index, card: slot.card, location: "board" });
         return;
       }
-      if (!canInteractNormally) return;
+      if (skillReady) {
+        onSkillActivate?.(slot.side, index);
+        return;
+      }
+      if (!canAssignDuringChoose) return;
       if (selectedCardId) {
         tapAssignIfSelected();
       } else {
@@ -308,6 +348,19 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       startTouchDrag(card, e);
     };
 
+    const extraClasses: string[] = [];
+    if (slotTargetable) {
+      extraClasses.push("ring-2 ring-sky-400");
+    }
+    if (skillReady) {
+      extraClasses.push("ring-2 ring-amber-300 animate-pulse");
+    }
+
+    const ariaLabel =
+      skillMeta?.ability && skillReady
+        ? `${slot.name} skill ready: ${skillMeta.label ?? ""}`.trim()
+        : undefined;
+
     return (
       <StSCard
         card={card}
@@ -316,14 +369,49 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         selected={isSlotSelected}
         spellAffected={isSpellAffected}
         onPick={handlePick}
-        draggable={canInteractNormally}
+        draggable={canAssignDuringChoose}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onPointerDown={handlePointerDown}
         onTouchStart={handleTouchStart}
-        className={slotTargetable ? "ring-2 ring-sky-400" : undefined}
+        className={extraClasses.join(" ") || undefined}
         spellTargetable={slotTargetable}
+        ariaLabel={ariaLabel}
+        title={skillMeta?.description ?? undefined}
       />
+    );
+  };
+
+  const renderSkillStatus = (
+    info: SkillLaneMeta | null,
+    side: LegacySide,
+    ready: boolean,
+  ): React.ReactNode => {
+    if (!info?.ability) return null;
+    const spent = info.exhausted;
+    const statusText = spent
+      ? "Spent"
+      : side === localLegacySide
+      ? ready
+        ? "Tap to activate"
+        : "Ready"
+      : "Rival skill";
+    const statusClass = spent ? "text-amber-200/40" : "text-amber-100/80";
+    return (
+      <>
+        <div
+          aria-hidden
+          className="pointer-events-none absolute top-1 left-1 rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-amber-200/80 bg-amber-500/10"
+        >
+          {info.label ?? "Skill"}
+        </div>
+        <div
+          aria-hidden
+          className={`pointer-events-none absolute bottom-1 left-1 right-1 text-center text-[9px] leading-tight ${statusClass}`}
+        >
+          {statusText}
+        </div>
+      </>
     );
   };
 
@@ -451,15 +539,20 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
               return;
             }
           }
+          if (leftSkillReady && card) {
+            onSkillActivate?.(leftSlot.side, index);
+            return;
+          }
           if (awaitingSpellTarget) return;
+          if (phase !== "choose") return;
           if (leftSlot.side !== localLegacySide) return;
           if (selectedCardId) {
             tapAssignIfSelected();
-          } else if (leftSlot.card) {
-            setSelectedCardId(leftSlot.card.id);
+          } else if (card) {
+            setSelectedCardId(card.id);
           }
         }}
-        className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+        className="relative w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
         style={{
           backgroundColor:
             dragOverWheel === index || isLeftSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
@@ -473,15 +566,17 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
             ? "0 0 0 2px rgba(56,189,248,0.55)"
             : "none",
         }}
+        title={leftSkillInfo?.description ?? undefined}
         aria-label={`Wheel ${index + 1} left slot`}
       >
         {shouldShowLeftCard ? (
-          renderSlotCard(leftSlot, isLeftSelected, leftSlotTargetable)
+          renderSlotCard(leftSlot, isLeftSelected, leftSlotTargetable, leftSkillInfo, leftSkillReady)
         ) : (
           <div className="text-[11px] opacity-80 text-center">
             {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
           </div>
         )}
+        {renderSkillStatus(leftSkillInfo, leftSlot.side, leftSkillReady)}
       </div>
 
       <div
@@ -522,7 +617,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       </div>
 
       <div
-        className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+        className="relative w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
         style={{
           backgroundColor:
             dragOverWheel === index || isRightSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
@@ -562,22 +657,29 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
               return;
             }
           }
+          if (rightSkillReady && card) {
+            onSkillActivate?.(rightSlot.side, index);
+            return;
+          }
           if (awaitingSpellTarget) return;
+          if (phase !== "choose") return;
           if (rightSlot.side !== localLegacySide) return;
           if (selectedCardId) {
             tapAssignIfSelected();
-          } else if (rightSlot.card) {
-            setSelectedCardId(rightSlot.card.id);
+          } else if (card) {
+            setSelectedCardId(card.id);
           }
         }}
+        title={rightSkillInfo?.description ?? undefined}
       >
         {shouldShowRightCard ? (
-          renderSlotCard(rightSlot, isRightSelected, rightSlotTargetable)
+          renderSlotCard(rightSlot, isRightSelected, rightSlotTargetable, rightSkillInfo, rightSkillReady)
         ) : (
           <div className="text-[11px] opacity-60 text-center">
             {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
           </div>
         )}
+        {renderSkillStatus(rightSkillInfo, rightSlot.side, rightSkillReady)}
       </div>
     </div>
   );
