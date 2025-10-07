@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   describeSkillAbility,
   determineSkillAbility,
+  getReserveBoostValue,
   getSkillCardValue,
   isReserveBoostTarget,
 } from "../src/game/skills.js";
@@ -87,6 +88,13 @@ const makeCard = (overrides: Partial<Record<keyof Card, unknown>>): Card => {
     .filter((card) => isReserveBoostTarget(card))
     .map((card) => card.id);
   assert.deepEqual(reserveBoostTargets, ["positive", "basePositive"]);
+}
+
+{
+  const card = makeCard({ number: 5, baseNumber: 0 });
+  assert.equal(getSkillCardValue(card), 0);
+  assert.equal(getReserveBoostValue(card), 5);
+  assert.equal(isReserveBoostTarget(card), true);
 }
 
 console.log("skill ability classification tests passed");

@@ -36,6 +36,7 @@ import { fmtNum, isNormal } from "../../../game/values";
 import {
   describeSkillAbility,
   determineSkillAbility,
+  getReserveBoostValue,
   getSkillCardValue,
   isReserveBoostTarget,
   type SkillAbility,
@@ -995,17 +996,17 @@ export function useThreeWheelGame({
         return { value: 0, card: null };
       }
       let chosenCard: Card = reserveCards[0];
-      let bestValue = getSkillCardValue(chosenCard) ?? Number.NEGATIVE_INFINITY;
+      let bestValue = getReserveBoostValue(chosenCard) ?? Number.NEGATIVE_INFINITY;
       if (preferredCardId) {
         const match = reserveCards.find((card) => card.id === preferredCardId);
         if (!match) {
           return { value: 0, card: null };
         }
         chosenCard = match;
-        bestValue = getSkillCardValue(chosenCard) ?? Number.NEGATIVE_INFINITY;
+        bestValue = getReserveBoostValue(chosenCard) ?? Number.NEGATIVE_INFINITY;
       } else {
         for (const candidate of reserveCards) {
-          const value = getSkillCardValue(candidate) ?? Number.NEGATIVE_INFINITY;
+          const value = getReserveBoostValue(candidate) ?? Number.NEGATIVE_INFINITY;
           if (value > bestValue) {
             chosenCard = candidate;
             bestValue = value;
@@ -1017,7 +1018,7 @@ export function useThreeWheelGame({
         const discard = [...prev.discard, chosenCard];
         return { ...prev, hand, discard };
       });
-      const boostValue = getSkillCardValue(chosenCard) ?? 0;
+      const boostValue = getReserveBoostValue(chosenCard) ?? 0;
       return { value: boostValue, card: chosenCard };
     },
     [getFighterSnapshot, updateFighter],
@@ -1678,7 +1679,7 @@ export function useThreeWheelGame({
     let bestPositiveReserve = Number.NEGATIVE_INFINITY;
 
     for (const reserve of reserveCards) {
-      const value = getSkillCardValue(reserve);
+      const value = getReserveBoostValue(reserve);
       if (value === null) continue;
       if (value > highestReserveValue) {
         highestReserveValue = value;
