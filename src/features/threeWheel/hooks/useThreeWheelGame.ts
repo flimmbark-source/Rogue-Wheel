@@ -122,6 +122,7 @@ type SkillLane = {
   ability: AbilityKind | null;
   cardId: string | null;
   exhausted: boolean;
+  usesRemaining: number;
 };
 
 type SkillState = {
@@ -130,7 +131,24 @@ type SkillState = {
   lanes: Record<LegacySide, SkillLane[]>;
 };
 
-const createEmptySkillLane = (): SkillLane => ({ ability: null, cardId: null, exhausted: true });
+const createEmptySkillLane = (): SkillLane => ({
+  ability: null,
+  cardId: null,
+  exhausted: true,
+  usesRemaining: 0,
+});
+
+const INITIAL_SKILL_USES: Record<AbilityKind, number> = {
+  swapReserve: 1,
+  rerollReserve: 2,
+  boostCard: 1,
+  reserveBoost: 1,
+};
+
+const getInitialSkillUses = (ability: AbilityKind | null): number => {
+  if (!ability) return 0;
+  return INITIAL_SKILL_USES[ability] ?? 1;
+};
 
 const createSkillLanes = (): Record<LegacySide, SkillLane[]> => ({
   player: [createEmptySkillLane(), createEmptySkillLane(), createEmptySkillLane()],
@@ -198,6 +216,13 @@ export type ThreeWheelGameRefs = {
   ptrPos: React.MutableRefObject<{ x: number; y: number }>;
 };
 
+export type SkillAbilityUsageResult = {
+  success: boolean;
+  failureReason?: string;
+  exhausted: boolean;
+  usesRemaining: number;
+};
+
 export type ThreeWheelGameActions = {
   setHandClearance: React.Dispatch<React.SetStateAction<number>>;
   setSelectedCardId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -212,7 +237,11 @@ export type ThreeWheelGameActions = {
   handleExitClick: () => void;
   applySpellEffects: (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => void;
   setAnteBet: (bet: number) => void;
-  useSkillAbility: (side: LegacySide, laneIndex: number, target?: SkillAbilityTarget) => void;
+  useSkillAbility: (
+    side: LegacySide,
+    laneIndex: number,
+    target?: SkillAbilityTarget,
+  ) => SkillAbilityUsageResult;
 };
 
 export type ThreeWheelGameReturn = {
@@ -388,10 +417,11 @@ export function useThreeWheelGame({
               ability,
               cardId,
               exhausted: ability ? false : true,
+              usesRemaining: getInitialSkillUses(ability),
             };
             changed = true;
-          } else if (!ability && !lane.exhausted) {
-            nextLanes[side][i] = { ability: null, cardId, exhausted: true };
+          } else if (!ability && (!lane.exhausted || lane.usesRemaining !== 0)) {
+            nextLanes[side][i] = { ability: null, cardId, exhausted: true, usesRemaining: 0 };
             changed = true;
           }
         }
@@ -1780,7 +1810,11 @@ export function useThreeWheelGame({
   }, [setSkillState]);
 
   const useSkillAbility = useCallback(
-    (side: LegacySide, laneIndex: number, target?: SkillAbilityTarget) => {
+    (
+      side: LegacySide,
+      laneIndex: number,
+      target?: SkillAbilityTarget,
+    ): SkillAbilityUsageResult => {
       const assignments = assignRef.current;
       const laneCards = assignments[side];
       const skillCard = laneCards?.[laneIndex] ?? null;
@@ -1789,12 +1823,21 @@ export function useThreeWheelGame({
 
       const laneState = skillStateRef.current.lanes[side]?.[laneIndex];
       if (!laneState || !laneState.ability) {
-        return;
+        return {
+          success: false,
+          exhausted: true,
+          usesRemaining: 0,
+        };
       }
 
       if (laneState.exhausted) {
         appendLog(`${actorName}'s ${laneState.ability} has already been used.`);
-        return;
+        return {
+          success: false,
+          failureReason: `${laneState.ability} exhausted`,
+          exhausted: true,
+          usesRemaining: laneState.usesRemaining,
+        };
       }
 
       const ability = laneState.ability;
@@ -1828,8 +1871,16 @@ export function useThreeWheelGame({
         if (result.failureReason) {
           appendLog(`${actorName}'s ${ability} failed: ${result.failureReason}`);
         }
-        return;
+        return {
+          success: false,
+          failureReason: result.failureReason,
+          exhausted: laneState.exhausted,
+          usesRemaining: laneState.usesRemaining,
+        };
       }
+
+      const nextUsesRemaining = Math.max(0, laneState.usesRemaining - 1);
+      const willExhaust = nextUsesRemaining <= 0;
 
       setSkillState((prev) => {
         const lanes = prev.lanes[side];
@@ -1837,7 +1888,11 @@ export function useThreeWheelGame({
         if (!lane || lane.exhausted || lane.ability !== ability) {
           return prev;
         }
-        const updatedLane: SkillLane = { ...lane, exhausted: true };
+        const updatedLane: SkillLane = {
+          ...lane,
+          exhausted: willExhaust,
+          usesRemaining: nextUsesRemaining,
+        };
         const updatedLanesForSide = [...lanes];
         updatedLanesForSide[laneIndex] = updatedLane;
         const next: SkillState = {
@@ -1848,7 +1903,21 @@ export function useThreeWheelGame({
         return next;
       });
 
-      appendLog(`${actorName} used ${ability}.`);
+      if (ability === "rerollReserve") {
+        appendLog(
+          willExhaust
+            ? `${actorName} finished their Reroll Reserve.`
+            : `${actorName} can discard another reserve or cancel to finish the skill.`,
+        );
+      } else {
+        appendLog(`${actorName} used ${ability}.`);
+      }
+
+      return {
+        success: true,
+        exhausted: willExhaust,
+        usesRemaining: nextUsesRemaining,
+      };
     },
     [
       appendLog,
