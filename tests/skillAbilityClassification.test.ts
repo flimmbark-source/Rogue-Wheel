@@ -41,7 +41,39 @@ const makeCard = (overrides: Partial<Record<keyof Card, unknown>>): Card => {
   assert.equal(determineSkillAbility(card), "boostCard");
   assert.equal(
     describeSkillAbility("boostCard", card),
-    "Add 3 to a friendly card in play.",
+    "Select a friendly lane to add 3.",
+  );
+}
+
+{
+  const card = makeCard({ baseNumber: 5, number: 8 });
+  assert.equal(determineSkillAbility(card), "boostCard");
+  assert.equal(
+    describeSkillAbility("boostCard", card),
+    "Select a friendly lane to add 8.",
+  );
+}
+
+{
+  assert.equal(
+    describeSkillAbility("swapReserve"),
+    "Select a reserve card to swap into a lane.",
+  );
+}
+
+{
+  const card = makeCard({ baseNumber: 1 });
+  assert.equal(
+    describeSkillAbility("rerollReserve", card),
+    "Select a reserve card to discard and draw a replacement.",
+  );
+}
+
+{
+  const card = makeCard({ baseNumber: 5 });
+  assert.equal(
+    describeSkillAbility("reserveBoost", card),
+    "Select a positive reserve card to boost a friendly lane by 5.",
   );
 }
 
