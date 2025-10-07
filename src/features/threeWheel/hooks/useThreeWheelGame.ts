@@ -1307,29 +1307,25 @@ export function useThreeWheelGame({
           ability === "swapReserve" || ability === "reserveBoost" || ability === "rerollReserve";
         const requiresLaneTarget = ability === "boostCard";
         if (requiresReserveTarget && side === localLegacySide) {
-          const nextTargeting: SkillTargetingState = {
+          setSkillTargeting({
             kind: "reserve",
             ability,
             side,
             laneIndex,
             targetsRemaining: targetCount,
             targetsTotal: targetCount,
-          };
-          skillTargetingRef.current = nextTargeting;
-          setSkillTargeting(nextTargeting);
+          });
           return prev;
         }
         if (requiresLaneTarget && side === localLegacySide) {
-          const nextTargeting: SkillTargetingState = {
+          setSkillTargeting({
             kind: "lane",
             ability: "boostCard",
             side,
             laneIndex,
             targetsRemaining: targetCount,
             targetsTotal: targetCount,
-          };
-          skillTargetingRef.current = nextTargeting;
-          setSkillTargeting(nextTargeting);
+          });
           return prev;
         }
 
@@ -1424,16 +1420,6 @@ export function useThreeWheelGame({
 
   const resolveSkillTargeting = useCallback(
     (selection: SkillTargetSelection) => {
-      const targeting = skillTargetingRef.current;
-      if (!targeting) {
-        return;
-      }
-      if (targeting.targetsRemaining <= 0) {
-        skillTargetingRef.current = null;
-        setSkillTargeting(null);
-        return;
-      }
-
       let actionSucceeded = false;
       let abilityUsed: SkillAbility | null = null;
       let shouldClearTargeting = false;
@@ -1442,6 +1428,8 @@ export function useThreeWheelGame({
       setSkillState((prev) => {
         if (!prev) return prev;
         if (phaseRef.current !== "skill") return prev;
+        const targeting = skillTargetingRef.current;
+        if (!targeting) return prev;
         if (targeting.side !== prev.activeSide) return prev;
         if (selection.kind !== targeting.kind) return prev;
 
@@ -1551,10 +1539,8 @@ export function useThreeWheelGame({
       }
 
       if (nextTargetingState) {
-        skillTargetingRef.current = nextTargetingState;
         setSkillTargeting(nextTargetingState);
       } else if (shouldClearTargeting) {
-        skillTargetingRef.current = null;
         setSkillTargeting(null);
       }
     },
@@ -1584,7 +1570,6 @@ export function useThreeWheelGame({
         return finalizeSkillActivation(prev, targeting.side, targeting.laneIndex, targeting.ability);
       });
     }
-    skillTargetingRef.current = null;
     setSkillTargeting(null);
   }, [finalizeSkillActivation]);
 
