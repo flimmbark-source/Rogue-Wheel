@@ -126,12 +126,14 @@ type SkillOption = {
 type SkillPhaseState = {
   activeSide: LegacySide;
   exhausted: SideState<[boolean, boolean, boolean]>;
+  usesRemaining: SideState<[number, number, number]>;
   passed: SideState<boolean>;
 };
 
 type SkillPhaseView = {
   activeSide: LegacySide;
   exhausted: SideState<[boolean, boolean, boolean]>;
+  usesRemaining: SideState<[number, number, number]>;
   passed: SideState<boolean>;
   options: SkillOption[];
 };
@@ -1094,6 +1096,7 @@ export function useThreeWheelGame({
       return {
         activeSide,
         exhausted: state.exhausted,
+        usesRemaining: state.usesRemaining,
         passed: state.passed,
         options,
       };
@@ -1256,12 +1259,14 @@ export function useThreeWheelGame({
         return false;
       }
 
-      const exhausted = createInitialSkillUsageState();
+      
       reserveCycleCountsRef.current = { player: 0, enemy: 0 };
+      const { exhausted, usesRemaining } = createInitialSkillUsageState();
       const initialActive = options?.activeSide ?? initiative;
       const initialState: SkillPhaseState = {
         activeSide: initialActive,
         exhausted,
+        usesRemaining,
         passed: { player: false, enemy: false },
       };
       const currentHas = hasSkillActions(initialState.activeSide, initialState);
@@ -1402,6 +1407,8 @@ export function useThreeWheelGame({
         if (!success) {
           return prev;
         }
+
+        const spentState = spendSkillActivation(prev, side, laneIndex);
 
         if (ability === "swapReserve" || ability === "rerollReserve" || ability === "reserveBoost") {
           updateReservePreview();
