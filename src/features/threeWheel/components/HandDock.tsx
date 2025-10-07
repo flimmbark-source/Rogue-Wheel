@@ -19,6 +19,7 @@ import {
   type SpellTargetLocation,
 } from "../../../game/spells";
 import type { SkillTargetingState } from "../hooks/useThreeWheelGame";
+import { isReserveBoostTarget } from "../../../game/skills";
 
 interface HandDockProps {
   localLegacySide: LegacySide;
@@ -210,7 +211,9 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
         case "rerollReserve":
           return new Set(fighter.hand.map((card) => card.id));
         case "reserveBoost":
-          return new Set(fighter.hand.map((card) => card.id));
+          return new Set(
+            fighter.hand.filter((card) => isReserveBoostTarget(card)).map((card) => card.id),
+          );
         default:
           return new Set<string>();
       }
