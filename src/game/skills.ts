@@ -1,10 +1,27 @@
-import type { Card } from "./types.js";
+import type { Card, LegacySide } from "./types.js";
 
 export type AbilityKind =
   | "swapReserve"
   | "rerollReserve"
   | "boostCard"
   | "reserveBoost";
+
+export type SkillTargetKind = "board" | "reserve";
+
+export type SkillTargetOwnership = "ally" | "enemy" | "any";
+
+export type SkillTargetStageDefinition = {
+  kind: SkillTargetKind;
+  ownership: SkillTargetOwnership;
+  allowSelf?: boolean;
+  label?: string;
+};
+
+type SkillTargetStageConfig = SkillTargetStageDefinition & { count?: number };
+
+export type SkillTargetSelection =
+  | { kind: "board"; side: LegacySide; lane: number; card: Card }
+  | { kind: "reserve"; side: LegacySide; index: number; card: Card };
 
 function sanitizeNumber(value: unknown): number | undefined {
   if (value === null || value === undefined) {
@@ -105,4 +122,52 @@ const ABILITY_DESCRIPTIONS: Record<AbilityKind, (card?: Card) => string> = {
 export function describeSkillAbility(kind: AbilityKind, card?: Card): string {
   const describe = ABILITY_DESCRIPTIONS[kind];
   return describe ? describe(card) : "";
+}
+
+const SKILL_TARGET_STAGE_CONFIG: Record<AbilityKind, SkillTargetStageConfig[]> = {
+  swapReserve: [
+    {
+      kind: "reserve",
+      ownership: "ally",
+      label: "a reserve card to swap",
+    },
+  ],
+  rerollReserve: [
+    {
+      kind: "reserve",
+      ownership: "ally",
+      label: "a reserve card to reroll",
+    },
+  ],
+  boostCard: [
+    {
+      kind: "board",
+      ownership: "ally",
+      label: "a friendly card to boost",
+    },
+  ],
+  reserveBoost: [
+    {
+      kind: "reserve",
+      ownership: "ally",
+      label: "a reserve card to consume",
+    },
+  ],
+};
+
+export function getSkillAbilityTargetStages(kind: AbilityKind): SkillTargetStageDefinition[] {
+  const config = SKILL_TARGET_STAGE_CONFIG[kind] ?? [];
+  const stages: SkillTargetStageDefinition[] = [];
+  for (const entry of config) {
+    const { count = 1, ...definition } = entry;
+    const repeats = Number.isInteger(count) && count && count > 0 ? count : 1;
+    for (let i = 0; i < repeats; i += 1) {
+      stages.push({ ...definition });
+    }
+  }
+  return stages;
+}
+
+export function skillAbilityRequiresTargets(kind: AbilityKind): boolean {
+  return getSkillAbilityTargetStages(kind).length > 0;
 }
