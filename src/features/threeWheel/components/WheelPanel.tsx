@@ -371,7 +371,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
 
     const isExhausted = Boolean(skillState?.exhausted);
     const rotationClass = `inline-block transition-transform duration-200 ease-out ${
-      isExhausted ? "rotate-90" : ""
+      isExhausted ? "rotate-90 -translate-x-1" : ""
     }`;
 
     return (
