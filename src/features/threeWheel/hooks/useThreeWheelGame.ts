@@ -46,11 +46,6 @@ import {
   type RoundAnalysis,
   type WheelOutcome,
 } from "./roundOutcomeSummary";
-import {
-  initSkillPhase,
-  type SkillPhaseState,
-  type SkillPhaseUiEvents,
-} from "../skillPhase";
 
 export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine";
 
@@ -146,7 +141,6 @@ export type ThreeWheelGameState = {
   ptrDragType: "pointer" | "touch" | null;
   log: GameLogEntry[];
   spellHighlights: SpellHighlightState;
-  skillPhase: SkillPhaseState | null;
 };
 
 export type ThreeWheelGameDerived = {
@@ -252,7 +246,6 @@ export function useThreeWheelGame({
 
   const currentGameMode = normalizeGameMode(gameMode ?? DEFAULT_GAME_MODE);
   const isAnteMode = currentGameMode.includes("ante");
-  const isSkillMode = currentGameMode.includes("skill");
 
   const hostLegacySide: LegacySide = (() => {
     if (!hostId) return "player";
@@ -309,19 +302,6 @@ export function useThreeWheelGame({
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
-  const [skillPhaseState, setSkillPhaseState] = useState<SkillPhaseState | null>(null);
-  const skillPhaseRef = useRef<SkillPhaseState | null>(skillPhaseState);
-  useEffect(() => {
-    skillPhaseRef.current = skillPhaseState;
-  }, [skillPhaseState]);
-  const [skillLaneBoosts, setSkillLaneBoosts] = useState<SideState<[number, number, number]>>({
-    player: [0, 0, 0],
-    enemy: [0, 0, 0],
-  });
-  const skillLaneBoostsRef = useRef(skillLaneBoosts);
-  useEffect(() => {
-    skillLaneBoostsRef.current = skillLaneBoosts;
-  }, [skillLaneBoosts]);
   const [resolveVotes, setResolveVotes] = useState<{ player: boolean; enemy: boolean }>({
     player: false,
     enemy: false,
@@ -699,159 +679,8 @@ export function useThreeWheelGame({
     setLog((prev) => [entry, ...prev].slice(0, 60));
   }, []);
 
-  const cardsEqual = useCallback((a: Card | null | undefined, b: Card | null | undefined) => {
-    if (!a && !b) return true;
-    if (!a || !b) return false;
-    if (a.id !== b.id) return false;
-    const numA = typeof a.number === "number" ? a.number : undefined;
-    const numB = typeof b.number === "number" ? b.number : undefined;
-    if (numA !== numB) return false;
-    const baseA = typeof a.baseNumber === "number" ? a.baseNumber : undefined;
-    const baseB = typeof b.baseNumber === "number" ? b.baseNumber : undefined;
-    if (baseA !== baseB) return false;
-    return true;
-  }, []);
-
-  const handsEqual = useCallback(
-    (existing: Card[], next: Card[]) => {
-      if (existing.length !== next.length) return false;
-      for (let i = 0; i < existing.length; i++) {
-        if (!cardsEqual(existing[i], next[i])) return false;
-      }
-      return true;
-    },
-    [cardsEqual],
-  );
-
   const [spellHighlights, setSpellHighlights] = useState<SpellHighlightState>(() => createEmptySpellHighlights());
   const spellHighlightTimeoutRef = useRef<number | null>(null);
-
-  const syncSkillPhaseToGame = useCallback(
-    (next: SkillPhaseState | null) => {
-      if (!next) {
-        const reset: SideState<[number, number, number]> = {
-          player: [0, 0, 0],
-          enemy: [0, 0, 0],
-        };
-        setSkillLaneBoosts((prev) => {
-          const same =
-            prev.player.every((value, idx) => value === reset.player[idx]) &&
-            prev.enemy.every((value, idx) => value === reset.enemy[idx]);
-          return same ? prev : reset;
-        });
-        skillLaneBoostsRef.current = reset;
-        return;
-      }
-
-      const boosts: SideState<[number, number, number]> = {
-        player: [0, 0, 0],
-        enemy: [0, 0, 0],
-      };
-      next.lanes.forEach((lane) => {
-        boosts[lane.side][lane.index] = lane.boost;
-      });
-      setSkillLaneBoosts((prev) => {
-        const same =
-          prev.player.every((value, idx) => value === boosts.player[idx]) &&
-          prev.enemy.every((value, idx) => value === boosts.enemy[idx]);
-        return same ? prev : boosts;
-      });
-      skillLaneBoostsRef.current = boosts;
-
-      setAssign((prev) => {
-        let changed = false;
-        const nextAssign: { player: (Card | null)[]; enemy: (Card | null)[] } = {
-          player: [...prev.player],
-          enemy: [...prev.enemy],
-        };
-        next.lanes.forEach((lane) => {
-          const target = lane.side === "player" ? nextAssign.player : nextAssign.enemy;
-          const replacement = lane.card ? { ...lane.card } : null;
-          if (!cardsEqual(target[lane.index], replacement)) {
-            target[lane.index] = replacement;
-            changed = true;
-          }
-        });
-        return changed ? nextAssign : prev;
-      });
-
-      setPlayer((prev) => {
-        const nextHand = next.reserves.player.map((card) => ({ ...card }));
-        if (handsEqual(prev.hand, nextHand)) return prev;
-        return { ...prev, hand: nextHand };
-      });
-
-      setEnemy((prev) => {
-        const nextHand = next.reserves.enemy.map((card) => ({ ...card }));
-        if (handsEqual(prev.hand, nextHand)) return prev;
-        return { ...prev, hand: nextHand };
-      });
-    },
-    [cardsEqual, handsEqual, setAssign, setEnemy, setPlayer],
-  );
-
-  const handleSkillPhaseStateChange = useCallback(
-    (next: SkillPhaseState) => {
-      skillPhaseRef.current = next;
-      setSkillPhaseState(next);
-      syncSkillPhaseToGame(next);
-    },
-    [syncSkillPhaseToGame],
-  );
-
-  const skillPhaseUi = useMemo<SkillPhaseUiEvents>(
-    () => ({
-      banner: (msg) => appendLog(msg),
-      log: (msg) => appendLog(msg),
-      onStateChange: handleSkillPhaseStateChange,
-    }),
-    [appendLog, handleSkillPhaseStateChange],
-  );
-  const pendingSkillResolutionRef = useRef<{ enemyPicks: (Card | null)[] } | null>(null);
-
-  const enterSkillPhase = useCallback(() => {
-    if (!isSkillMode) return false;
-
-    const currentAssign = assignRef.current;
-    const boardLanes: Array<{ side: LegacySide; index: number; card: Card | null }> = [];
-    for (let i = 0; i < 3; i++) {
-      boardLanes.push({ side: "player", index: i, card: currentAssign.player[i] });
-      boardLanes.push({ side: "enemy", index: i, card: currentAssign.enemy[i] });
-    }
-
-    const reserves = {
-      player: playerRef.current.hand.map((card) => ({ ...card })),
-      enemy: enemyRef.current.hand.map((card) => ({ ...card })),
-    } satisfies SideState<Card[]>;
-
-    const initial = initSkillPhase(boardLanes, reserves, initiative, skillPhaseUi);
-    skillPhaseRef.current = initial;
-    setSkillPhaseState(initial);
-    syncSkillPhaseToGame(initial);
-
-    const bothPassed = initial.passed.player && initial.passed.enemy;
-    if (bothPassed) {
-      setSkillPhaseState(null);
-      skillPhaseRef.current = null;
-      syncSkillPhaseToGame(null);
-      return false;
-    }
-
-    setPhase("skill");
-    return true;
-  }, [initiative, isSkillMode, setPhase, skillPhaseUi, syncSkillPhaseToGame]);
-
-  const beginCombat = useCallback(
-    (enemyPicks: (Card | null)[]) => {
-      setPhase("showEnemy");
-      setSafeTimeout(() => {
-        if (!mountedRef.current) return;
-        setPhase("anim");
-        resolveRound(enemyPicks);
-      }, 600);
-    },
-    [resolveRound, setPhase, setSafeTimeout],
-  );
 
   const clearSpellHighlights = useCallback(() => {
     setSpellHighlights(createEmptySpellHighlights());
@@ -1147,10 +976,8 @@ export function useThreeWheelGame({
 
     for (let w = 0; w < 3; w++) {
       const secList = wheelSections[w];
-      const boostP = skillLaneBoostsRef.current.player[w] ?? 0;
-      const boostE = skillLaneBoostsRef.current.enemy[w] ?? 0;
-      const baseP = cardWheelValue(played[w].p ?? null) + boostP;
-      const baseE = cardWheelValue(played[w].e ?? null) + boostE;
+      const baseP = cardWheelValue(played[w].p ?? null);
+      const baseE = cardWheelValue(played[w].e ?? null);
       const steps = modSlice(modSlice(baseP) + modSlice(baseE));
       const startToken = tokensSnapshot[w] ?? 0;
       const targetSlice = (startToken + steps) % SLICES;
@@ -1413,28 +1240,16 @@ export function useThreeWheelGame({
         setAssign((a) => ({ ...a, enemy: enemyPicks }));
       }
 
-      if (isSkillMode) {
-        pendingSkillResolutionRef.current = { enemyPicks };
-        const started = enterSkillPhase();
-        if (started) {
-          return true;
-        }
-        pendingSkillResolutionRef.current = null;
-      }
-
-      beginCombat(enemyPicks);
+      setPhase("showEnemy");
+      setSafeTimeout(() => {
+        if (!mountedRef.current) return;
+        setPhase("anim");
+        resolveRound(enemyPicks);
+      }, 600);
 
       return true;
     },
-    [
-      beginCombat,
-      broadcastLocalReserve,
-      canReveal,
-      enterSkillPhase,
-      isMultiplayer,
-      isSkillMode,
-      wheelSize,
-    ]
+    [broadcastLocalReserve, canReveal, isMultiplayer, wheelSize]
   );
 
   const onReveal = useCallback(() => {
@@ -1453,25 +1268,6 @@ export function useThreeWheelGame({
   useEffect(() => {
     attemptAutoReveal();
   }, [attemptAutoReveal, resolveVotes]);
-
-  useEffect(() => {
-    if (phase !== "skill") return;
-    const current = skillPhaseRef.current;
-    if (!current) return;
-    if (!current.passed.player || !current.passed.enemy) return;
-
-    const pending = pendingSkillResolutionRef.current;
-    pendingSkillResolutionRef.current = null;
-    setSkillPhaseState(null);
-    skillPhaseRef.current = null;
-    syncSkillPhaseToGame(null);
-
-    if (pending) {
-      beginCombat(pending.enemyPicks);
-    } else {
-      beginCombat([...assignRef.current.enemy]);
-    }
-  }, [beginCombat, phase, syncSkillPhaseToGame]);
 
   function resolveRound(
     enemyPicks?: (Card | null)[],
@@ -1642,11 +1438,6 @@ export function useThreeWheelGame({
       reservePenaltiesRef.current = { player: 0, enemy: 0 };
       reserveReportsRef.current = { player: null, enemy: null };
 
-      pendingSkillResolutionRef.current = null;
-      setSkillPhaseState(null);
-      skillPhaseRef.current = null;
-      syncSkillPhaseToGame(null);
-
       setPhase("choose");
       setRound((r) => r + 1);
 
@@ -1658,7 +1449,6 @@ export function useThreeWheelGame({
       commitPendingWins,
       generateWheelSet,
       phase,
-      syncSkillPhaseToGame,
       setDragOverWheel,
     ]
   );
@@ -1869,10 +1659,6 @@ export function useThreeWheelGame({
 
     reserveReportsRef.current = { player: null, enemy: null };
     reservePenaltiesRef.current = { player: 0, enemy: 0 };
-    pendingSkillResolutionRef.current = null;
-    setSkillPhaseState(null);
-    skillPhaseRef.current = null;
-    syncSkillPhaseToGame(null);
 
     wheelRefs.forEach((ref) => ref.current?.setVisualToken(0));
 
@@ -1934,13 +1720,11 @@ export function useThreeWheelGame({
     setReserveSums,
     setRound,
     setSelectedCardId,
-    setSkillPhaseState,
     setTokens,
     setWheelHUD,
     setWheelSections,
     setWins,
     _setDragOverWheel,
-    syncSkillPhaseToGame,
     wheelRefs,
   ]);
 
@@ -2145,7 +1929,6 @@ export function useThreeWheelGame({
     ptrDragType,
     log,
     spellHighlights,
-    skillPhase: skillPhaseState,
   };
 
   const derived: ThreeWheelGameDerived = {

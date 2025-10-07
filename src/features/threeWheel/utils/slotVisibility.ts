@@ -25,4 +25,4 @@ export const shouldShowSlotCard = ({
 };
 
 export const isChooseLikePhase = (phase: string) =>
-  phase === "choose" || phase === "skill" || phase === "spellTargeting";
+  phase === "choose" || phase === "spellTargeting";
