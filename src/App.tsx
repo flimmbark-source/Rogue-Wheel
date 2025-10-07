@@ -93,7 +93,7 @@ import {
 import { countSymbolsFromCards, getVisibleSpellsForHand } from "./game/grimoire";
 import StSCard from "./components/StSCard";
 import { chooseCpuSpellResponse, type CpuSpellDecision } from "./game/ai/grimoireCpu";
-import { describeSkillAbility, type AbilityKind } from "./game/skills";
+import { describeSkillAbility, isReserveBoostTarget, type AbilityKind } from "./game/skills";
 
 // ---- Local aliases/types/state helpers
 type AblyRealtime = InstanceType<typeof Realtime>;
@@ -110,8 +110,42 @@ const SKILL_ABILITY_LABELS: Record<AbilityKind, string> = {
   reserveBoost: "Reserve Boost",
 };
 
-const formatSkillAbility = (ability: AbilityKind | null) =>
-  ability ? SKILL_ABILITY_LABELS[ability] ?? ability : "No ability";
+type SkillTargetSpec = {
+  kind: "reserve" | "friendlyLane";
+  prompt: string;
+  requirePositiveReserve?: boolean;
+};
+
+const SKILL_TARGET_SPECS: Record<AbilityKind, SkillTargetSpec> = {
+  swapReserve: {
+    kind: "reserve",
+    prompt: "Select a reserve card to swap with this lane.",
+  },
+  rerollReserve: {
+    kind: "reserve",
+    prompt: "Select a reserve card to discard and draw a new one.",
+  },
+  boostCard: {
+    kind: "friendlyLane",
+    prompt: "Select a friendly lane to boost.",
+  },
+  reserveBoost: {
+    kind: "reserve",
+    prompt: "Select a positive reserve card to consume for a boost.",
+    requirePositiveReserve: true,
+  },
+};
+
+type SkillTargetingState = {
+  side: LegacySide;
+  laneIndex: number;
+  ability: AbilityKind;
+  spec: SkillTargetSpec;
+};
+
+type SkillTargetSelection =
+  | { type: "reserve"; cardId: string }
+  | { type: "lane"; laneIndex: number };
 
 function createWheelSideState<T>(value: T): WheelSideState<T> {
   return [
@@ -1070,20 +1104,134 @@ export default function ThreeWheel_WinsOnly({
       })()
     : "";
   const skillPhaseActive = isSkillMode && phaseForLogic === "skill";
-  const skillPhaseCompleted = skill.completed;
-  const skillLaneDetails = useMemo(
-    () =>
-      (skill.lanes[localLegacySide] ?? []).map((lane, laneIndex) => {
-        const card = assign[localLegacySide][laneIndex];
-        const ability = lane?.ability ?? null;
-        const description = ability ? describeSkillAbility(ability, card ?? undefined) : null;
-        return {
-          ability,
-          exhausted: lane?.exhausted ?? true,
-          description,
-        };
-      }),
-    [assign, localLegacySide, skill.lanes],
+  const localSkillLanes = skill.lanes[localLegacySide] ?? [];
+  const [skillTargeting, setSkillTargeting] = useState<SkillTargetingState | null>(null);
+
+  useEffect(() => {
+    if (!skillPhaseActive) {
+      setSkillTargeting(null);
+    }
+  }, [skillPhaseActive]);
+
+  useEffect(() => {
+    if (!skillTargeting) return;
+    const laneState = skill.lanes[skillTargeting.side]?.[skillTargeting.laneIndex];
+    if (!laneState || laneState.exhausted || laneState.ability !== skillTargeting.ability) {
+      setSkillTargeting(null);
+    }
+  }, [skill.lanes, skillTargeting]);
+
+  useEffect(() => {
+    if (isAwaitingSpellTarget) {
+      setSkillTargeting(null);
+    }
+  }, [isAwaitingSpellTarget]);
+
+  const skillTargetingForChildren = skillTargeting
+    ? {
+        side: skillTargeting.side,
+        laneIndex: skillTargeting.laneIndex,
+        ability: skillTargeting.ability,
+        specKind: skillTargeting.spec.kind,
+      }
+    : null;
+
+  const skillTargetableReserveIds = useMemo(() => {
+    if (!skillTargeting || skillTargeting.side !== localLegacySide) return null;
+    if (skillTargeting.spec.kind !== "reserve") return null;
+    const cards = localLegacySide === "player" ? player.hand : enemy.hand;
+    const allowed = cards.filter((card) =>
+      skillTargeting.spec.requirePositiveReserve ? isReserveBoostTarget(card) : true,
+    );
+    return new Set(allowed.map((card) => card.id));
+  }, [enemy.hand, localLegacySide, player.hand, skillTargeting]);
+
+  const skillTargetableLaneIndexes = useMemo(() => {
+    if (!skillTargeting || skillTargeting.side !== localLegacySide) return null;
+    if (skillTargeting.spec.kind !== "friendlyLane") return null;
+    const lanes = assign[localLegacySide];
+    const result = new Set<number>();
+    lanes.forEach((card, idx) => {
+      if (card) {
+        result.add(idx);
+      }
+    });
+    return result;
+  }, [assign, localLegacySide, skillTargeting]);
+
+  const skillTargetPrompt = skillTargeting ? skillTargeting.spec.prompt : "";
+  const skillAbilityLabel = skillTargeting ? SKILL_ABILITY_LABELS[skillTargeting.ability] : "";
+  const skillAbilityDescription = useMemo(() => {
+    if (!skillTargeting) return "";
+    const laneCard = assign[skillTargeting.side][skillTargeting.laneIndex];
+    return describeSkillAbility(skillTargeting.ability, laneCard ?? undefined);
+  }, [assign, skillTargeting]);
+
+  const beginSkillTargeting = useCallback(
+    (laneIndex: number, ability: AbilityKind) => {
+      if (!skillPhaseActive) return;
+      const spec = SKILL_TARGET_SPECS[ability];
+      if (!spec) return;
+      if (skillTargeting && skillTargeting.side === localLegacySide && skillTargeting.laneIndex === laneIndex) {
+        setSkillTargeting(null);
+        return;
+      }
+
+      if (spec.kind === "reserve") {
+        const handCards = localLegacySide === "player" ? player.hand : enemy.hand;
+        const available = handCards.filter((card) =>
+          spec.requirePositiveReserve ? isReserveBoostTarget(card) : true,
+        );
+        if (available.length === 0) {
+          return;
+        }
+      } else if (spec.kind === "friendlyLane") {
+        const lanes = assign[localLegacySide];
+        if (!lanes.some((card) => Boolean(card))) {
+          return;
+        }
+      }
+
+      setSkillTargeting({ side: localLegacySide, laneIndex, ability, spec });
+    },
+    [assign, enemy.hand, localLegacySide, player.hand, skillPhaseActive, skillTargeting],
+  );
+
+  const cancelSkillTargeting = useCallback(() => {
+    setSkillTargeting(null);
+  }, []);
+
+  const handleSkillTargetSelect = useCallback(
+    (selection: SkillTargetSelection) => {
+      if (!skillTargeting) return;
+      if (skillTargeting.side !== localLegacySide) return;
+      const { spec, laneIndex } = skillTargeting;
+      if (spec.kind === "reserve" && selection.type === "reserve") {
+        useSkillAbility(localLegacySide, laneIndex, { type: "reserve", cardId: selection.cardId });
+        setSkillTargeting(null);
+        return;
+      }
+      if (spec.kind === "friendlyLane" && selection.type === "lane") {
+        useSkillAbility(localLegacySide, laneIndex, { type: "lane", laneIndex: selection.laneIndex });
+        setSkillTargeting(null);
+        return;
+      }
+    },
+    [localLegacySide, skillTargeting, useSkillAbility],
+  );
+
+  const handleSkillLaneTarget = useCallback(
+    ({ laneIndex }: { laneIndex: number; side: LegacySide }) => {
+      handleSkillTargetSelect({ type: "lane", laneIndex });
+    },
+    [handleSkillTargetSelect],
+  );
+
+  const handleSkillReserveTarget = useCallback(
+    ({ cardId }: { cardId: string }) => {
+      handleSkillTargetSelect({ type: "reserve", cardId });
+    },
+    [handleSkillTargetSelect],
   );
   const hudAccentColor = HUD_COLORS[localLegacySide];
 
@@ -1166,6 +1314,27 @@ export default function ThreeWheel_WinsOnly({
             <div className="mt-2 text-[11px] leading-snug text-slate-300">
               {targetingPrompt}
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {skillPhaseActive && skillTargeting ? (
+        <div className="pointer-events-none fixed inset-x-0 top-[132px] z-[82] flex justify-center px-3">
+          <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-amber-400/70 bg-slate-900/95 px-3 py-2 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[13px] font-semibold text-amber-100">{skillAbilityLabel}</div>
+                <div className="text-[11px] text-amber-200/90 leading-snug">{skillAbilityDescription}</div>
+              </div>
+              <button
+                type="button"
+                onClick={cancelSkillTargeting}
+                className="rounded border border-amber-400/50 px-2 py-1 text-[11px] text-amber-100 transition hover:bg-amber-400/10"
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="mt-2 text-[11px] leading-snug text-amber-100/90">{skillTargetPrompt}</div>
           </div>
         </div>
       ) : null}
@@ -1367,6 +1536,16 @@ export default function ThreeWheel_WinsOnly({
               )}
             </div>
           )}
+          {phase === "skill" && (
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={handleSkillConfirm}
+                className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold"
+              >
+                Continue to battle
+              </button>
+            </div>
+          )}
           {/* Grimoire button + popover/modal */}
           {isGrimoireMode && (
             <div className="relative">
@@ -1530,63 +1709,6 @@ export default function ThreeWheel_WinsOnly({
 
       </div>
 
-      {isSkillMode && (
-        <div className="mb-3 sm:mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-100 shadow-sm">
-          <div className="flex items-center justify-between gap-2">
-            <div className="font-semibold tracking-wide uppercase text-[11px]">Skill Phase</div>
-            <div className="text-[11px] font-semibold">
-              {skillPhaseActive ? (
-                <span className="text-amber-200 animate-pulse">Active now</span>
-              ) : skillPhaseCompleted ? (
-                <span className="text-emerald-200">Resolved</span>
-              ) : (
-                <span className="text-amber-200/90">Will trigger before combat</span>
-              )}
-            </div>
-          </div>
-          <ul className="mt-2 space-y-1">
-            {skillLaneDetails.map((lane, laneIndex) => {
-              const abilityLabel = formatSkillAbility(lane.ability);
-              const helperText = lane.description ?? "No ability this round.";
-              const canUseAbility = Boolean(lane.ability) && !lane.exhausted;
-              return (
-                <li key={laneIndex} className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <div className="font-semibold text-[11px]">Lane {laneIndex + 1}: {abilityLabel}</div>
-                    <div className="text-[11px] text-amber-100/80 leading-snug">{helperText}</div>
-                  </div>
-                  {lane.ability ? (
-                    canUseAbility ? (
-                      <button
-                        type="button"
-                        onClick={() => useSkillAbility(localLegacySide, laneIndex)}
-                        disabled={!skillPhaseActive}
-                        className="rounded-full border border-amber-400/60 bg-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-50 transition disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-500/30"
-                      >
-                        {skillPhaseActive ? "Use" : "Ready"}
-                      </button>
-                    ) : (
-                      <span className="rounded-full border border-amber-200/30 px-2 py-0.5 text-[10px] text-amber-200/80">Spent</span>
-                    )
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-          {skillPhaseActive && (
-            <div className="mt-2 flex items-center justify-end">
-              <button
-                type="button"
-                onClick={handleSkillConfirm}
-                className="rounded-full bg-amber-400 px-3 py-1 text-[12px] font-semibold text-slate-900 shadow-sm transition hover:bg-amber-300"
-              >
-                Continue to battle
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* HUD */}
       <div className="relative z-10 mb-3 sm:mb-4">
         <HUDPanels
@@ -1656,6 +1778,12 @@ export default function ThreeWheel_WinsOnly({
                 isAwaitingSpellTarget={isAwaitingSpellTarget}
                 variant="grouped"
                 spellHighlightedCardIds={spellHighlightedCardIds}
+                skillPhaseActive={skillPhaseActive}
+                skillLaneStates={localSkillLanes}
+                onSkillAbilityStart={beginSkillTargeting}
+                        onSkillTargetSelect={handleSkillLaneTarget}
+                skillTargeting={skillTargetingForChildren}
+                skillTargetableLaneIndexes={skillTargetableLaneIndexes}
               />
             </div>
           ))}
@@ -1686,6 +1814,9 @@ export default function ThreeWheel_WinsOnly({
         isAwaitingSpellTarget={isAwaitingSpellTarget}
         onSpellTargetSelect={handleSpellTargetSelect}
         spellHighlightedCardIds={spellHighlightedCardIds}
+        skillTargeting={skillTargetingForChildren}
+        skillTargetableReserveIds={skillTargetableReserveIds}
+        onSkillTargetSelect={handleSkillReserveTarget}
       />
 
       <FirstRunCoach
