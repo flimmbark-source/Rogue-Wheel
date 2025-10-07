@@ -542,155 +542,8 @@ export default function ThreeWheel_WinsOnly({
     const laneState = laneSet ? laneSet[pendingSkillTarget.laneIndex] : undefined;
     if (!laneState || !laneState.ability || laneState.exhausted) {
       setPendingSkillTarget(null);
-      return;
-    }
-    if (
-      pendingSkillTarget.sourceCardId &&
-      laneState.cardId &&
-      laneState.cardId !== pendingSkillTarget.sourceCardId
-    ) {
-      setPendingSkillTarget(null);
     }
   }, [phaseForLogic, pendingSkillTarget, skill.lanes]);
-
-  const handleSkillTargetCancel = useCallback(() => {
-    setPendingSkillTarget(null);
-  }, []);
-
-  const handleSkillActivate = useCallback(
-    (side: LegacySide, laneIndex: number) => {
-      if (phaseForLogic !== "skill") return;
-      if (side !== localLegacySide) return;
-
-      const laneSet = skill.lanes[side] ?? [];
-      const laneState = laneSet[laneIndex];
-      if (!laneState || !laneState.ability || laneState.exhausted) {
-        return;
-      }
-
-      const stages = getSkillAbilityTargetStages(laneState.ability);
-      if (stages.length === 0) {
-        useSkillAbility(side, laneIndex, []);
-        return;
-      }
-
-      const sourceCardId = laneState.cardId ?? assign[side]?.[laneIndex]?.id ?? null;
-      setPendingSkillTarget({
-        side,
-        laneIndex,
-        ability: laneState.ability,
-        stages,
-        currentStage: 0,
-        selections: [],
-        sourceCardId,
-      });
-    },
-    [assign, localLegacySide, phaseForLogic, skill.lanes, useSkillAbility],
-  );
-
-  const handleSkillTargetSelect = useCallback(
-    (selection: SkillTargetSelection) => {
-      let finalize:
-        | { side: LegacySide; laneIndex: number; selections: SkillTargetSelection[] }
-        | null = null;
-
-      setPendingSkillTarget((current) => {
-        if (!current) return current;
-        if (phaseForLogic !== "skill") {
-          return null;
-        }
-
-        const laneSet = skill.lanes[current.side] ?? [];
-        const laneState = laneSet[current.laneIndex];
-        if (!laneState || !laneState.ability || laneState.exhausted) {
-          return null;
-        }
-        if (current.sourceCardId && laneState.cardId && laneState.cardId !== current.sourceCardId) {
-          return null;
-        }
-
-        const stage = current.stages[current.currentStage];
-        if (!stage) {
-          return null;
-        }
-
-        if (selection.kind !== stage.kind) {
-          return current;
-        }
-
-        const isSelectionAlly = selection.side === current.side;
-        if (stage.ownership === "ally" && !isSelectionAlly) {
-          return current;
-        }
-        if (stage.ownership === "enemy" && isSelectionAlly) {
-          return current;
-        }
-
-        if (selection.kind === "board") {
-          if (typeof selection.lane !== "number") {
-            return current;
-          }
-          const laneCards = assign[selection.side] ?? [];
-          const targetCard = laneCards[selection.lane];
-          if (!targetCard || targetCard.id !== selection.card.id) {
-            return current;
-          }
-          if (stage.allowSelf === false && selection.card.id === current.sourceCardId) {
-            return current;
-          }
-        } else if (selection.kind === "reserve") {
-          const fighter = selection.side === "player" ? player : enemy;
-          const reserveCard = fighter.hand[selection.index];
-          if (!reserveCard || reserveCard.id !== selection.card.id) {
-            return current;
-          }
-        }
-
-        const alreadyChosen = current.selections.some((prev) => {
-          if (prev.kind !== selection.kind) return false;
-          if (prev.kind === "board") {
-            return (
-              prev.side === selection.side &&
-              prev.lane === selection.lane &&
-              prev.card.id === selection.card.id
-            );
-          }
-          return (
-            prev.side === selection.side &&
-            prev.index === selection.index &&
-            prev.card.id === selection.card.id
-          );
-        });
-        if (alreadyChosen) {
-          return current;
-        }
-
-        const nextSelections = [...current.selections, selection];
-        const nextStageIndex = current.currentStage + 1;
-
-        if (nextStageIndex >= current.stages.length) {
-          finalize = {
-            side: current.side,
-            laneIndex: current.laneIndex,
-            selections: nextSelections,
-          };
-          return null;
-        }
-
-        return {
-          ...current,
-          currentStage: nextStageIndex,
-          selections: nextSelections,
-        };
-      });
-
-      if (finalize) {
-        useSkillAbility(finalize.side, finalize.laneIndex, finalize.selections);
-      }
-    },
-    [assign, enemy, phaseForLogic, player, skill.lanes, useSkillAbility],
-  );
-
   const castCpuSpell = useCallback(
     (decision: CpuSpellDecision) => {
       if (isMultiplayer) return;
@@ -1893,7 +1746,7 @@ export default function ThreeWheel_WinsOnly({
                   player: skillLaneDetails.player?.[i] ?? null,
                   enemy: skillLaneDetails.enemy?.[i] ?? null,
                 }}
-                onSkillActivate={handleSkillActivate}
+                onSkillActivate={useSkillAbility}
               />
             </div>
           ))}
