@@ -1032,6 +1032,10 @@ export function useThreeWheelGame({
       if (exhausted) {
         return { ok: false, reason: "Exhausted." };
       }
+      const remainingUses = state.usesRemaining[side][laneIndex];
+      if (remainingUses <= 0) {
+        return { ok: false, reason: "No uses remaining." };
+      }
       const fighter = getFighterSnapshot(side);
       const reserveCards = fighter.hand;
 
@@ -1198,7 +1202,8 @@ export function useThreeWheelGame({
       ability: SkillAbility,
     ): SkillPhaseState | null => {
       const updatedExhaustedSide = [...state.exhausted[side]] as [boolean, boolean, boolean];
-      updatedExhaustedSide[laneIndex] = true;
+      const shouldExhaust = state.usesRemaining[side][laneIndex] <= 0;
+      updatedExhaustedSide[laneIndex] = shouldExhaust;
       let updatedState: SkillPhaseState = {
         ...state,
         exhausted: { ...state.exhausted, [side]: updatedExhaustedSide },
