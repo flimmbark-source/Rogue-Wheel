@@ -1,4 +1,4 @@
-export const GAME_MODE_OPTIONS = ["grimoire", "ante"] as const;
+export const GAME_MODE_OPTIONS = ["grimoire", "ante", "skill"] as const;
 
 export type GameModeOption = (typeof GAME_MODE_OPTIONS)[number];
 
@@ -9,6 +9,7 @@ export const DEFAULT_GAME_MODE: GameMode = [];
 export const GAME_MODE_LABELS: Record<GameModeOption, string> = {
   grimoire: "Grimoire",
   ante: "Ante",
+  skill: "Skill",
 };
 
 export const GAME_MODE_DETAILS: Record<
@@ -31,6 +32,14 @@ export const GAME_MODE_DETAILS: Record<
     subtitle: "Wager existing wins at the start of every round.",
     highlights: [
       "Win rounds to multiply your ante by dynamic odds",
+    ],
+  },
+  skill: {
+    title: "Skill",
+    subtitle: "Trigger lane abilities before each round begins.",
+    highlights: [
+      "Enter a Skill Phase to activate abilities on your lanes.",
+      "Spend reserve cards to swap, reroll, or boost strategically.",
     ],
   },
 };
