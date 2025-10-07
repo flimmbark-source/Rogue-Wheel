@@ -1324,6 +1324,10 @@ export function useThreeWheelGame({
           setSkillTargeting({ kind: "lane", ability: "boostCard", side, laneIndex });
           return prev;
         }
+        if (requiresLaneTarget && side === localLegacySide) {
+          setSkillTargeting({ kind: "lane", ability: "boostCard", side, laneIndex });
+          return prev;
+        }
 
         let success = false;
         let updatedState: SkillPhaseState = prev;
@@ -1406,6 +1410,26 @@ export function useThreeWheelGame({
 
         if (ability === "swapReserve" || ability === "rerollReserve" || ability === "reserveBoost") {
           updateReservePreview();
+        }
+
+        const updatedExhaustedSide = [...prev.exhausted[side]] as [boolean, boolean, boolean];
+        updatedExhaustedSide[laneIndex] = true;
+        let updatedState: SkillPhaseState = {
+          ...prev,
+          exhausted: { ...prev.exhausted, [side]: updatedExhaustedSide },
+        };
+
+        if (ability === "rerollReserve") {
+          const currentCounts = reserveCycleCountsRef.current;
+          const nextCount = (currentCounts[side] ?? 0) + 1;
+          reserveCycleCountsRef.current = { ...currentCounts, [side]: nextCount };
+          if (nextCount >= 2 && !prev.passed[side]) {
+            appendLog(`${namesByLegacy[side]} passes their skill activations.`);
+            updatedState = {
+              ...updatedState,
+              passed: { ...updatedState.passed, [side]: true },
+            };
+          }
         }
 
         const advanced = advanceSkillTurn(updatedState);
@@ -1549,6 +1573,26 @@ export function useThreeWheelGame({
           targeting.ability === "rerollReserve"
         ) {
           updateReservePreview();
+        }
+
+        const updatedExhaustedSide = [...prev.exhausted[side]] as [boolean, boolean, boolean];
+        updatedExhaustedSide[laneIndex] = true;
+        let updatedState: SkillPhaseState = {
+          ...prev,
+          exhausted: { ...prev.exhausted, [side]: updatedExhaustedSide },
+        };
+
+        if (targeting.ability === "rerollReserve") {
+          const currentCounts = reserveCycleCountsRef.current;
+          const nextCount = (currentCounts[side] ?? 0) + 1;
+          reserveCycleCountsRef.current = { ...currentCounts, [side]: nextCount };
+          if (nextCount >= 2 && !prev.passed[side]) {
+            appendLog(`${namesByLegacy[side]} passes their skill activations.`);
+            updatedState = {
+              ...updatedState,
+              passed: { ...updatedState.passed, [side]: true },
+            };
+          }
         }
 
         const advanced = advanceSkillTurn(updatedState);
