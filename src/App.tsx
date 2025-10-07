@@ -1580,7 +1580,9 @@ export default function ThreeWheel_WinsOnly({
       </div>
 
       {/* HUD */}
-      <div className="relative z-10 mb-3 sm:mb-4">
+      <div
+        className={`relative z-10 ${skillPhaseMessage ? "mb-[2px]" : "mb-3 sm:mb-4"}`}
+      >
         <HUDPanels
           manaPools={manaPools}
           isGrimoireMode={isGrimoireMode}
@@ -1600,7 +1602,7 @@ export default function ThreeWheel_WinsOnly({
       </div>
 
       {skillPhaseMessage && (
-        <div className="relative z+10 -mt+20 mb+20 flex justify-center px-2">
+        <div className="relative z-10 flex justify-center px-2">
           <div className="max-w-md rounded-lg border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-200 shadow">
             <div className="flex flex-wrap items-center justify-center gap-2 text-center">
               <span className="block">{skillPhaseMessage}</span>
