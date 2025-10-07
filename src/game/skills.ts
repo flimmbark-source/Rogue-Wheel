@@ -27,6 +27,25 @@ export function getSkillCardValue(card: Card | null | undefined): number | null 
   return null;
 }
 
+export function getReserveBoostValue(card: Card | null | undefined): number | null {
+  if (!card) return null;
+  const numberValue = coerceFiniteNumber(card.number);
+  const baseValue = coerceFiniteNumber(card.baseNumber);
+  if (baseValue !== null && baseValue < 0) {
+    return baseValue;
+  }
+  if (numberValue !== null && numberValue > 0) {
+    return numberValue;
+  }
+  if (baseValue !== null) {
+    return baseValue;
+  }
+  if (numberValue !== null) {
+    return numberValue;
+  }
+  return null;
+}
+
 export function determineSkillAbility(card: Card | null): SkillAbility | null {
   if (!card) return null;
   const baseValue = coerceFiniteNumber(card.baseNumber);
@@ -39,7 +58,7 @@ export function determineSkillAbility(card: Card | null): SkillAbility | null {
 }
 
 export function isReserveBoostTarget(card: Card | null | undefined): boolean {
-  const value = getSkillCardValue(card);
+  const value = getReserveBoostValue(card);
   if (value === null) return false;
   return value > 0;
 }
