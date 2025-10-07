@@ -33,15 +33,6 @@ import {
   type LevelProgress,
 } from "../../../player/profileStore";
 import { fmtNum, isNormal } from "../../../game/values";
-import {
-  describeSkillAbility,
-  determineSkillAbility,
-  getReserveBoostValue,
-  getSkillCardValue,
-  getSkillTargetCount,
-  isReserveBoostTarget,
-  type SkillAbility,
-} from "../../../game/skills";
 import type { WheelHandle } from "../../../components/CanvasWheel";
 import {
   applySpellEffects as runSpellEffects,
@@ -57,7 +48,6 @@ import {
 } from "./roundOutcomeSummary";
 
 export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine";
-export type { SkillTargetingState, SkillTargetSelection } from "../skills/types";
 
 export type MPIntent =
   | { type: "assign"; lane: number; side: LegacySide; card: Card }
@@ -117,21 +107,6 @@ const createEmptySpellHighlights = (): SpellHighlightState => ({
   reserve: { player: false, enemy: false },
 });
 
-import {
-  applyExhaustion as applySkillExhaustion,
-  advanceSkillTurn as advanceSkillTurnMachine,
-  createSkillPhaseState,
-  decrementSkillUse,
-  markPassed as markSkillPassed,
-  toSnapshot as snapshotSkillPhase,
-  type SkillPhaseState as SkillMachineState,
-} from "../skills/skillPhaseMachine";
-import type {
-  SkillOption,
-  SkillPhaseView,
-  SkillTargetingState,
-  SkillTargetSelection,
-} from "../skills/types";
 
 export type ThreeWheelGameState = {
   player: Fighter;
@@ -166,8 +141,6 @@ export type ThreeWheelGameState = {
   ptrDragType: "pointer" | "touch" | null;
   log: GameLogEntry[];
   spellHighlights: SpellHighlightState;
-  skillPhase: SkillPhaseView | null;
-  skillTargeting: SkillTargetingState | null;
 };
 
 export type ThreeWheelGameDerived = {
@@ -178,7 +151,6 @@ export type ThreeWheelGameDerived = {
   HUD_COLORS: { player: string; enemy: string };
   winGoal: number;
   isMultiplayer: boolean;
-  isSkillMode: boolean;
   matchWinner: LegacySide | null;
   localWinsCount: number;
   remoteWinsCount: number;
@@ -208,10 +180,6 @@ export type ThreeWheelGameActions = {
   handleExitClick: () => void;
   applySpellEffects: (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => void;
   setAnteBet: (bet: number) => void;
-  activateSkillOption: (lane: number) => void;
-  passSkillTurn: () => void;
-  resolveSkillTargeting: (selection: SkillTargetSelection) => void;
-  cancelSkillTargeting: () => void;
 };
 
 export type ThreeWheelGameReturn = {
@@ -278,7 +246,6 @@ export function useThreeWheelGame({
 
   const currentGameMode = normalizeGameMode(gameMode ?? DEFAULT_GAME_MODE);
   const isAnteMode = currentGameMode.includes("ante");
-  const isSkillMode = currentGameMode.includes("skill");
 
   const hostLegacySide: LegacySide = (() => {
     if (!hostId) return "player";
@@ -713,25 +680,7 @@ export function useThreeWheelGame({
   }, []);
 
   const [spellHighlights, setSpellHighlights] = useState<SpellHighlightState>(() => createEmptySpellHighlights());
-  const spellHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [skillState, setSkillState] = useState<SkillMachineState | null>(null);
-  const skillStateRef = useRef<SkillMachineState | null>(skillState);
-  const reserveCycleCountsRef = useRef<SideState<number>>({ player: 0, enemy: 0 });
-  const postSkillPhaseRef = useRef<CorePhase>("roundEnd");
-  const [skillPhaseView, setSkillPhaseView] = useState<SkillPhaseView | null>(null);
-  const [skillTargeting, setSkillTargeting] = useState<SkillTargetingState | null>(null);
-  const skillTargetingRef = useRef<SkillTargetingState | null>(skillTargeting);
-  const updateSkillTargeting = useCallback((next: SkillTargetingState | null) => {
-    skillTargetingRef.current = next;
-    setSkillTargeting(next);
-  }, []);
-  useEffect(() => {
-    skillTargetingRef.current = skillTargeting;
-  }, [skillTargeting]);
-
-  useEffect(() => {
-    skillStateRef.current = skillState;
-  }, [skillState]);
+  const spellHighlightTimeoutRef = useRef<number | null>(null);
 
   const clearSpellHighlights = useCallback(() => {
     setSpellHighlights(createEmptySpellHighlights());
@@ -806,924 +755,11 @@ export function useThreeWheelGame({
     [setEnemy, setPlayer],
   );
 
-  const boostLaneCard = useCallback(
-    (side: LegacySide, laneIndex: number, amount: number): boolean => {
-      if (!Number.isFinite(amount) || amount === 0) return false;
-      let applied = false;
-      setAssign((prev) => {
-        const lane = side === "player" ? [...prev.player] : [...prev.enemy];
-        const target = lane[laneIndex];
-        if (!target) return prev;
-        const baseValue = getSkillCardValue(target);
-        if (baseValue === null) return prev;
-        const currentValue = typeof target.number === "number" ? target.number : baseValue;
-        const updatedCard: Card = {
-          ...target,
-          number: Math.max(0, currentValue + amount),
-        };
-        lane[laneIndex] = updatedCard;
-        const next = side === "player" ? { ...prev, player: lane } : { ...prev, enemy: lane };
-        assignRef.current = next;
-        applied = true;
-        return next;
-      });
-      return applied;
-    },
-    [setAssign],
-  );
-
-  const swapCardWithReserve = useCallback(
-    (
-      side: LegacySide,
-      laneIndex: number,
-      preferredCardId?: string,
-    ): { swapped: boolean; incoming?: Card; outgoing?: Card } => {
-      const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
-      const boardCard = lane[laneIndex];
-      if (!boardCard) return { swapped: false };
-      const fighter = getFighterSnapshot(side);
-      if (!fighter.hand.length) return { swapped: false };
-      let chosen: Card | null = null;
-
-      if (preferredCardId) {
-        chosen = fighter.hand.find((card) => card.id === preferredCardId) ?? null;
-        if (!chosen) {
-          return { swapped: false };
-        }
-      }
-
-      if (!chosen) {
-        let bestValue = Number.NEGATIVE_INFINITY;
-        for (const card of fighter.hand) {
-          const value = getSkillCardValue(card) ?? 0;
-          if (value > bestValue) {
-            bestValue = value;
-            chosen = card;
-          }
-        }
-      }
-
-      if (!chosen) {
-        chosen = fighter.hand[0] ?? null;
-      }
-
-      if (!chosen) return { swapped: false };
-
-      const incoming = chosen;
-      const outgoing = boardCard;
-
-      updateFighter(side, (prev) => {
-        const hand = prev.hand.filter((c) => c.id !== incoming.id);
-        const nextHand = [...hand, outgoing];
-        return { ...prev, hand: nextHand };
-      });
-
-      setAssign((prev) => {
-        const laneArr = side === "player" ? [...prev.player] : [...prev.enemy];
-        laneArr[laneIndex] = incoming;
-        const next = side === "player" ? { ...prev, player: laneArr } : { ...prev, enemy: laneArr };
-        assignRef.current = next;
-        return next;
-      });
-
-      return { swapped: true, incoming, outgoing };
-    },
-    [getFighterSnapshot, setAssign, updateFighter],
-  );
-
-  const rerollReserve = useCallback(
-    (
-      side: LegacySide,
-      preferredCardId?: string,
-    ): { discarded: Card | null; drawn: Card | null } => {
-      let discardedCard: Card | null = null;
-      let drawnCard: Card | null = null;
-
-      updateFighter(side, (prev) => {
-        if (prev.hand.length === 0) return prev;
-
-        const hand = [...prev.hand];
-        let targetIndex = -1;
-
-        if (preferredCardId) {
-          targetIndex = hand.findIndex((card) => card.id === preferredCardId);
-        }
-
-        if (targetIndex === -1) {
-          let lowestValue = Number.POSITIVE_INFINITY;
-          for (let i = 0; i < hand.length; i++) {
-            const card = hand[i];
-            const cardValue = getSkillCardValue(card);
-            const comparableValue = cardValue ?? Number.POSITIVE_INFINITY;
-            if (comparableValue < lowestValue) {
-              lowestValue = comparableValue;
-              targetIndex = i;
-            }
-          }
-          if (targetIndex === -1) {
-            targetIndex = 0;
-          }
-        }
-
-        const targetCard = hand[targetIndex];
-        if (!targetCard) {
-          return prev;
-        }
-
-        discardedCard = targetCard;
-        const nextHand = hand.filter((_, idx) => idx !== targetIndex);
-        const beforeDrawCount = nextHand.length;
-        let next: Fighter = {
-          ...prev,
-          hand: nextHand,
-          deck: [...prev.deck],
-          discard: [...prev.discard, targetCard],
-        };
-
-        next = drawOne(next);
-
-        if (next.hand.length > beforeDrawCount) {
-          drawnCard = next.hand[next.hand.length - 1] ?? null;
-        }
-
-        return next;
-      });
-
-      return { discarded: discardedCard, drawn: drawnCard };
-    },
-    [updateFighter],
-  );
-
-  const exhaustReserveForBoost = useCallback(
-    (side: LegacySide, preferredCardId?: string): { value: number; card: Card | null } => {
-      const fighter = getFighterSnapshot(side);
-      const reserveCards = fighter.hand.filter((card) => isReserveBoostTarget(card));
-      if (reserveCards.length === 0) {
-        return { value: 0, card: null };
-      }
-      let chosenCard: Card = reserveCards[0];
-      let bestValue = getReserveBoostValue(chosenCard) ?? Number.NEGATIVE_INFINITY;
-      if (preferredCardId) {
-        const match = reserveCards.find((card) => card.id === preferredCardId);
-        if (!match) {
-          return { value: 0, card: null };
-        }
-        chosenCard = match;
-        bestValue = getReserveBoostValue(chosenCard) ?? Number.NEGATIVE_INFINITY;
-      } else {
-        for (const candidate of reserveCards) {
-          const value = getReserveBoostValue(candidate) ?? Number.NEGATIVE_INFINITY;
-          if (value > bestValue) {
-            chosenCard = candidate;
-            bestValue = value;
-          }
-        }
-      }
-      updateFighter(side, (prev) => {
-        const hand = prev.hand.filter((card) => card.id !== chosenCard.id);
-        const discard = [...prev.discard, chosenCard];
-        return { ...prev, hand, discard };
-      });
-      const boostValue = getReserveBoostValue(chosenCard) ?? 0;
-      return { value: boostValue, card: chosenCard };
-    },
-    [getFighterSnapshot, updateFighter],
-  );
-
-  const getReserveTargetIds = useCallback(
-    (side: LegacySide, ability: SkillAbility): string[] => {
-      const fighter = getFighterSnapshot(side);
-      const reserveCards = fighter.hand;
-      switch (ability) {
-        case "swapReserve":
-        case "rerollReserve":
-          return reserveCards.map((card) => card.id);
-        case "reserveBoost":
-          return reserveCards.filter((card) => isReserveBoostTarget(card)).map((card) => card.id);
-        default:
-          return [];
-      }
-    },
-    [getFighterSnapshot],
-  );
-
-  const canUseSkillAbility = useCallback(
-    (side: LegacySide, laneIndex: number, ability: SkillAbility, state: SkillMachineState): {
-      ok: boolean;
-      reason?: string;
-    } => {
-      if (state.passed[side]) {
-        return { ok: false, reason: "Passed." };
-      }
-
-      const laneState = state.lanes[side][laneIndex];
-      if (!laneState || laneState.ability !== ability) {
-        return { ok: false, reason: "Unavailable." };
-      }
-      if (laneState.exhausted) {
-        return { ok: false, reason: "Exhausted." };
-      }
-      if (laneState.usesRemaining <= 0) {
-        return { ok: false, reason: "No uses remaining." };
-      }
-
-      switch (ability) {
-        case "swapReserve": {
-          const reserveIds = getReserveTargetIds(side, ability);
-          if (!reserveIds.length) {
-            return { ok: false, reason: "No reserve cards." };
-          }
-          return { ok: true };
-        }
-        case "rerollReserve": {
-          const reserveIds = getReserveTargetIds(side, ability);
-          if (!reserveIds.length) {
-            return { ok: false, reason: "Reserve is empty." };
-          }
-          return { ok: true };
-        }
-        case "boostCard": {
-          const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
-          const source = lane[laneIndex];
-          const boostValue = getSkillCardValue(source) ?? 0;
-          if (boostValue <= 0) {
-            return { ok: false, reason: "No boost value." };
-          }
-          const hasTarget = lane.some((card) => !!card);
-          if (!hasTarget) {
-            return { ok: false, reason: "No cards to boost." };
-          }
-          return { ok: true };
-        }
-        case "reserveBoost": {
-          const reserveIds = getReserveTargetIds(side, ability);
-          if (!reserveIds.length) {
-            return { ok: false, reason: "Need an eligible reserve card." };
-          }
-          return { ok: true };
-        }
-        default:
-          return { ok: false };
-      }
-    },
-    [assignRef, getReserveTargetIds],
-  );
-
-  const computeSkillPhaseView = useCallback(
-    (state: SkillMachineState | null): SkillPhaseView | null => {
-      if (!state) return null;
-      const snapshot = snapshotSkillPhase(state);
-      const activeSide = snapshot.activeSide;
-      const options: SkillOption[] = [];
-      if (activeSide === localLegacySide) {
-        const lane = activeSide === "player" ? assignRef.current.player : assignRef.current.enemy;
-        lane.forEach((card, laneIndex) => {
-          if (!card) return;
-          const ability = determineSkillAbility(card);
-          if (!ability) return;
-          const availability = canUseSkillAbility(activeSide, laneIndex, ability, state);
-          options.push({
-            lane: laneIndex,
-            card,
-            ability,
-            description: describeSkillAbility(ability, card),
-            canActivate: availability.ok,
-            reason: availability.ok ? undefined : availability.reason,
-          });
-        });
-      }
-      return {
-        ...snapshot,
-        options,
-      };
-    },
-    [assignRef, canUseSkillAbility, localLegacySide],
-  );
-
-  useEffect(() => {
-    setSkillPhaseView(computeSkillPhaseView(skillState));
-  }, [assign, player, enemy, skillState, computeSkillPhaseView]);
-
-  useEffect(() => {
-    if (!skillState || phaseRef.current !== "skill") {
-      updateSkillTargeting(null);
-    }
-  }, [skillState, updateSkillTargeting]);
-
-  useEffect(() => {
-    if (phase !== "skill") {
-      updateSkillTargeting(null);
-    }
-  }, [phase, updateSkillTargeting]);
-
-  const hasSkillActions = useCallback(
-    (side: LegacySide, state: SkillMachineState): boolean => {
-      return state.lanes[side].some((lane, laneIndex) => {
-        if (!lane.ability) return false;
-        return canUseSkillAbility(side, laneIndex, lane.ability, state).ok;
-      });
-    },
-    [canUseSkillAbility],
-  );
-
-  const finishSkillPhase = useCallback(() => {
-    setSkillState(null);
-    const nextPhase = postSkillPhaseRef.current ?? "roundEnd";
-    postSkillPhaseRef.current = "roundEnd";
-    setPhase(nextPhase);
-    if (nextPhase === "ended") {
-      clearRematchVotes();
-    }
-  }, [clearRematchVotes, setPhase]);
-
-  const advanceSkillTurn = useCallback(
-    (state: SkillMachineState): SkillMachineState | null => {
-      const result = advanceSkillTurnMachine(state, {
-        canUseAbility: (side, laneIndex, ability) => canUseSkillAbility(side, laneIndex, ability, state).ok,
-      });
-      if (result.finished) {
-        finishSkillPhase();
-        return null;
-      }
-      return result.state;
-    },
-    [canUseSkillAbility, finishSkillPhase],
-  );
-
-  const finalizeSkillActivation = useCallback(
-    (
-      state: SkillMachineState,
-      side: LegacySide,
-      laneIndex: number,
-      ability: SkillAbility,
-    ): SkillMachineState | null => {
-      let updatedState = applySkillExhaustion(state, side, laneIndex);
-
-      if (ability === "rerollReserve") {
-        const currentCounts = reserveCycleCountsRef.current;
-        const nextCount = (currentCounts[side] ?? 0) + 1;
-        reserveCycleCountsRef.current = { ...currentCounts, [side]: nextCount };
-        if (nextCount >= 2 && !updatedState.passed[side]) {
-          appendLog(`${namesByLegacy[side]} passes their skill activations.`);
-          updatedState = markSkillPassed(updatedState, side);
-        }
-      }
-
-      const result = advanceSkillTurnMachine(updatedState, {
-        canUseAbility: (checkSide, laneIdx, nextAbility) =>
-          canUseSkillAbility(checkSide, laneIdx, nextAbility, updatedState).ok,
-      });
-      if (result.finished) {
-        finishSkillPhase();
-        return null;
-      }
-      return result.state;
-    },
-    [appendLog, canUseSkillAbility, finishSkillPhase, namesByLegacy],
-  );
-
   const updateReservePreview = useCallback(() => {
     const playerReserve = computeReserveSum("player", assignRef.current.player);
     const enemyReserve = computeReserveSum("enemy", assignRef.current.enemy);
     setReserveSums({ player: playerReserve, enemy: enemyReserve });
   }, [setReserveSums]);
-
-  const startSkillPhase = useCallback(
-    (options?: { activeSide?: LegacySide }): boolean => {
-      if (isMultiplayer) {
-        setSkillState(null);
-        return false;
-      }
-
-      const initialActive = options?.activeSide ?? initiative;
-      const assignSnapshot = {
-        player: [...assignRef.current.player],
-        enemy: [...assignRef.current.enemy],
-      } as const;
-
-      let nextState = createSkillPhaseState(assignSnapshot, initialActive);
-      if (!nextState) {
-        setSkillState(null);
-        return false;
-      }
-
-      const currentHas = hasSkillActions(nextState.activeSide, nextState);
-      const otherSide: LegacySide = nextState.activeSide === "player" ? "enemy" : "player";
-      const otherHas = hasSkillActions(otherSide, nextState);
-      if (!currentHas && !otherHas) {
-        setSkillState(null);
-        return false;
-      }
-
-      if (!currentHas && otherHas) {
-        nextState = { ...nextState, activeSide: otherSide };
-      }
-
-      reserveCycleCountsRef.current = { player: 0, enemy: 0 };
-      updateReservePreview();
-      setSkillState(nextState);
-      setPhase("skill");
-      return true;
-    },
-    [
-      assignRef,
-      hasSkillActions,
-      initiative,
-      isMultiplayer,
-      setPhase,
-      updateReservePreview,
-    ],
-  );
-
-  const activateSkillOption = useCallback(
-    (laneIndex: number) => {
-      setSkillState((prev) => {
-        if (!prev) return prev;
-        if (phaseRef.current !== "skill") return prev;
-        if (skillTargetingRef.current) return prev;
-        const side = prev.activeSide;
-        const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
-        const card = lane[laneIndex];
-        if (!card) return prev;
-        const ability = determineSkillAbility(card);
-        if (!ability) return prev;
-        const availability = canUseSkillAbility(side, laneIndex, ability, prev);
-        if (!availability.ok) return prev;
-
-        const targetCount = getSkillTargetCount(card, ability);
-        if (targetCount <= 0) {
-          return prev;
-        }
-        const requiresReserveTarget =
-          ability === "swapReserve" || ability === "reserveBoost" || ability === "rerollReserve";
-        const requiresLaneTarget = ability === "boostCard";
-        if (requiresReserveTarget) {
-          const candidateIds = getReserveTargetIds(side, ability);
-          if (!candidateIds.length) {
-            return prev;
-          }
-          if (side === localLegacySide) {
-            updateSkillTargeting({
-              kind: "reserve",
-              ability,
-              side,
-              laneIndex,
-              targetsRemaining: targetCount,
-              targetsTotal: targetCount,
-            });
-            return prev;
-          }
-        }
-        if (requiresLaneTarget) {
-          const hasTarget = lane.some((candidate) => !!candidate);
-          if (!hasTarget) {
-            return prev;
-          }
-          if (side === localLegacySide) {
-            updateSkillTargeting({
-              kind: "lane",
-              ability: "boostCard",
-              side,
-              laneIndex,
-              targetsRemaining: targetCount,
-              targetsTotal: targetCount,
-            });
-            return prev;
-          }
-        }
-
-        let success = false;
-
-        switch (ability) {
-          case "swapReserve": {
-            const result = swapCardWithReserve(side, laneIndex);
-            if (result.swapped) {
-              const incomingValue = getSkillCardValue(result.incoming) ?? 0;
-              const outgoingValue = getSkillCardValue(result.outgoing) ?? 0;
-              appendLog(
-                `${namesByLegacy[side]} swapped a reserve card (${fmtNum(incomingValue)}) with ${fmtNum(outgoingValue)} in lane ${
-                  laneIndex + 1
-                }.`,
-              );
-              success = true;
-            }
-            break;
-          }
-          case "rerollReserve": {
-            let remaining = targetCount;
-            let totalSuccess = 0;
-            while (remaining > 0) {
-              const { discarded, drawn } = rerollReserve(side);
-              if (!discarded) break;
-              const discardedName = discarded.name ?? fmtNum(discarded.number ?? 0);
-              const drawnName = drawn ? drawn.name ?? fmtNum(drawn.number ?? 0) : null;
-              const drawnSuffix = drawnName ? ` and drew ${drawnName}` : "";
-              appendLog(`${namesByLegacy[side]} cycled ${discardedName}${drawnSuffix}.`);
-              totalSuccess += 1;
-              remaining -= 1;
-            }
-            success = totalSuccess > 0;
-            break;
-          }
-          case "boostCard": {
-            const currentCard = side === "player" ? assignRef.current.player[laneIndex] : assignRef.current.enemy[laneIndex];
-            const value = currentCard ? getSkillCardValue(currentCard) ?? 0 : 0;
-            if (value !== 0) {
-              success = boostLaneCard(side, laneIndex, value);
-            }
-            if (success) {
-              appendLog(
-                `${namesByLegacy[side]} boosted lane ${laneIndex + 1} by ${fmtNum(value)} power.`,
-              );
-            }
-            break;
-          }
-          case "reserveBoost": {
-            const { value, card: reserveCard } = exhaustReserveForBoost(side);
-            success = value > 0 ? boostLaneCard(side, laneIndex, value) : false;
-            if (success) {
-              appendLog(
-                `${namesByLegacy[side]} exhausted ${reserveCard?.name ?? "a reserve"} for +${fmtNum(value)} power.`,
-              );
-            }
-            break;
-          }
-          default:
-            break;
-        }
-
-        if (!success) {
-          return prev;
-        }
-
-        const spentState = decrementSkillUse(prev, side, laneIndex);
-
-        if (ability === "swapReserve" || ability === "rerollReserve" || ability === "reserveBoost") {
-          updateReservePreview();
-        }
-
-        const advanced = finalizeSkillActivation(spentState, side, laneIndex, ability);
-        return advanced ?? null;
-      });
-    },
-    [
-      appendLog,
-      boostLaneCard,
-      canUseSkillAbility,
-      decrementSkillUse,
-      exhaustReserveForBoost,
-      finalizeSkillActivation,
-      getReserveTargetIds,
-      getSkillTargetCount,
-      namesByLegacy,
-      rerollReserve,
-      swapCardWithReserve,
-      updateReservePreview,
-      localLegacySide,
-      updateSkillTargeting,
-    ],
-  );
-
-  const resolveSkillTargeting = useCallback(
-    (selection: SkillTargetSelection) => {
-      let actionSucceeded = false;
-      let abilityUsed: SkillAbility | null = null;
-      let shouldClearTargeting = false;
-      let nextTargetingState: SkillTargetingState | null = null;
-
-      setSkillState((prev) => {
-        if (!prev) return prev;
-        if (phaseRef.current !== "skill") return prev;
-        const targeting = skillTargetingRef.current;
-        if (!targeting) return prev;
-        if (targeting.side !== prev.activeSide) return prev;
-        if (selection.kind !== targeting.kind) return prev;
-
-        const side = targeting.side;
-        const laneIndex = targeting.laneIndex;
-        const availability = canUseSkillAbility(side, laneIndex, targeting.ability, prev);
-        if (!availability.ok) {
-          return prev;
-        }
-        let success = false;
-
-        switch (targeting.ability) {
-          case "swapReserve": {
-            const result = swapCardWithReserve(side, laneIndex, selection.cardId);
-            if (result.swapped) {
-              const incomingValue = getSkillCardValue(result.incoming) ?? 0;
-              const outgoingValue = getSkillCardValue(result.outgoing) ?? 0;
-              appendLog(
-                `${namesByLegacy[side]} swapped a reserve card (${fmtNum(incomingValue)}) with ${fmtNum(outgoingValue)} in lane ${
-                  laneIndex + 1
-                }.`,
-              );
-              success = true;
-            }
-            break;
-          }
-          case "rerollReserve": {
-            const { discarded, drawn } = rerollReserve(side, selection.cardId);
-            if (discarded) {
-              const discardedName = discarded.name ?? fmtNum(discarded.number ?? 0);
-              const drawnName = drawn ? drawn.name ?? fmtNum(drawn.number ?? 0) : null;
-              const drawnSuffix = drawnName ? ` and drew ${drawnName}` : "";
-              appendLog(`${namesByLegacy[side]} cycled ${discardedName}${drawnSuffix}.`);
-              success = true;
-            }
-            break;
-          }
-          case "reserveBoost": {
-            const fighter = getFighterSnapshot(side);
-            const candidate = fighter.hand.find((card) => card.id === selection.cardId);
-            const candidateValue = candidate ? getSkillCardValue(candidate) ?? 0 : 0;
-            if (candidateValue <= 0) {
-              success = false;
-              break;
-            }
-            const { value, card: reserveCard } = exhaustReserveForBoost(side, selection.cardId);
-            success = value > 0 ? boostLaneCard(side, laneIndex, value) : false;
-            if (success) {
-              appendLog(
-                `${namesByLegacy[side]} exhausted ${reserveCard?.name ?? "a reserve"} for +${fmtNum(value)} power.`,
-              );
-            }
-            break;
-          }
-          case "boostCard": {
-            if (selection.kind !== "lane") {
-              success = false;
-              break;
-            }
-            const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
-            const source = lane[laneIndex];
-            const boostValue = source ? getSkillCardValue(source) ?? 0 : 0;
-            if (boostValue <= 0) {
-              success = false;
-              break;
-            }
-            const targetLaneIndex = selection.laneIndex;
-            const targetCard = lane[targetLaneIndex];
-            if (!targetCard) {
-              success = false;
-              break;
-            }
-            success = boostLaneCard(side, targetLaneIndex, boostValue);
-            if (success) {
-              appendLog(
-                `${namesByLegacy[side]} boosted lane ${targetLaneIndex + 1} by ${fmtNum(boostValue)} power.`,
-              );
-            }
-            break;
-          }
-          default:
-            break;
-        }
-
-        if (!success) {
-          return prev;
-        }
-
-        const spentState = decrementSkillUse(prev, side, laneIndex);
-
-        actionSucceeded = true;
-        abilityUsed = targeting.ability;
-
-        const targetsRemaining = Math.max(0, targeting.targetsRemaining - 1);
-        const isFinalSelection = targetsRemaining <= 0;
-
-        if (!isFinalSelection) {
-          nextTargetingState = { ...targeting, targetsRemaining };
-          return spentState;
-        }
-
-        shouldClearTargeting = true;
-        const advanced = finalizeSkillActivation(spentState, side, laneIndex, targeting.ability);
-        return advanced ?? null;
-      });
-
-      if (!actionSucceeded) {
-        return;
-      }
-
-      if (abilityUsed === "swapReserve" || abilityUsed === "reserveBoost" || abilityUsed === "rerollReserve") {
-        updateReservePreview();
-      }
-
-      if (nextTargetingState) {
-        updateSkillTargeting(nextTargetingState);
-      } else if (shouldClearTargeting) {
-        updateSkillTargeting(null);
-      }
-    },
-    [
-      appendLog,
-      boostLaneCard,
-      finalizeSkillActivation,
-      decrementSkillUse,
-      exhaustReserveForBoost,
-      getFighterSnapshot,
-      namesByLegacy,
-      rerollReserve,
-      swapCardWithReserve,
-      updateReservePreview,
-      updateSkillTargeting,
-    ],
-  );
-
-  const cancelSkillTargeting = useCallback(() => {
-    const targeting = skillTargetingRef.current;
-    if (
-      targeting &&
-      targeting.targetsRemaining < targeting.targetsTotal &&
-      phaseRef.current === "skill"
-    ) {
-      setSkillState((prev) => {
-        if (!prev) return prev;
-        if (targeting.side !== prev.activeSide) return prev;
-        return finalizeSkillActivation(prev, targeting.side, targeting.laneIndex, targeting.ability);
-      });
-    }
-    updateSkillTargeting(null);
-  }, [finalizeSkillActivation, updateSkillTargeting]);
-
-  const passSkillTurn = useCallback(() => {
-    setSkillState((prev) => {
-      if (!prev) return prev;
-      if (phaseRef.current !== "skill") return prev;
-      const side = prev.activeSide;
-      if (prev.passed[side]) return prev;
-      appendLog(`${namesByLegacy[side]} passes their skill activations.`);
-      const updatedState = markSkillPassed(prev, side);
-      const advanced = advanceSkillTurn(updatedState);
-      return advanced ?? null;
-    });
-    updateSkillTargeting(null);
-  }, [advanceSkillTurn, appendLog, markSkillPassed, namesByLegacy, updateSkillTargeting]);
-
-  useEffect(() => {
-    if (!isSkillMode) return;
-    if (isMultiplayer) return;
-    if (phase !== "skill") return;
-    if (!skillState) return;
-    if (skillState.activeSide === localLegacySide) return;
-
-    const side = skillState.activeSide;
-    const opponentSide: LegacySide = side === "player" ? "enemy" : "player";
-    const lane = side === "player" ? assignRef.current.player : assignRef.current.enemy;
-    const opponentLane = opponentSide === "player" ? assignRef.current.player : assignRef.current.enemy;
-    const fighter = getFighterSnapshot(side);
-    const reserveCards = fighter.hand;
-
-    const getCardPower = (card: Card | null | undefined): number => {
-      if (!card) return 0;
-      if (typeof card.number === "number") {
-        return card.number;
-      }
-      return getSkillCardValue(card) ?? 0;
-    };
-
-    let highestReserveValue = Number.NEGATIVE_INFINITY;
-    let lowestReserveValue = Number.POSITIVE_INFINITY;
-    let bestPositiveReserve = Number.NEGATIVE_INFINITY;
-
-    for (const reserve of reserveCards) {
-      const value = getReserveBoostValue(reserve);
-      if (value === null) continue;
-      if (value > highestReserveValue) {
-        highestReserveValue = value;
-      }
-      if (value < lowestReserveValue) {
-        lowestReserveValue = value;
-      }
-      if (value > 0 && value > bestPositiveReserve) {
-        bestPositiveReserve = value;
-      }
-    }
-
-    if (!Number.isFinite(highestReserveValue)) {
-      highestReserveValue = Number.NEGATIVE_INFINITY;
-    }
-    if (!Number.isFinite(lowestReserveValue)) {
-      lowestReserveValue = Number.POSITIVE_INFINITY;
-    }
-    if (!Number.isFinite(bestPositiveReserve)) {
-      bestPositiveReserve = Number.NEGATIVE_INFINITY;
-    }
-
-    let targetLane = -1;
-    let bestScore = Number.NEGATIVE_INFINITY;
-
-    for (let i = 0; i < lane.length; i++) {
-      const card = lane[i];
-      const ability = determineSkillAbility(card);
-      if (!ability) continue;
-      const availability = canUseSkillAbility(side, i, ability, skillState);
-      if (!availability.ok) continue;
-
-      const currentPower = getCardPower(card);
-      const opposingPower = getCardPower(opponentLane[i]);
-
-      let score = Number.NEGATIVE_INFINITY;
-
-      switch (ability) {
-        case "swapReserve": {
-          if (highestReserveValue === Number.NEGATIVE_INFINITY) {
-            score = Number.NEGATIVE_INFINITY;
-            break;
-          }
-          const improvement = highestReserveValue - currentPower;
-          if (improvement <= 0) {
-            score = Number.NEGATIVE_INFINITY;
-            break;
-          }
-          score = improvement;
-          if (currentPower <= opposingPower && highestReserveValue > opposingPower) {
-            score += highestReserveValue - opposingPower;
-          }
-          if (currentPower <= 0 && highestReserveValue > 0) {
-            score += 1;
-          }
-          break;
-        }
-        case "rerollReserve": {
-          if (lowestReserveValue === Number.POSITIVE_INFINITY) {
-            score = Number.NEGATIVE_INFINITY;
-            break;
-          }
-          const expectedGain = 3 - lowestReserveValue;
-          if (expectedGain <= 0) {
-            score = Number.NEGATIVE_INFINITY;
-            break;
-          }
-          score = expectedGain;
-          break;
-        }
-        case "boostCard": {
-          const boostValue = getSkillCardValue(card) ?? 0;
-          if (boostValue <= 0) {
-            score = Number.NEGATIVE_INFINITY;
-            break;
-          }
-          const boostedPower = currentPower + boostValue;
-          score = boostValue;
-          if (currentPower <= opposingPower && boostedPower > opposingPower) {
-            score += boostedPower - opposingPower + 1;
-          } else if (boostedPower > opposingPower) {
-            score += 0.5;
-          }
-          break;
-        }
-        case "reserveBoost": {
-          if (bestPositiveReserve === Number.NEGATIVE_INFINITY) {
-            score = Number.NEGATIVE_INFINITY;
-            break;
-          }
-          const boostedPower = currentPower + bestPositiveReserve;
-          score = bestPositiveReserve;
-          if (currentPower <= opposingPower && boostedPower > opposingPower) {
-            score += boostedPower - opposingPower + 1.5;
-          } else if (boostedPower > opposingPower) {
-            score += 0.5;
-          }
-          break;
-        }
-        default:
-          score = Number.NEGATIVE_INFINITY;
-          break;
-      }
-
-      if (score > bestScore) {
-        bestScore = score;
-        targetLane = i;
-      }
-    }
-
-    if (bestScore <= 0) {
-      targetLane = -1;
-    }
-
-    const timeout = window.setTimeout(() => {
-      if (phaseRef.current !== "skill") return;
-      if (targetLane >= 0) activateSkillOption(targetLane);
-      else passSkillTurn();
-    }, 500);
-
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [
-    activateSkillOption,
-    assignRef,
-    canUseSkillAbility,
-    getFighterSnapshot,
-    isMultiplayer,
-    isSkillMode,
-    localLegacySide,
-    passSkillTurn,
-    phase,
-    skillState,
-  ]);
 
   useEffect(() => {
     return () => {
@@ -2283,7 +1319,6 @@ export function useThreeWheelGame({
         remoteLegacySide,
       });
 
-      const skillStartSide = initiative;
       setInitiative(summary.nextInitiative);
       summary.logs.forEach((entry) => {
         appendLog(entry);
@@ -2310,14 +1345,6 @@ export function useThreeWheelGame({
         clearRematchVotes();
         setPhase("ended");
         return;
-      }
-
-      if (isSkillMode) {
-        postSkillPhaseRef.current = "roundEnd";
-        const started = startSkillPhase({ activeSide: skillStartSide });
-        if (started) {
-          return;
-        }
       }
 
       setPhase("roundEnd");
@@ -2410,7 +1437,6 @@ export function useThreeWheelGame({
       setWheelHUD([null, null, null]);
       reservePenaltiesRef.current = { player: 0, enemy: 0 };
       reserveReportsRef.current = { player: null, enemy: null };
-      setSkillState(null);
 
       setPhase("choose");
       setRound((r) => r + 1);
@@ -2598,13 +1624,6 @@ export function useThreeWheelGame({
   ]);
 
   const handleNextClick = useCallback(() => {
-    if (phase === "skill") {
-      if (skillStateRef.current?.activeSide === localLegacySide) {
-        passSkillTurn();
-      }
-      return;
-    }
-
     if (phase !== "roundEnd") return;
 
     if (!isMultiplayer) {
@@ -2622,10 +1641,8 @@ export function useThreeWheelGame({
     localLegacySide,
     markAdvanceVote,
     nextRound,
-    passSkillTurn,
     phase,
     sendIntent,
-    skillStateRef,
   ]);
 
   useEffect(() => {
@@ -2675,7 +1692,6 @@ export function useThreeWheelGame({
     setTokens([0, 0, 0]);
     setReserveSums(null);
     setWheelHUD([null, null, null]);
-    setSkillState(null);
 
     setLog([createLogEntry(START_LOG)]);
 
@@ -2913,8 +1929,6 @@ export function useThreeWheelGame({
     ptrDragType,
     log,
     spellHighlights,
-    skillPhase: skillPhaseView,
-    skillTargeting,
   };
 
   const derived: ThreeWheelGameDerived = {
@@ -2925,7 +1939,6 @@ export function useThreeWheelGame({
     HUD_COLORS: { player: HUD_COLORS.player, enemy: HUD_COLORS.enemy },
     winGoal,
     isMultiplayer,
-    isSkillMode,
     matchWinner,
     localWinsCount,
     remoteWinsCount,
@@ -2955,10 +1968,6 @@ export function useThreeWheelGame({
     handleExitClick,
     applySpellEffects,
     setAnteBet,
-    activateSkillOption,
-    passSkillTurn,
-    resolveSkillTargeting,
-    cancelSkillTargeting,
   };
 
   return { state, derived, refs, actions };

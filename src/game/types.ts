@@ -36,10 +36,6 @@ export type Card = {
   name: string;
   type?: CardType;      // default "normal"
   number?: number;      // when type === "normal"
-  /**
-   * Tracks the printed number for skill calculations so buffs/debuffs don't
-   * change a card's intrinsic ability.
-   */
   baseNumber?: number;
   leftValue?: number;   // when type === "split"
   rightValue?: number;  // when type === "split"
@@ -72,7 +68,6 @@ export type Fighter = {
 export type Phase =
   | "choose"
   | "showEnemy"
-  | "skill"
   | "anim"
   | "roundEnd"
   | "ended"
