@@ -1,10 +1,25 @@
-import type { Card } from "./types.js";
+import type { Card, LegacySide } from "./types.js";
 
 export type AbilityKind =
   | "swapReserve"
   | "rerollReserve"
   | "boostCard"
   | "reserveBoost";
+
+export type SkillTargetKind = "board" | "reserve";
+
+export type SkillTargetOwnership = "ally" | "enemy" | "any";
+
+export type SkillTargetStageDefinition = {
+  kind: SkillTargetKind;
+  ownership: SkillTargetOwnership;
+  allowSelf?: boolean;
+  label?: string;
+};
+
+export type SkillTargetSelection =
+  | { kind: "board"; side: LegacySide; lane: number; card: Card }
+  | { kind: "reserve"; side: LegacySide; index: number; card: Card };
 
 function sanitizeNumber(value: unknown): number | undefined {
   if (value === null || value === undefined) {
@@ -105,4 +120,43 @@ const ABILITY_DESCRIPTIONS: Record<AbilityKind, (card?: Card) => string> = {
 export function describeSkillAbility(kind: AbilityKind, card?: Card): string {
   const describe = ABILITY_DESCRIPTIONS[kind];
   return describe ? describe(card) : "";
+}
+
+const SKILL_TARGET_STAGES: Record<AbilityKind, SkillTargetStageDefinition[]> = {
+  swapReserve: [
+    {
+      kind: "reserve",
+      ownership: "ally",
+      label: "a reserve card to swap",
+    },
+  ],
+  rerollReserve: [
+    {
+      kind: "reserve",
+      ownership: "ally",
+      label: "a reserve card to reroll",
+    },
+  ],
+  boostCard: [
+    {
+      kind: "board",
+      ownership: "any",
+      label: "a card in play to boost",
+    },
+  ],
+  reserveBoost: [
+    {
+      kind: "reserve",
+      ownership: "ally",
+      label: "a reserve card to consume",
+    },
+  ],
+};
+
+export function getSkillAbilityTargetStages(kind: AbilityKind): SkillTargetStageDefinition[] {
+  return SKILL_TARGET_STAGES[kind] ?? [];
+}
+
+export function skillAbilityRequiresTargets(kind: AbilityKind): boolean {
+  return getSkillAbilityTargetStages(kind).length > 0;
 }

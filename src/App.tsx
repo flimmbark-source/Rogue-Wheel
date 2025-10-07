@@ -93,7 +93,13 @@ import {
 import { countSymbolsFromCards, getVisibleSpellsForHand } from "./game/grimoire";
 import StSCard from "./components/StSCard";
 import { chooseCpuSpellResponse, type CpuSpellDecision } from "./game/ai/grimoireCpu";
-import { describeSkillAbility, type AbilityKind } from "./game/skills";
+import {
+  describeSkillAbility,
+  getSkillAbilityTargetStages,
+  type AbilityKind,
+  type SkillTargetSelection,
+  type SkillTargetStageDefinition,
+} from "./game/skills";
 
 // ---- Local aliases/types/state helpers
 type AblyRealtime = InstanceType<typeof Realtime>;
@@ -138,6 +144,36 @@ type LaneSpellState = {
   damageModifier: number;
   mirrorTargetCardId: string | null;
   occupantCardId: string | null;
+};
+
+type PendingSkillTarget = {
+  side: LegacySide;
+  laneIndex: number;
+  ability: AbilityKind;
+  stages: SkillTargetStageDefinition[];
+  currentStage: number;
+  selections: SkillTargetSelection[];
+  sourceCardId: string | null;
+};
+
+const describeSkillTargetStage = (
+  stage: SkillTargetStageDefinition,
+  ability: AbilityKind,
+  stepIndex: number,
+  totalSteps: number,
+): string => {
+  const ownershipText =
+    stage.ownership === "ally"
+      ? "one of your"
+      : stage.ownership === "enemy"
+      ? "an enemy"
+      : "a";
+  const targetNoun = stage.kind === "reserve" ? "reserve card" : "card in play";
+  const baseLabel = stage.label ?? `${ownershipText} ${targetNoun}`;
+  if (totalSteps > 1) {
+    return `Select ${baseLabel} (${stepIndex + 1} of ${totalSteps}) for ${SKILL_ABILITY_LABELS[ability] ?? ability}`;
+  }
+  return `Select ${baseLabel} for ${SKILL_ABILITY_LABELS[ability] ?? ability}`;
 };
 
 
@@ -472,6 +508,7 @@ export default function ThreeWheel_WinsOnly({
   });
 
   const [spellTargetingSide, setSpellTargetingSide] = useState<LegacySide | null>(null);
+  const [pendingSkillTarget, setPendingSkillTarget] = useState<PendingSkillTarget | null>(null);
 
   useEffect(() => {
     if (awaitingSpellTarget && pendingSpell) {
@@ -483,6 +520,23 @@ export default function ThreeWheel_WinsOnly({
 
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
+  const activeSkillTargetStage = pendingSkillTarget
+    ? pendingSkillTarget.stages[pendingSkillTarget.currentStage] ?? null
+    : null;
+  const isAwaitingSkillTarget = Boolean(pendingSkillTarget && activeSkillTargetStage);
+
+  useEffect(() => {
+    if (!pendingSkillTarget) return;
+    if (phaseForLogic !== "skill") {
+      setPendingSkillTarget(null);
+      return;
+    }
+    const laneSet = skill.lanes[pendingSkillTarget.side];
+    const laneState = laneSet ? laneSet[pendingSkillTarget.laneIndex] : undefined;
+    if (!laneState || !laneState.ability || laneState.exhausted) {
+      setPendingSkillTarget(null);
+    }
+  }, [phaseForLogic, pendingSkillTarget, skill.lanes]);
   const castCpuSpell = useCallback(
     (decision: CpuSpellDecision) => {
       if (isMultiplayer) return;
@@ -1069,6 +1123,26 @@ export default function ThreeWheel_WinsOnly({
         }
       })()
     : "";
+  const skillTargetingAbilityLabel = pendingSkillTarget
+    ? formatSkillAbility(pendingSkillTarget.ability)
+    : null;
+  const skillTargetingPrompt = pendingSkillTarget && activeSkillTargetStage
+    ? describeSkillTargetStage(
+        activeSkillTargetStage,
+        pendingSkillTarget.ability,
+        pendingSkillTarget.currentStage,
+        pendingSkillTarget.stages.length,
+      )
+    : "";
+  const skillTargetSelections = pendingSkillTarget?.selections ?? [];
+  const activeSkillTargeting = pendingSkillTarget && activeSkillTargetStage
+    ? {
+        owner: pendingSkillTarget.side,
+        laneIndex: pendingSkillTarget.laneIndex,
+        stage: activeSkillTargetStage,
+        selections: skillTargetSelections,
+      }
+    : null;
   const skillPhaseActive = isSkillMode && phaseForLogic === "skill";
   const skillPhaseCompleted = skill.completed;
   const skillLaneDetails = useMemo(
@@ -1085,6 +1159,74 @@ export default function ThreeWheel_WinsOnly({
       }),
     [assign, localLegacySide, skill.lanes],
   );
+  const handleSkillAbilityRequest = useCallback(
+    (laneIndex: number) => {
+      const laneState = skill.lanes[localLegacySide]?.[laneIndex];
+      if (!laneState || !laneState.ability || laneState.exhausted) {
+        return;
+      }
+      const ability = laneState.ability;
+      const stages = getSkillAbilityTargetStages(ability);
+      if (stages.length === 0) {
+        useSkillAbility(localLegacySide, laneIndex, []);
+        return;
+      }
+      const sourceCard = assign[localLegacySide][laneIndex];
+      setPendingSkillTarget({
+        side: localLegacySide,
+        laneIndex,
+        ability,
+        stages,
+        currentStage: 0,
+        selections: [],
+        sourceCardId: sourceCard ? sourceCard.id : null,
+      });
+    },
+    [assign, localLegacySide, skill.lanes, useSkillAbility],
+  );
+  const handleSkillTargetCancel = useCallback(() => {
+    setPendingSkillTarget(null);
+  }, []);
+  const handleSkillTargetSelect = useCallback(
+    (selection: SkillTargetSelection) => {
+      if (!pendingSkillTarget) return;
+      let completion: { side: LegacySide; laneIndex: number; selections: SkillTargetSelection[] } | null = null;
+      setPendingSkillTarget((prev) => {
+        if (!prev) return prev;
+        const stage = prev.stages[prev.currentStage];
+        if (!stage) return prev;
+        if (stage.kind !== selection.kind) return prev;
+        const isAlly = selection.side === prev.side;
+        if ((stage.ownership === "ally" && !isAlly) || (stage.ownership === "enemy" && isAlly)) {
+          return prev;
+        }
+        if (
+          stage.kind === "board" &&
+          stage.allowSelf === false &&
+          isAlly &&
+          typeof selection.lane === "number" &&
+          selection.lane === prev.laneIndex
+        ) {
+          return prev;
+        }
+        const alreadySelected = prev.selections.some((entry) => entry.card.id === selection.card.id);
+        if (alreadySelected) {
+          return prev;
+        }
+        const nextSelections = [...prev.selections, selection];
+        const nextStageIndex = prev.currentStage + 1;
+        if (nextStageIndex >= prev.stages.length) {
+          completion = { side: prev.side, laneIndex: prev.laneIndex, selections: nextSelections };
+          return null;
+        }
+        return { ...prev, selections: nextSelections, currentStage: nextStageIndex };
+      });
+      if (completion) {
+        useSkillAbility(completion.side, completion.laneIndex, completion.selections);
+      }
+    },
+    [pendingSkillTarget, useSkillAbility],
+  );
   const hudAccentColor = HUD_COLORS[localLegacySide];
 
   useEffect(() => {
@@ -1095,6 +1237,15 @@ export default function ThreeWheel_WinsOnly({
       }
     }
   }, [isAwaitingSpellTarget]);
+
+  useEffect(() => {
+    if (isAwaitingSkillTarget) {
+      setShowGrimoire(false);
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    }
+  }, [isAwaitingSkillTarget]);
 
   return (
     <div
@@ -1165,6 +1316,28 @@ export default function ThreeWheel_WinsOnly({
             </div>
             <div className="mt-2 text-[11px] leading-snug text-slate-300">
               {targetingPrompt}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isAwaitingSkillTarget && pendingSkillTarget ? (
+        <div className="pointer-events-none fixed inset-x-0 top-[160px] z-[90] flex justify-center px-3">
+          <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-amber-400/70 bg-slate-900/95 px-3 py-2 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[13px] font-semibold text-amber-100">
+                {skillTargetingAbilityLabel}
+              </div>
+              <button
+                type="button"
+                onClick={handleSkillTargetCancel}
+                className="rounded border border-amber-400/40 px-2.5 py-1 text-[11px] text-amber-100 transition hover:border-amber-300 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="mt-2 text-[11px] leading-snug text-amber-100/90">
+              {skillTargetingPrompt || "Select a valid target."}
             </div>
           </div>
         </div>
@@ -1549,6 +1722,10 @@ export default function ThreeWheel_WinsOnly({
               const abilityLabel = formatSkillAbility(lane.ability);
               const helperText = lane.description ?? "No ability this round.";
               const canUseAbility = Boolean(lane.ability) && !lane.exhausted;
+              const abilityTargeting =
+                pendingSkillTarget &&
+                pendingSkillTarget.side === localLegacySide &&
+                pendingSkillTarget.laneIndex === laneIndex;
               return (
                 <li key={laneIndex} className="flex items-start justify-between gap-2">
                   <div className="flex-1">
@@ -1559,11 +1736,15 @@ export default function ThreeWheel_WinsOnly({
                     canUseAbility ? (
                       <button
                         type="button"
-                        onClick={() => useSkillAbility(localLegacySide, laneIndex)}
-                        disabled={!skillPhaseActive}
+                        onClick={() => handleSkillAbilityRequest(laneIndex)}
+                        disabled={!skillPhaseActive || isAwaitingSkillTarget || abilityTargeting}
                         className="rounded-full border border-amber-400/60 bg-amber-500/20 px-2 py-0.5 text-[11px] font-semibold text-amber-50 transition disabled:opacity-40 disabled:cursor-not-allowed hover:bg-amber-500/30"
                       >
-                        {skillPhaseActive ? "Use" : "Ready"}
+                        {skillPhaseActive
+                          ? abilityTargeting
+                            ? "Targeting..."
+                            : "Use"
+                          : "Ready"}
                       </button>
                     ) : (
                       <span className="rounded-full border border-amber-200/30 px-2 py-0.5 text-[10px] text-amber-200/80">Spent</span>
@@ -1578,7 +1759,8 @@ export default function ThreeWheel_WinsOnly({
               <button
                 type="button"
                 onClick={handleSkillConfirm}
-                className="rounded-full bg-amber-400 px-3 py-1 text-[12px] font-semibold text-slate-900 shadow-sm transition hover:bg-amber-300"
+                disabled={isAwaitingSkillTarget}
+                className="rounded-full bg-amber-400 px-3 py-1 text-[12px] font-semibold text-slate-900 shadow-sm transition hover:bg-amber-300 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Continue to battle
               </button>
@@ -1651,9 +1833,12 @@ export default function ThreeWheel_WinsOnly({
                 startTouchDrag={startTouchDrag}
                 wheelHudColor={wheelHUD[i]}
                 pendingSpell={pendingSpell}
+                pendingSkillTargeting={activeSkillTargeting}
                 onSpellTargetSelect={handleSpellTargetSelect}
+                onSkillTargetSelect={handleSkillTargetSelect}
                 onWheelTargetSelect={handleWheelTargetSelect}
                 isAwaitingSpellTarget={isAwaitingSpellTarget}
+                isAwaitingSkillTarget={isAwaitingSkillTarget}
                 variant="grouped"
                 spellHighlightedCardIds={spellHighlightedCardIds}
               />
@@ -1685,6 +1870,9 @@ export default function ThreeWheel_WinsOnly({
         pendingSpell={pendingSpell}
         isAwaitingSpellTarget={isAwaitingSpellTarget}
         onSpellTargetSelect={handleSpellTargetSelect}
+        pendingSkillTargeting={activeSkillTargeting}
+        isAwaitingSkillTarget={isAwaitingSkillTarget}
+        onSkillTargetSelect={handleSkillTargetSelect}
         spellHighlightedCardIds={spellHighlightedCardIds}
       />
 
