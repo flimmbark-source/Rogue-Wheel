@@ -1096,15 +1096,18 @@ export default function ThreeWheel_WinsOnly({
     if (!skillTargeting || skillTargeting.side !== localLegacySide) {
       return "";
     }
+    const remaining = Math.max(0, skillTargeting.targetsRemaining);
+    const total = Math.max(1, skillTargeting.targetsTotal);
+    const countSuffix = total > 1 ? ` (${remaining} remaining)` : "";
     switch (skillTargeting.ability) {
       case "swapReserve":
-        return "Select a reserve card to swap in.";
+        return `Select a reserve card to swap in${countSuffix}.`;
       case "rerollReserve":
-        return "Select a reserve card to cycle.";
+        return `Select a reserve card to cycle${countSuffix}.`;
       case "reserveBoost":
-        return "Select a reserve card to exhaust for a boost.";
+        return `Select a reserve card to exhaust for a boost${countSuffix}.`;
       case "boostCard":
-        return "Select a card to boost.";
+        return `Select a card to boost${countSuffix}.`;
       default:
         return "";
     }
