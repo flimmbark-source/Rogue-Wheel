@@ -14,6 +14,10 @@ import {
   type SpellTargetLocation,
 } from "../../../game/spells";
 import {
+  type SkillTargetSelection,
+  type SkillTargetStageDefinition,
+} from "../../../game/skills";
+import {
   isChooseLikePhase,
   shouldShowSlotCard,
   type LegacySide,
@@ -78,6 +82,12 @@ export interface WheelPanelProps {
     targets: SpellTargetInstance[];
     currentStage: number;
   } | null;
+  pendingSkillTargeting?: {
+    owner: LegacySide;
+    laneIndex: number;
+    stage: SkillTargetStageDefinition;
+    selections: SkillTargetSelection[];
+  } | null;
   spellHighlightedCardIds: readonly string[];
   onSpellTargetSelect?: (selection: {
     side: LegacySide;
@@ -85,8 +95,10 @@ export interface WheelPanelProps {
     card: Card;
     location: SpellTargetLocation;
   }) => void;
+  onSkillTargetSelect?: (selection: SkillTargetSelection) => void;
   onWheelTargetSelect?: (wheelIndex: number) => void;
   isAwaitingSpellTarget: boolean;
+  isAwaitingSkillTarget?: boolean;
   variant?: "standalone" | "grouped";
   skillPhaseActive?: boolean;
   skillInfo?: Partial<Record<LegacySide, SkillLaneMeta | null>>;
@@ -139,9 +151,12 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   startTouchDrag,
   wheelHudColor,
   pendingSpell,
+  pendingSkillTargeting,
   onSpellTargetSelect,
+  onSkillTargetSelect,
   onWheelTargetSelect,
   isAwaitingSpellTarget,
+  isAwaitingSkillTarget,
   variant = "standalone",
   spellHighlightedCardIds,
   skillPhaseActive = false,
@@ -173,6 +188,17 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const awaitingWheelTarget = awaitingManualTarget && activeStage?.type === "wheel";
 
   const awaitingSpellTarget = awaitingManualTarget;
+
+  const skillTargeting = pendingSkillTargeting ?? null;
+  const skillStage = skillTargeting?.stage ?? null;
+  const awaitingSkillTarget = Boolean(isAwaitingSkillTarget && skillStage);
+  const awaitingSkillCardTarget = awaitingSkillTarget && skillStage?.kind === "board";
+  const skillOwner = skillTargeting?.owner ?? null;
+  const skillSourceLane = skillTargeting?.laneIndex ?? null;
+  const skillSelectedCardIds = useMemo(
+    () => new Set((skillTargeting?.selections ?? []).map((entry) => entry.card.id)),
+    [skillTargeting?.selections],
+  );
 
   const pendingOwnership: SpellTargetOwnership | null = awaitingCardTarget && activeStage?.type === "card"
     ? activeStage.ownership
@@ -253,6 +279,25 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
 
   const rightSlotTargetable = slotIsTargetable(rightSlot, rightSlotOwnership);
 
+  const slotSkillTargetable = (slot: SlotView, laneIndex: number): boolean => {
+    if (!awaitingSkillCardTarget) return false;
+    if (!slot.card) return false;
+    if (!skillStage || !skillOwner) return false;
+    if (skillSelectedCardIds.has(slot.card.id)) return false;
+    const relativeOwnership: "ally" | "enemy" = slot.side === skillOwner ? "ally" : "enemy";
+    if (skillStage.ownership !== "any" && relativeOwnership !== skillStage.ownership) {
+      return false;
+    }
+    if (skillStage.allowSelf === false && relativeOwnership === "ally" && laneIndex === skillSourceLane) {
+      return false;
+    }
+    return true;
+  };
+
+  const leftSlotSkillTargetable = slotSkillTargetable(leftSlot, index);
+
+  const rightSlotSkillTargetable = slotSkillTargetable(rightSlot, index);
+
   const isPhaseChooseLike = isChooseLikePhase(phase);
 
   const revealOpposingCardDuringMirror =
@@ -268,7 +313,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       slotSide: leftSlot.side,
       localLegacySide,
       isPhaseChooseLike,
-      slotTargetable: leftSlotTargetable,
+      slotTargetable: leftSlotTargetable || leftSlotSkillTargetable,
       revealBoardDuringSpell,
     }) || (revealOpposingCardDuringMirror && leftSlot.side !== localLegacySide);
   const shouldShowRightCard =
@@ -277,7 +322,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       slotSide: rightSlot.side,
       localLegacySide,
       isPhaseChooseLike,
-      slotTargetable: rightSlotTargetable,
+      slotTargetable: rightSlotTargetable || rightSlotSkillTargetable,
       revealBoardDuringSpell,
     }) || (revealOpposingCardDuringMirror && rightSlot.side !== localLegacySide);
 
@@ -305,7 +350,11 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     const cardInteractable = canAssignDuringChoose || slotTargetable || skillReady;
 
     const handlePick = () => {
-      if (slotTargetable && slot.card) {
+      if (skillTargetable && slot.card) {
+        onSkillTargetSelect?.({ kind: "board", side: slot.side, lane: index, card: slot.card });
+        return;
+      }
+      if (spellTargetable && slot.card) {
         onSpellTargetSelect?.({ side: slot.side, lane: index, card: slot.card, location: "board" });
         return;
       }
@@ -417,7 +466,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
 
   const onZoneDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    if (awaitingSpellTarget) return;
+    if (awaitingSpellTarget || awaitingSkillTarget) return;
     if (dragCardId && isWheelActive) setDragOverWheel(index);
   };
   const onZoneLeave = () => {
@@ -425,7 +474,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   };
 
   const handleDropCommon = (id: string | null, targetSide?: LegacySide) => {
-    if (!id || !isWheelActive || awaitingSpellTarget) return;
+    if (!id || !isWheelActive || awaitingSpellTarget || awaitingSkillTarget) return;
     const intendedSide = targetSide ?? localLegacySide;
     if (intendedSide !== localLegacySide) {
       setDragOverWheel(null);
@@ -448,7 +497,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   };
 
   const tapAssignIfSelected = () => {
-    if (!selectedCardId || awaitingSpellTarget) return;
+    if (!selectedCardId || awaitingSpellTarget || awaitingSkillTarget) return;
     const isLocalPlayer = localLegacySide === "player";
     const card =
       (isLocalPlayer ? player.hand : enemy.hand).find((c) => c.id === selectedCardId) ||
@@ -523,6 +572,11 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         onClick={(e) => {
           e.stopPropagation();
           const card = leftSlot.card;
+          if (awaitingSkillTarget && awaitingSkillCardTarget && card && leftSlotSkillTargetable) {
+            onSkillTargetSelect?.({ kind: "board", side: leftSlot.side, lane: index, card });
+            return;
+          }
+          if (awaitingSkillTarget) return;
           if (
             isAwaitingSpellTarget &&
             pendingSpell?.spell.target.type === "card" &&
@@ -557,12 +611,12 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           backgroundColor:
             dragOverWheel === index || isLeftSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
           borderColor:
-            dragOverWheel === index || isLeftSelected || leftSlotTargetable
+            dragOverWheel === index || isLeftSelected || leftSlotTargetable || leftSlotSkillTargetable
               ? theme.brass
               : theme.slotBorder,
           boxShadow: isLeftSelected
             ? "0 0 0 1px rgba(251,191,36,0.7)"
-            : leftSlotTargetable
+            : leftSlotTargetable || leftSlotSkillTargetable
             ? "0 0 0 2px rgba(56,189,248,0.55)"
             : "none",
         }}
@@ -596,7 +650,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
             }
             return;
           }
-          if (awaitingSpellTarget) return;
+          if (awaitingSpellTarget || awaitingSkillTarget) return;
           tapAssignIfSelected();
         }}
         aria-label={`Wheel ${index + 1}`}
@@ -622,12 +676,12 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
           backgroundColor:
             dragOverWheel === index || isRightSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
           borderColor:
-            dragOverWheel === index || isRightSelected || rightSlotTargetable
+            dragOverWheel === index || isRightSelected || rightSlotTargetable || rightSlotSkillTargetable
               ? theme.brass
               : theme.slotBorder,
           boxShadow: isRightSelected
             ? "0 0 0 1px rgba(251,191,36,0.7)"
-            : rightSlotTargetable
+            : rightSlotTargetable || rightSlotSkillTargetable
             ? "0 0 0 2px rgba(56,189,248,0.55)"
             : "none",
         }}
@@ -641,6 +695,11 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         onClick={(e) => {
           e.stopPropagation();
           const card = rightSlot.card;
+          if (awaitingSkillTarget && awaitingSkillCardTarget && card && rightSlotSkillTargetable) {
+            onSkillTargetSelect?.({ kind: "board", side: rightSlot.side, lane: index, card });
+            return;
+          }
+          if (awaitingSkillTarget) return;
           if (
             isAwaitingSpellTarget &&
             pendingSpell?.spell.target.type === "card" &&

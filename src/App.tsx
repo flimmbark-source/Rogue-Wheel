@@ -93,7 +93,13 @@ import {
 import { countSymbolsFromCards, getVisibleSpellsForHand } from "./game/grimoire";
 import StSCard from "./components/StSCard";
 import { chooseCpuSpellResponse, type CpuSpellDecision } from "./game/ai/grimoireCpu";
-import { describeSkillAbility, type AbilityKind } from "./game/skills";
+import {
+  describeSkillAbility,
+  getSkillAbilityTargetStages,
+  type AbilityKind,
+  type SkillTargetSelection,
+  type SkillTargetStageDefinition,
+} from "./game/skills";
 
 // ---- Local aliases/types/state helpers
 type AblyRealtime = InstanceType<typeof Realtime>;
@@ -145,6 +151,36 @@ type LaneSpellState = {
   damageModifier: number;
   mirrorTargetCardId: string | null;
   occupantCardId: string | null;
+};
+
+type PendingSkillTarget = {
+  side: LegacySide;
+  laneIndex: number;
+  ability: AbilityKind;
+  stages: SkillTargetStageDefinition[];
+  currentStage: number;
+  selections: SkillTargetSelection[];
+  sourceCardId: string | null;
+};
+
+const describeSkillTargetStage = (
+  stage: SkillTargetStageDefinition,
+  ability: AbilityKind,
+  stepIndex: number,
+  totalSteps: number,
+): string => {
+  const ownershipText =
+    stage.ownership === "ally"
+      ? "one of your"
+      : stage.ownership === "enemy"
+      ? "an enemy"
+      : "a";
+  const targetNoun = stage.kind === "reserve" ? "reserve card" : "card in play";
+  const baseLabel = stage.label ?? `${ownershipText} ${targetNoun}`;
+  if (totalSteps > 1) {
+    return `Select ${baseLabel} (${stepIndex + 1} of ${totalSteps}) for ${SKILL_ABILITY_LABELS[ability] ?? ability}`;
+  }
+  return `Select ${baseLabel} for ${SKILL_ABILITY_LABELS[ability] ?? ability}`;
 };
 
 
@@ -479,6 +515,7 @@ export default function ThreeWheel_WinsOnly({
   });
 
   const [spellTargetingSide, setSpellTargetingSide] = useState<LegacySide | null>(null);
+  const [pendingSkillTarget, setPendingSkillTarget] = useState<PendingSkillTarget | null>(null);
 
   useEffect(() => {
     if (awaitingSpellTarget && pendingSpell) {
@@ -490,6 +527,23 @@ export default function ThreeWheel_WinsOnly({
 
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
+  const activeSkillTargetStage = pendingSkillTarget
+    ? pendingSkillTarget.stages[pendingSkillTarget.currentStage] ?? null
+    : null;
+  const isAwaitingSkillTarget = Boolean(pendingSkillTarget && activeSkillTargetStage);
+
+  useEffect(() => {
+    if (!pendingSkillTarget) return;
+    if (phaseForLogic !== "skill") {
+      setPendingSkillTarget(null);
+      return;
+    }
+    const laneSet = skill.lanes[pendingSkillTarget.side];
+    const laneState = laneSet ? laneSet[pendingSkillTarget.laneIndex] : undefined;
+    if (!laneState || !laneState.ability || laneState.exhausted) {
+      setPendingSkillTarget(null);
+    }
+  }, [phaseForLogic, pendingSkillTarget, skill.lanes]);
   const castCpuSpell = useCallback(
     (decision: CpuSpellDecision) => {
       if (isMultiplayer) return;
@@ -1076,6 +1130,26 @@ export default function ThreeWheel_WinsOnly({
         }
       })()
     : "";
+  const skillTargetingAbilityLabel = pendingSkillTarget
+    ? formatSkillAbility(pendingSkillTarget.ability)
+    : null;
+  const skillTargetingPrompt = pendingSkillTarget && activeSkillTargetStage
+    ? describeSkillTargetStage(
+        activeSkillTargetStage,
+        pendingSkillTarget.ability,
+        pendingSkillTarget.currentStage,
+        pendingSkillTarget.stages.length,
+      )
+    : "";
+  const skillTargetSelections = pendingSkillTarget?.selections ?? [];
+  const activeSkillTargeting = pendingSkillTarget && activeSkillTargetStage
+    ? {
+        owner: pendingSkillTarget.side,
+        laneIndex: pendingSkillTarget.laneIndex,
+        stage: activeSkillTargetStage,
+        selections: skillTargetSelections,
+      }
+    : null;
   const skillPhaseActive = isSkillMode && phaseForLogic === "skill";
   const skillLaneDetails = useMemo(() => {
     const sides: LegacySide[] = ["player", "enemy"];
@@ -1117,6 +1191,15 @@ export default function ThreeWheel_WinsOnly({
       }
     }
   }, [isAwaitingSpellTarget]);
+
+  useEffect(() => {
+    if (isAwaitingSkillTarget) {
+      setShowGrimoire(false);
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    }
+  }, [isAwaitingSkillTarget]);
 
   return (
     <div
@@ -1187,6 +1270,28 @@ export default function ThreeWheel_WinsOnly({
             </div>
             <div className="mt-2 text-[11px] leading-snug text-slate-300">
               {targetingPrompt}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isAwaitingSkillTarget && pendingSkillTarget ? (
+        <div className="pointer-events-none fixed inset-x-0 top-[160px] z-[90] flex justify-center px-3">
+          <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-amber-400/70 bg-slate-900/95 px-3 py-2 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[13px] font-semibold text-amber-100">
+                {skillTargetingAbilityLabel}
+              </div>
+              <button
+                type="button"
+                onClick={handleSkillTargetCancel}
+                className="rounded border border-amber-400/40 px-2.5 py-1 text-[11px] text-amber-100 transition hover:border-amber-300 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="mt-2 text-[11px] leading-snug text-amber-100/90">
+              {skillTargetingPrompt || "Select a valid target."}
             </div>
           </div>
         </div>
@@ -1628,9 +1733,12 @@ export default function ThreeWheel_WinsOnly({
                 startTouchDrag={startTouchDrag}
                 wheelHudColor={wheelHUD[i]}
                 pendingSpell={pendingSpell}
+                pendingSkillTargeting={activeSkillTargeting}
                 onSpellTargetSelect={handleSpellTargetSelect}
+                onSkillTargetSelect={handleSkillTargetSelect}
                 onWheelTargetSelect={handleWheelTargetSelect}
                 isAwaitingSpellTarget={isAwaitingSpellTarget}
+                isAwaitingSkillTarget={isAwaitingSkillTarget}
                 variant="grouped"
                 spellHighlightedCardIds={spellHighlightedCardIds}
                 skillPhaseActive={skillPhaseActive}
@@ -1668,6 +1776,9 @@ export default function ThreeWheel_WinsOnly({
         pendingSpell={pendingSpell}
         isAwaitingSpellTarget={isAwaitingSpellTarget}
         onSpellTargetSelect={handleSpellTargetSelect}
+        pendingSkillTargeting={activeSkillTargeting}
+        isAwaitingSkillTarget={isAwaitingSkillTarget}
+        onSkillTargetSelect={handleSkillTargetSelect}
         spellHighlightedCardIds={spellHighlightedCardIds}
       />
 
