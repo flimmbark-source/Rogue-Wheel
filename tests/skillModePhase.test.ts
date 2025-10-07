@@ -82,14 +82,14 @@ const abilityConfigs: Record<AbilityKind, AbilityConfig> = {
   swapReserve: { kind: "swapReserve", usesPerPhase: 1, targetsRequired: 2 },
   rerollReserve: { kind: "rerollReserve", usesPerPhase: 1, targetsRequired: 1 },
   boostCard: { kind: "boostCard", usesPerPhase: 1, targetsRequired: 1 },
-  reserveBoost: { kind: "reserveBoost", usesPerPhase: 1, targetsRequired: 1 },
+  reserveBoost: { kind: "reserveBoost", usesPerPhase: 1, targetsRequired: 2 },
 };
 
 const abilityTargetSpecs: Record<AbilityKind, TargetSpec> = {
   swapReserve: { kind: "reserveThenLane", count: 2 },
   rerollReserve: { kind: "reserve", count: 1 },
   boostCard: { kind: "friendlyLane", count: 1 },
-  reserveBoost: { kind: "reserve", count: 1 },
+  reserveBoost: { kind: "reserveThenLane", count: 2 },
 };
 
 function targetKindForIndex(spec: TargetSpec, index: number): "reserve" | "friendlyLane" {
@@ -235,8 +235,11 @@ function computeLaneAvailability(state: SkillPhaseState, side: Side): OptionAvai
       }
       case "reserveBoost": {
         const positiveReserve = reserves.some((card) => card.printed > 0);
+        const friendlyLanes = state.lanes.filter((l) => l.side === side && l.card);
         if (!positiveReserve) {
           base.reason = "no positive reserve";
+        } else if (friendlyLanes.length === 0) {
+          base.reason = "no friendly lanes";
         } else {
           base.available = true;
         }
@@ -515,7 +518,12 @@ function applyBoostCard(state: SkillPhaseState, laneIndex: number, targetLaneInd
   return withUpdatedState(state, { lanes });
 }
 
-function applyReserveBoost(state: SkillPhaseState, laneIndex: number, cardId: string): SkillPhaseState {
+function applyReserveBoost(
+  state: SkillPhaseState,
+  laneIndex: number,
+  targetLaneIndex: number,
+  cardId: string
+): SkillPhaseState {
   const lane = state.lanes.find((l) => l.index === laneIndex);
   if (!lane || !lane.card) throw new Error("Invalid lane");
   const side = lane.side;
@@ -528,7 +536,10 @@ function applyReserveBoost(state: SkillPhaseState, laneIndex: number, cardId: st
     throw new Error("Reserve boost requires positive value");
   }
   const lanes = cloneLanes(state.lanes);
-  const laneMut = lanes.find((l) => l.index === laneIndex)!;
+  const laneMut = lanes.find((l) => l.index === targetLaneIndex && l.side === side);
+  if (!laneMut || !laneMut.card) {
+    throw new Error("Invalid boost lane");
+  }
   laneMut.boost += chosen.printed;
   return withUpdatedState(state, { lanes, reserves });
 }
@@ -562,9 +573,16 @@ function confirmActivation(state: SkillPhaseState): SkillPhaseState {
     case "boostCard":
       nextState = applyBoostCard(nextState, laneIndex, Number(targeting.selectedTargets[0]));
       break;
-    case "reserveBoost":
-      nextState = applyReserveBoost(nextState, laneIndex, String(targeting.selectedTargets[0]));
+    case "reserveBoost": {
+      const [reserveTarget, laneTarget] = targeting.selectedTargets;
+      nextState = applyReserveBoost(
+        nextState,
+        laneIndex,
+        Number(laneTarget),
+        String(reserveTarget)
+      );
       break;
+    }
     default:
       throw new Error("Unknown ability");
   }
@@ -690,7 +708,8 @@ function aiChooseAction(
       } else if (option.ability === "reserveBoost") {
         const reserves = state.reserves[side].filter((c) => c.printed > 0);
         if (reserves.length > 0) {
-          chosenTargets = [reserves.reduce((a, b) => (a.printed > b.printed ? a : b)).id];
+          const bestReserve = reserves.reduce((a, b) => (a.printed > b.printed ? a : b));
+          chosenTargets = [bestReserve.id, lane.index];
         }
       } else if (option.ability === "swapReserve") {
         const reserves = state.reserves[side];
@@ -851,6 +870,7 @@ test("Confirm activation consumes use and updates state", () => {
   );
   state = beginActivation(state, "you", 0);
   state = pickTarget(state, "boost");
+  state = pickTarget(state, 0);
   state = confirmActivation(state);
   const lane = state.lanes.find((l) => l.index === 0)!;
   expect(lane.boost === 3, "Boost should be applied");
@@ -869,6 +889,7 @@ test("Turn advances only when opponent can act", () => {
   );
   state = beginActivation(state, "you", 0);
   state = pickTarget(state, "boost");
+  state = pickTarget(state, 0);
   state = confirmActivation(state);
   expect(state.activeSide === "you", "Active side should remain when opponent lacks actions");
 });
@@ -936,8 +957,30 @@ test("Reserve boost removes reserve card", () => {
   );
   state = beginActivation(state, "you", 0);
   state = pickTarget(state, "boost");
+  state = pickTarget(state, 0);
   state = confirmActivation(state);
   expect(state.reserves.you.length === 0, "Reserve card should be consumed");
+  const boostedLane = state.lanes.find((l) => l.index === 0)!;
+  expect(boostedLane.boost === 3, "Selected lane should gain the reserve boost");
+});
+
+test("Reserve boost can target a different friendly lane", () => {
+  let state = initSkillPhase(
+    [
+      { side: "you", index: 0, card: { id: "lane", printed: 5 } },
+      { side: "you", index: 1, card: { id: "ally", printed: 2 } },
+    ],
+    { you: [{ id: "boost", printed: 3 }], rival: [] },
+    "you",
+    12
+  );
+  state = beginActivation(state, "you", 0);
+  state = pickTarget(state, "boost");
+  state = pickTarget(state, 1);
+  state = confirmActivation(state);
+  const boostedAlly = state.lanes.find((l) => l.index === 1)!;
+  expect(boostedAlly.boost === 3, "Reserve boost should apply to the chosen lane");
+  expect(state.lanes.find((l) => l.index === 0)?.boost === 0, "Source lane boost should remain unchanged");
 });
 
 test("AI prefers deterministic boost", () => {
@@ -951,12 +994,13 @@ test("AI prefers deterministic boost", () => {
     20
   );
   const action = aiChooseAction(state, "rival");
-  const firstTarget = action.chosenTargets?.[0];
+  const [firstTarget, laneTarget] = action.chosenTargets ?? [];
   expect(
     action.type === "activate" &&
       action.laneIndex === 0 &&
-      firstTarget === "boost",
-    "AI should choose reserve boost"
+      firstTarget === "boost" &&
+      laneTarget === 0,
+    "AI should choose reserve boost and target its lane"
   );
 });
 
