@@ -1,25 +1,17 @@
 import type { CorePhase } from "../../../game/types";
 
-export type RevealDecision = "skillPhase" | "revealRound";
-
-export interface RevealFlowOptions {
-  currentPhase: CorePhase;
+export interface PostResolvePhaseOptions {
   isSkillMode: boolean;
   skillCompleted: boolean;
 }
 
-export function decideRevealFlow({
-  currentPhase,
+export function determinePostResolvePhase({
   isSkillMode,
   skillCompleted,
-}: RevealFlowOptions): RevealDecision {
-  if (currentPhase !== "choose") {
-    return "revealRound";
-  }
-
+}: PostResolvePhaseOptions): CorePhase {
   if (isSkillMode && !skillCompleted) {
-    return "skillPhase";
+    return "skill";
   }
 
-  return "revealRound";
+  return "roundEnd";
 }

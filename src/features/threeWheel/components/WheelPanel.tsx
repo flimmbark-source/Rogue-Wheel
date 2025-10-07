@@ -463,7 +463,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const panelStyle = variant === "standalone" ? standaloneStyle : groupedStyle;
 
   const resultIndicators =
-    (phase === "roundEnd" || phase === "ended") && (
+    (phase === "skill" || phase === "roundEnd" || phase === "ended") && (
       <>
         <span
           aria-label={`Wheel ${index + 1} player result`}

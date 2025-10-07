@@ -340,7 +340,6 @@ export default function ThreeWheel_WinsOnly({
     handleExitClick,
     applySpellEffects,
     setAnteBet,
-    handleSkillConfirm,
     useSkillAbility,
   } = actions;
 
@@ -516,6 +515,8 @@ export default function ThreeWheel_WinsOnly({
   }, [awaitingSpellTarget, pendingSpell]);
 
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
+  const normalizedPhaseForSpells: CorePhase =
+    phaseForLogic === "skill" ? "roundEnd" : phaseForLogic;
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
   const castCpuSpell = useCallback(
     (decision: CpuSpellDecision) => {
@@ -644,7 +645,7 @@ export default function ThreeWheel_WinsOnly({
 
     visibleSpells.forEach((spell) => {
       const allowedPhases = spell.allowedPhases ?? ["choose"];
-      if (!allowedPhases.includes(phaseForLogic)) return;
+      if (!allowedPhases.includes(normalizedPhaseForSpells)) return;
       const cost = computeSpellCost(spell, {
         caster,
         opponent,
@@ -919,7 +920,9 @@ export default function ThreeWheel_WinsOnly({
   }, [showGrimoire, updateGrimoirePosition]);
 
   useEffect(() => {
-    if (!(phaseForLogic === "roundEnd" || phaseForLogic === "ended")) {
+    if (!(
+      phaseForLogic === "skill" || phaseForLogic === "roundEnd" || phaseForLogic === "ended"
+    )) {
       return;
     }
     if (!reserveSums) {
@@ -973,7 +976,7 @@ export default function ThreeWheel_WinsOnly({
   }, [onboardingStage, playerAssignedCount, persistStage, totalWheelSlots]);
 
   useEffect(() => {
-    if (onboardingStage === 2 && phaseForLogic === "roundEnd") {
+    if (onboardingStage === 2 && (phaseForLogic === "skill" || phaseForLogic === "roundEnd")) {
       persistStage(3);
     }
   }, [onboardingStage, phaseForLogic, persistStage]);
@@ -1022,10 +1025,11 @@ export default function ThreeWheel_WinsOnly({
 
   const localAdvanceReady = advanceVotes[localLegacySide];
   const remoteAdvanceReady = advanceVotes[remoteLegacySide];
+  const isAdvancePhase = phase === "roundEnd" || phase === "skill";
   const advanceButtonDisabled = isMultiplayer && localAdvanceReady;
   const advanceButtonLabel = isMultiplayer && localAdvanceReady ? "Ready" : "Next";
   const advanceStatusText =
-    isMultiplayer && phase === "roundEnd"
+    isMultiplayer && isAdvancePhase
       ? localAdvanceReady && !remoteAdvanceReady
         ? `Waiting for ${namesByLegacy[remoteLegacySide]}...`
         : !localAdvanceReady && remoteAdvanceReady
@@ -1103,7 +1107,7 @@ export default function ThreeWheel_WinsOnly({
         }
       })()
     : "";
-  const skillPhaseActive = isSkillMode && phaseForLogic === "skill";
+  const skillPhaseActive = isSkillMode && phaseForLogic === "skill" && !skill.completed;
   const localSkillLanes = skill.lanes[localLegacySide] ?? [];
   const [skillTargeting, setSkillTargeting] = useState<SkillTargetingState | null>(null);
 
@@ -1520,7 +1524,7 @@ export default function ThreeWheel_WinsOnly({
               )}
             </div>
           )}
-          {phase === "roundEnd" && (
+          {isAdvancePhase && (
             <div className="flex flex-col items-end gap-1">
               <button
                 disabled={advanceButtonDisabled}
@@ -1534,16 +1538,6 @@ export default function ThreeWheel_WinsOnly({
                   {advanceStatusText}
                 </span>
               )}
-            </div>
-          )}
-          {phase === "skill" && (
-            <div className="flex flex-col items-end gap-1">
-              <button
-                onClick={handleSkillConfirm}
-                className="px-2.5 py-0.5 rounded bg-amber-400 text-slate-900 font-semibold"
-              >
-                Continue to battle
-              </button>
             </div>
           )}
           {/* Grimoire button + popover/modal */}
@@ -1584,7 +1578,7 @@ export default function ThreeWheel_WinsOnly({
                             <ul className="space-y-2">
                               {localSpellDefinitions.map((spell) => {
                                 const allowedPhases = spell.allowedPhases ?? ["choose"];
-                                const phaseAllowed = allowedPhases.includes(phase);
+                                const phaseAllowed = allowedPhases.includes(normalizedPhaseForSpells);
                                 const effectiveCost = getSpellCost(spell);
                                 const canAfford = localMana >= effectiveCost;
                                 const disabled = !phaseAllowed || !canAfford || !!pendingSpell;
@@ -1653,7 +1647,7 @@ export default function ThreeWheel_WinsOnly({
                             <ul className="space-y-2">
                               {localSpellDefinitions.map((spell) => {
                                 const allowedPhases = spell.allowedPhases ?? ["choose"];
-                                const phaseAllowed = allowedPhases.includes(phase);
+                                const phaseAllowed = allowedPhases.includes(normalizedPhaseForSpells);
                                 const effectiveCost = getSpellCost(spell);
                                 const canAfford = localMana >= effectiveCost;
                                 const disabled = !phaseAllowed || !canAfford || !!pendingSpell;

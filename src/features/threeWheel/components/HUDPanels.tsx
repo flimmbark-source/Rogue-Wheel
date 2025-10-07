@@ -55,7 +55,12 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
     const rs = isPlayer ? rsP : rsE;
     const hasInit = initiative === side;
     const isReserveVisible =
-      (phase === "showEnemy" || phase === "anim" || phase === "roundEnd" || phase === "ended") && rs !== null;
+      (phase === "showEnemy" ||
+        phase === "anim" ||
+        phase === "skill" ||
+        phase === "roundEnd" ||
+        phase === "ended") &&
+      rs !== null;
     const reserveHighlighted = Boolean(reserveSpellHighlights?.[side]);
 
     const manaCount = isPlayer ? manaPools.player : manaPools.enemy;

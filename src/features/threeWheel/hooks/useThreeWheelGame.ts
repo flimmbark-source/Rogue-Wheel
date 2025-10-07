@@ -47,7 +47,7 @@ import {
   type RoundAnalysis,
   type WheelOutcome,
 } from "./roundOutcomeSummary";
-import { decideRevealFlow } from "../utils/skillPhase";
+import { determinePostResolvePhase } from "../utils/skillPhase";
 
 export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine";
 
@@ -207,7 +207,6 @@ export type ThreeWheelGameActions = {
   handleExitClick: () => void;
   applySpellEffects: (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => void;
   setAnteBet: (bet: number) => void;
-  handleSkillConfirm: () => void;
   useSkillAbility: (side: LegacySide, laneIndex: number, target?: SkillAbilityTarget) => void;
 };
 
@@ -1255,7 +1254,11 @@ export function useThreeWheelGame({
         flashSpellHighlights(affectedCardIds, affectedReserveSides);
       }
 
-      if (phaseRef.current === "anim" || phaseRef.current === "roundEnd") {
+      if (
+        phaseRef.current === "anim" ||
+        phaseRef.current === "skill" ||
+        phaseRef.current === "roundEnd"
+      ) {
         resolveRound(undefined, {
           skipAnimation: true,
           snapshot: { assign: latestAssignments, tokens: snapshotTokens },
@@ -1355,18 +1358,12 @@ export function useThreeWheelGame({
 
   const tryRevealRound = useCallback(
     (opts?: { force?: boolean }) => {
-      const decision = decideRevealFlow({
-        currentPhase: phaseRef.current,
-        isSkillMode,
-        skillCompleted: skillStateRef.current.completed,
-      });
-      if (!opts?.force && decision === "skillPhase") {
-        setPhase((prev) => (prev === "skill" ? prev : "skill"));
+      if (!opts?.force && phaseRef.current !== "choose") {
         return false;
       }
       return revealRoundCore(opts);
     },
-    [isSkillMode, revealRoundCore],
+    [revealRoundCore],
   );
 
   const onReveal = useCallback(() => {
@@ -1464,7 +1461,11 @@ export function useThreeWheelGame({
         return;
       }
 
-      setPhase("roundEnd");
+      const nextPhase = determinePostResolvePhase({
+        isSkillMode,
+        skillCompleted: skillStateRef.current.completed,
+      });
+      setPhase(nextPhase);
     };
 
     if (options?.skipAnimation) {
@@ -1521,7 +1522,7 @@ export function useThreeWheelGame({
 
   const nextRoundCore = useCallback(
     (opts?: { force?: boolean }) => {
-      const allow = opts?.force || phase === "roundEnd";
+      const allow = opts?.force || phase === "roundEnd" || phase === "skill";
       if (!allow) return false;
 
       commitPendingWins();
@@ -1750,21 +1751,17 @@ export function useThreeWheelGame({
     tryRevealRound,
   ]);
 
-  const handleSkillConfirm = useCallback(() => {
-    if (!isSkillMode) {
-      tryRevealRound({ force: true });
-      return;
-    }
-
+  const completeSkillPhase = useCallback(() => {
+    let updated = false;
     setSkillState((prev) => {
       if (prev.completed) return prev;
+      updated = true;
       const next = { ...prev, completed: true };
       skillStateRef.current = next;
       return next;
     });
-
-    tryRevealRound({ force: true });
-  }, [isSkillMode, tryRevealRound]);
+    return updated;
+  }, [setSkillState]);
 
   const useSkillAbility = useCallback(
     (side: LegacySide, laneIndex: number, target?: SkillAbilityTarget) => {
@@ -1796,7 +1793,9 @@ export function useThreeWheelGame({
   );
 
   const handleNextClick = useCallback(() => {
-    if (phase !== "roundEnd") return;
+    if (!(phase === "roundEnd" || phase === "skill")) return;
+
+    completeSkillPhase();
 
     if (!isMultiplayer) {
       nextRound();
@@ -1809,6 +1808,7 @@ export function useThreeWheelGame({
     sendIntent({ type: "nextRound", side: localLegacySide });
   }, [
     advanceVotes,
+    completeSkillPhase,
     isMultiplayer,
     localLegacySide,
     markAdvanceVote,
@@ -1819,10 +1819,11 @@ export function useThreeWheelGame({
 
   useEffect(() => {
     if (!isMultiplayer) return;
-    if (phase !== "roundEnd") return;
+    if (!(phase === "roundEnd" || phase === "skill")) return;
     if (!advanceVotes.player || !advanceVotes.enemy) return;
+    completeSkillPhase();
     nextRound();
-  }, [advanceVotes, isMultiplayer, nextRound, phase]);
+  }, [advanceVotes, completeSkillPhase, isMultiplayer, nextRound, phase]);
 
   const resetMatch = useCallback(() => {
     clearResolveVotes();
@@ -2142,7 +2143,6 @@ export function useThreeWheelGame({
     handleExitClick,
     applySpellEffects,
     setAnteBet,
-    handleSkillConfirm,
     useSkillAbility,
   };
 
