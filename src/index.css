@@ -137,7 +137,7 @@ button[aria-label^="Card"] > div:nth-child(2) {
 }
 
 /* Add margin below the last wheel to prevent overlap with the player's hand */
-div.relative[aria-label^="Wheel"]:last-of-type {
+div[data-drop="wheel"][aria-label^="Wheel"]:last-of-type {
   margin-bottom: 1rem;
 }
 
