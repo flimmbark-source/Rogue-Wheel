@@ -888,6 +888,12 @@ export default function ThreeWheel_WinsOnly({
     useSkillAbilityBase,
   ]);
 
+  const attemptCpuSkillRef = useRef(attemptCpuSkill);
+
+  useEffect(() => {
+    attemptCpuSkillRef.current = attemptCpuSkill;
+  }, [attemptCpuSkill]);
+
   useEffect(() => {
     if (cpuSpellResponseTick === 0) return;
     const timeout = window.setTimeout(() => {
@@ -901,12 +907,12 @@ export default function ThreeWheel_WinsOnly({
   useEffect(() => {
     if (cpuSkillResponseTick === 0) return;
     const timeout = window.setTimeout(() => {
-      void attemptCpuSkill();
+      void attemptCpuSkillRef.current();
     }, 1000);
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [attemptCpuSkill, cpuSkillResponseTick]);
+  }, [cpuSkillResponseTick]);
 
   useEffect(() => {
     if (!isGrimoireMode) {
