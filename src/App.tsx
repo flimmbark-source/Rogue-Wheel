@@ -1,5 +1,10 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useThreeWheelGame, type GameLogEntry } from "./features/threeWheel/hooks/useThreeWheelGame";
+import {
+  useThreeWheelGame,
+  type GameLogEntry,
+  type SkillAbilityTarget,
+  type SkillAbilityUsageResult,
+} from "./features/threeWheel/hooks/useThreeWheelGame";
 import React, {
   useMemo,
   useRef,
@@ -93,6 +98,7 @@ import {
 import { countSymbolsFromCards, getVisibleSpellsForHand } from "./game/grimoire";
 import StSCard from "./components/StSCard";
 import { chooseCpuSpellResponse, type CpuSpellDecision } from "./game/ai/grimoireCpu";
+import { chooseCpuSkillResponse } from "./game/ai/skillCpu";
 import { isReserveBoostTarget, type AbilityKind } from "./game/skills";
 
 // ---- Local aliases/types/state helpers
@@ -365,7 +371,7 @@ export default function ThreeWheel_WinsOnly({
     handleExitClick,
     applySpellEffects,
     setAnteBet,
-    useSkillAbility,
+    useSkillAbility: useSkillAbilityBase,
   } = actions;
 
   // --- local UI/Grimoire state (from Spells branch) ---
@@ -379,7 +385,8 @@ export default function ThreeWheel_WinsOnly({
   const effectiveGameMode = activeGameModes.length > 0 ? activeGameModes.join("+") : "classic";
   const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
 
-  const [cpuResponseTick, setCpuResponseTick] = useState(0);
+  const [cpuSpellResponseTick, setCpuSpellResponseTick] = useState(0);
+  const [cpuSkillResponseTick, setCpuSkillResponseTick] = useState(0);
 
   const applySpellEffectsWithAi = useCallback(
     (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => {
@@ -390,7 +397,7 @@ export default function ThreeWheel_WinsOnly({
         payload.caster === localLegacySide &&
         remoteLegacySide !== localLegacySide
       ) {
-        setCpuResponseTick((tick) => tick + 1);
+        setCpuSpellResponseTick((tick) => tick + 1);
       }
     },
     [
@@ -850,15 +857,56 @@ export default function ThreeWheel_WinsOnly({
     spellRuntimeStateRef,
   ]);
 
+  const attemptCpuSkill = useCallback(async () => {
+    if (!isSkillMode || isMultiplayer) return;
+    if (phaseForLogic !== "skill") return;
+    const cpuSide = remoteLegacySide;
+    if (cpuSide === localLegacySide) return;
+    if (skill.completed) return;
+
+    const decision = chooseCpuSkillResponse({
+      side: cpuSide,
+      board: assign,
+      skillLanes: skill.lanes[cpuSide] ?? [],
+      fighter: cpuSide === "player" ? player : enemy,
+      opponent: cpuSide === "player" ? enemy : player,
+    });
+
+    if (!decision) return;
+
+    await useSkillAbilityBase(cpuSide, decision.laneIndex, decision.target);
+  }, [
+    assign,
+    enemy,
+    isMultiplayer,
+    isSkillMode,
+    localLegacySide,
+    phaseForLogic,
+    player,
+    remoteLegacySide,
+    skill,
+    useSkillAbilityBase,
+  ]);
+
   useEffect(() => {
-    if (cpuResponseTick === 0) return;
+    if (cpuSpellResponseTick === 0) return;
     const timeout = window.setTimeout(() => {
       attemptCpuSpell();
     }, 1000);
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [attemptCpuSpell, cpuResponseTick]);
+  }, [attemptCpuSpell, cpuSpellResponseTick]);
+
+  useEffect(() => {
+    if (cpuSkillResponseTick === 0) return;
+    const timeout = window.setTimeout(() => {
+      void attemptCpuSkill();
+    }, 1000);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [attemptCpuSkill, cpuSkillResponseTick]);
 
   useEffect(() => {
     if (!isGrimoireMode) {
@@ -1281,6 +1329,37 @@ export default function ThreeWheel_WinsOnly({
         specKind: skillTargeting.activeKind,
       }
     : null;
+
+  const useSkillAbility = useCallback(
+    async (
+      side: LegacySide,
+      laneIndex: number,
+      target?: SkillAbilityTarget,
+    ): Promise<SkillAbilityUsageResult> => {
+      const result = await useSkillAbilityBase(side, laneIndex, target);
+      if (
+        result.success &&
+        !isMultiplayer &&
+        isSkillMode &&
+        side === localLegacySide &&
+        remoteLegacySide !== localLegacySide &&
+        phaseForLogic === "skill" &&
+        !skill.completed
+      ) {
+        setCpuSkillResponseTick((tick) => tick + 1);
+      }
+      return result;
+    },
+    [
+      isMultiplayer,
+      isSkillMode,
+      localLegacySide,
+      phaseForLogic,
+      remoteLegacySide,
+      skill.completed,
+      useSkillAbilityBase,
+    ],
+  );
 
   const skillTargetableReserveIds = useMemo(() => {
     if (!skillTargeting || skillTargeting.side !== localLegacySide) return null;
