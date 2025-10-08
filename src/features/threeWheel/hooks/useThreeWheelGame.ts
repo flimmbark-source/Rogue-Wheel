@@ -878,8 +878,22 @@ export function useThreeWheelGame({
   );
 
   const updateReservePreview = useCallback(() => {
-    const playerReserve = computeReserveSum("player", assignRef.current.player);
-    const enemyReserve = computeReserveSum("enemy", assignRef.current.enemy);
+    const playerFighter = playerRef.current;
+    const enemyFighter = enemyRef.current;
+
+    const computeFromFighter = (side: LegacySide, fighter: Fighter) => {
+      const used = side === "player" ? assignRef.current.player : assignRef.current.enemy;
+      const usedIds = new Set((used.filter(Boolean) as Card[]).map((card) => card.id));
+      const remaining = fighter.hand.filter((card) => !usedIds.has(card.id));
+      const base = remaining
+        .slice(0, 2)
+        .reduce((acc, card) => acc + (isNormal(card) ? card.number ?? 0 : 0), 0);
+      const penalty = reservePenaltiesRef.current[side] ?? 0;
+      return Math.max(0, base - penalty);
+    };
+
+    const playerReserve = computeFromFighter("player", playerFighter);
+    const enemyReserve = computeFromFighter("enemy", enemyFighter);
     setReserveSums({ player: playerReserve, enemy: enemyReserve });
   }, [setReserveSums]);
 
