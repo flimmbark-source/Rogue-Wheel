@@ -93,7 +93,7 @@ h1, h2, h3, h4, h5, h6 {
 /*
  * Wood-themed frames for wheels and card slots.
  */
-div.relative[aria-label^="Wheel"] {
+div.relative[data-drop="wheel"][aria-label^="Wheel"] {
   background-image: url("/assets/wheel-frame.png");
   background-size: contain;
   background-repeat: no-repeat;
