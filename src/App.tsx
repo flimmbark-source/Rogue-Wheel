@@ -146,7 +146,7 @@ const SKILL_TARGET_SPECS: Record<AbilityKind, SkillTargetSpec> = {
   },
   reserveBoost: {
     kind: "reserveThenLane",
-    reservePrompt: "Select a positive reserve card to consume for a boost.",
+    reservePrompt: "Select a positive reserve card to exhaust for a boost.",
     lanePrompt: "Select a friendly lane to receive the reserve boost.",
     requirePositiveReserve: true,
   },

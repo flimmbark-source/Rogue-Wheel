@@ -41,6 +41,7 @@ export type Card = {
   rightValue?: number;  // when type === "split"
   tags: TagId[];
   arcana?: Arcana;
+  reserveExhausted?: boolean;
 };
 
 export type VC =

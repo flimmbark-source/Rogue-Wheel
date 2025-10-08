@@ -251,16 +251,17 @@ const makeOptions = (
 
   const result = applySkillAbilityEffect(options);
   assert.equal(result.success, true);
-  assert.equal(fighterState.hand.length, 0, "reserve card should be removed from hand");
-  assert.deepEqual(fighterState.discard, [], "reserve card should not enter discard");
-  assert.deepEqual(
-    fighterState.exhaust.map((card) => card.id),
-    [reserveCard.id],
-    "reserve card should be exhausted",
+  assert.equal(fighterState.hand.length, 1, "reserve card should remain in hand");
+  assert.equal(
+    fighterState.hand[0]?.reserveExhausted,
+    true,
+    "reserve card should be marked exhausted",
   );
+  assert.deepEqual(fighterState.discard, [], "reserve card should not enter discard");
+  assert.deepEqual(fighterState.exhaust.map((card) => card.id), [], "reserve pile unchanged");
   const ensuredAssignments: AssignmentState<Card> = updatedAssignments!;
   const boostedLane = ensuredAssignments.player[0];
   assert.equal(boostedLane?.number, 8, "lane should gain the reserve card's value");
 
-  console.log("reserve boost exhausts reserve card test passed");
+  console.log("reserve boost exhausts reserve card in place test passed");
 }
