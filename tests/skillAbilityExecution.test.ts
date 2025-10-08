@@ -34,6 +34,8 @@ const makeOptions = (
   },
   recalcWheelForLane: () => {
     throw new Error("recalcWheelForLane should not run by default");
+    // satisfy type inference
+    return { value: 0, changed: false };
   },
   getFighterSnapshot: () => blankFighter,
   updateFighter: noopUpdateFighter,
@@ -84,6 +86,7 @@ const makeOptions = (
     },
     recalcWheelForLane: (_assign, lane) => {
       recalcLane = lane;
+      return { value: 0, changed: true };
     },
     appendLog: (msg) => {
       logs.push(msg);
@@ -93,6 +96,7 @@ const makeOptions = (
 
   const result = applySkillAbilityEffect(options);
   assert.equal(result.success, true);
+  assert.deepEqual(result.changedLanes, [0]);
   assert.equal(result.failureReason, undefined);
   assert.ok(updatedAssignments, "assignments should update on success");
   const ensuredAssignments: AssignmentState<Card> = updatedAssignments!;
@@ -130,9 +134,7 @@ const makeOptions = (
     concludeAssignUpdate: (nextAssign) => {
       updatedAssignments = nextAssign;
     },
-    recalcWheelForLane: () => {
-      /* noop */
-    },
+    recalcWheelForLane: () => ({ value: 0, changed: false }),
     appendLog: (msg) => {
       logs.push(msg);
     },
@@ -244,9 +246,7 @@ const makeOptions = (
     concludeAssignUpdate: (nextAssign) => {
       updatedAssignments = nextAssign;
     },
-    recalcWheelForLane: () => {
-      /* noop */
-    },
+    recalcWheelForLane: () => ({ value: 0, changed: false }),
   });
 
   const result = applySkillAbilityEffect(options);

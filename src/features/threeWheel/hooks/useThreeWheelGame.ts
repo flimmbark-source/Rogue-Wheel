@@ -904,13 +904,27 @@ export function useThreeWheelGame({
 
   const recalcWheelForLane = useCallback(
     (assignments: AssignmentState<Card>, index: number) => {
-      if (index < 0 || index >= assignments.player.length) return;
+      if (index < 0 || index >= assignments.player.length) {
+        return { value: 0, changed: false };
+      }
       const playerValue = modSlice(cardWheelValue(assignments.player[index] as Card | null));
       const enemyValue = modSlice(cardWheelValue(assignments.enemy[index] as Card | null));
       const total = modSlice(playerValue + enemyValue);
       wheelRefs[index]?.current?.setVisualToken?.(total);
+
+      const prevTokens = tokensRef.current ?? [0, 0, 0];
+      const previous = prevTokens[index] ?? 0;
+      if (total === previous) {
+        return { value: total, changed: false };
+      }
+
+      const nextTokens = [...prevTokens] as [number, number, number];
+      nextTokens[index] = total;
+      tokensRef.current = nextTokens;
+      setTokens(nextTokens);
+      return { value: total, changed: true };
     },
-    [wheelRefs],
+    [setTokens, wheelRefs],
   );
 
   const assignToWheelFor = useCallback(
@@ -1553,6 +1567,53 @@ export function useThreeWheelGame({
   }
 
 
+  const refreshRoundSummaryAfterSkill = useCallback(
+    (assignments: AssignmentState<Card>) => {
+      if (!isSkillMode) return;
+
+      const played = [0, 1, 2].map((i) => ({
+        p: assignments.player[i] as Card | null,
+        e: assignments.enemy[i] as Card | null,
+      }));
+
+      const latestAnalysis = analyzeRound(played);
+      roundAnalysisRef.current = latestAnalysis;
+
+      const summary = summarizeRoundOutcome({
+        analysis: latestAnalysis,
+        wins,
+        initiative,
+        round,
+        namesByLegacy,
+        HUD_COLORS,
+        isAnteMode,
+        anteState: anteStateRef.current,
+        winGoal,
+        localLegacySide,
+        remoteLegacySide,
+      });
+
+      setWheelHUD(summary.hudColors);
+      pendingWinsRef.current = summary.wins;
+      setInitiative(summary.nextInitiative);
+    },
+    [
+      HUD_COLORS,
+      initiative,
+      isAnteMode,
+      isSkillMode,
+      localLegacySide,
+      namesByLegacy,
+      remoteLegacySide,
+      round,
+      setInitiative,
+      setWheelHUD,
+      winGoal,
+      wins,
+    ],
+  );
+
+
   const nextRoundCore = useCallback(
     (opts?: { force?: boolean }) => {
       const allow = opts?.force || phase === "roundEnd" || phase === "skill";
@@ -1985,6 +2046,10 @@ export function useThreeWheelGame({
         appendLog(`${actorName} used ${ability}.`);
       }
 
+      if (isSkillMode && result.changedLanes && result.changedLanes.length > 0) {
+        refreshRoundSummaryAfterSkill(assignRef.current);
+      }
+
       if (!isMultiplayer && isSkillMode && side === localLegacySide) {
         lastPlayerSkillUseTimeRef.current = Date.now();
       }
@@ -2014,6 +2079,7 @@ export function useThreeWheelGame({
       drawOne,
       updateFighter,
       updateReservePreview,
+      refreshRoundSummaryAfterSkill,
     ],
   );
 
