@@ -2,6 +2,7 @@ import assert from "assert";
 import type { Card } from "../src/game/types.js";
 import {
   createSkillState,
+  getSkillCardStatusKey,
   reconcileSkillStateWithAssignments,
 } from "../src/features/threeWheel/hooks/skillState.js";
 
@@ -44,9 +45,11 @@ const createSkillCard = (id: string, value: number): Card => ({
     usesRemaining: 0,
   };
 
+  const statusKey = getSkillCardStatusKey("player", skillCard.id);
+
   skillState = {
     ...skillState,
-    cardStatus: { ...skillState.cardStatus, [skillCard.id]: exhaustedCardStatus },
+    cardStatus: { ...skillState.cardStatus, [statusKey]: exhaustedCardStatus },
     lanes: {
       ...skillState.lanes,
       player: [exhaustedLane, ...skillState.lanes.player.slice(1)],
