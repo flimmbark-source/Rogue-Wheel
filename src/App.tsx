@@ -1209,6 +1209,13 @@ export default function ThreeWheel_WinsOnly({
   const beginSkillTargeting = useCallback(
     (laneIndex: number, ability: AbilityKind) => {
       if (!skillPhaseActive) return;
+      if (
+        skillTargeting &&
+        skillTargeting.side === localLegacySide &&
+        skillTargeting.laneIndex !== laneIndex
+      ) {
+        return;
+      }
       const spec = SKILL_TARGET_SPECS[ability];
       if (!spec) return;
       if (

@@ -292,7 +292,10 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     const skillState = skillLaneStates?.[index];
     const hasSkillAbility = Boolean(skillState?.ability && !skillState?.exhausted);
     const skillAbilityAvailable =
-      skillPhaseActive && slot.side === localLegacySide && hasSkillAbility;
+      skillPhaseActive &&
+      slot.side === localLegacySide &&
+      hasSkillAbility &&
+      (!skillTargeting || targetedSkillLane);
     const skillTargetingFriendlyLane =
       skillTargeting &&
       skillTargeting.side === localLegacySide &&
