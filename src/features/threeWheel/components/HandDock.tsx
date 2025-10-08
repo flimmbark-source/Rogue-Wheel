@@ -61,6 +61,7 @@ interface HandDockProps {
   skillTargetableReserveIds?: Set<string> | null;
   onSkillTargetSelect?: (selection: { cardId: string }) => void;
   onSkillAbilityCancel?: () => void;
+  numberColorMode?: "arcana" | "skill";
 }
 
 const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
@@ -90,6 +91,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     skillTargetableReserveIds,
     onSkillTargetSelect,
     onSkillAbilityCancel,
+    numberColorMode = "arcana",
   }, forwardedRef) => {
     const dockRef = useRef<HTMLDivElement | null>(null);
     const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -253,7 +255,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
           aria-hidden
         >
           <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
-            <StSCard card={ptrDragCard} />
+            <StSCard card={ptrDragCard} numberColorMode={numberColorMode} />
           </div>
         </div>
       ) : null;
@@ -301,6 +303,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                       data-hand-card
                       className="pointer-events-auto"
                       card={card}
+                      numberColorMode={numberColorMode}
                       selected={isSelected}
                       disabled={cardDisabled}
                       spellTargetable={cardSelectable}

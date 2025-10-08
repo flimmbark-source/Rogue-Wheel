@@ -2,6 +2,7 @@
 import React, { memo, useMemo } from "react";
 import type { Arcana, Card } from "../game/types";
 import { getArcanaIcon, getCardArcana } from "../game/arcana";
+import { getSkillCardValue } from "../game/skills";
 import { fmtNum, isSplit } from "../game/values";
 
 const ARCANA_COLOR_CLASS: Record<Arcana, string> = {
@@ -11,6 +12,29 @@ const ARCANA_COLOR_CLASS: Record<Arcana, string> = {
   moon: "text-slate-200",
   serpent: "text-emerald-300",
 };
+
+const SKILL_VALUE_COLOR_CLASS = {
+  zero: "text-amber-300",
+  low: "text-sky-300",
+  mid: "text-rose-300",
+  high: "text-emerald-400",
+} as const;
+
+function getSkillNumberColorClass(card: Card): string {
+  const raw = getSkillCardValue(card);
+  const normalized = Number.isFinite(raw) ? Math.abs(Math.trunc(raw)) : 0;
+
+  if (normalized === 0) {
+    return SKILL_VALUE_COLOR_CLASS.zero;
+  }
+  if (normalized <= 2) {
+    return SKILL_VALUE_COLOR_CLASS.low;
+  }
+  if (normalized <= 5) {
+    return SKILL_VALUE_COLOR_CLASS.mid;
+  }
+  return SKILL_VALUE_COLOR_CLASS.high;
+}
 
 function ArcanaGlyph({ arcana }: { arcana: Arcana }) {
   const icon = getArcanaIcon(arcana);
@@ -34,6 +58,7 @@ type StSCardProps = {
   ariaLabel?: string;
   ariaPressed?: React.AriaAttributes["aria-pressed"];
   onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  numberColorMode?: "arcana" | "skill";
 } & Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
   "onClick" | "children" | "className" | "disabled" | "aria-label" | "aria-pressed"
@@ -51,6 +76,7 @@ export default memo(function StSCard({
   ariaLabel,
   ariaPressed,
   onClick,
+  numberColorMode = "arcana",
   style,
   ...buttonProps
 }: StSCardProps) {
@@ -60,6 +86,12 @@ export default memo(function StSCard({
     () => ARCANA_COLOR_CLASS[arcana] ?? "text-slate-200",
     [arcana],
   );
+  const numberColorClass = useMemo(() => {
+    if (numberColorMode === "skill") {
+      return getSkillNumberColorClass(card);
+    }
+    return arcanaColorClass;
+  }, [arcanaColorClass, card, numberColorMode]);
 
   return (
     <button
@@ -96,11 +128,11 @@ export default memo(function StSCard({
       <div className="absolute inset-px rounded-[10px] bg-slate-900/85 backdrop-blur-[1px] border border-slate-700/70" />
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         {isSplit(card) ? (
-          <div className={`mt-1 text-xl font-extrabold leading-none text-center ${arcanaColorClass}`}>
+          <div className={`mt-1 text-xl font-extrabold leading-none text-center ${numberColorClass}`}>
             <div>{fmtNum(card.leftValue!)}<span className="opacity-60">|</span>{fmtNum(card.rightValue!)}</div>
           </div>
         ) : (
-          <div className={`mt+10 text-3xl font-extrabold ${arcanaColorClass}`}>
+          <div className={`mt+10 text-3xl font-extrabold ${numberColorClass}`}>
             {fmtNum(card.number as number)}
           </div>
         )}

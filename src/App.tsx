@@ -1880,9 +1880,10 @@ export default function ThreeWheel_WinsOnly({
                 skillPhaseActive={skillPhaseActive}
                 skillLaneStates={localSkillLanes}
                 onSkillAbilityStart={beginSkillTargeting}
-                        onSkillTargetSelect={handleSkillLaneTarget}
+                onSkillTargetSelect={handleSkillLaneTarget}
                 skillTargeting={skillTargetingForChildren}
                 skillTargetableLaneIndexes={skillTargetableLaneIndexes}
+                numberColorMode={isSkillMode ? "skill" : "arcana"}
               />
             </div>
           ))}
@@ -1916,6 +1917,7 @@ export default function ThreeWheel_WinsOnly({
         skillTargeting={skillTargetingForChildren}
         skillTargetableReserveIds={skillTargetableReserveIds}
         onSkillTargetSelect={handleSkillReserveTarget}
+        numberColorMode={isSkillMode ? "skill" : "arcana"}
       />
 
       <FirstRunCoach
