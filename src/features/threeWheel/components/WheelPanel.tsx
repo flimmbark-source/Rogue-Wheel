@@ -94,6 +94,7 @@ export interface WheelPanelProps {
   } | null;
   skillTargetableLaneIndexes?: Set<number> | null;
   numberColorMode?: "arcana" | "skill";
+  skillEffectEmojis?: Record<LegacySide, Map<number, string>>;
 }
 
 const slotWidthPx = 80;
@@ -155,6 +156,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   skillTargeting,
   skillTargetableLaneIndexes,
   numberColorMode = "arcana",
+  skillEffectEmojis,
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -197,6 +199,8 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
 
   const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
   const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
+  const leftSkillEmoji = skillEffectEmojis?.player?.get(index) ?? null;
+  const rightSkillEmoji = skillEffectEmojis?.enemy?.get(index) ?? null;
 
   const leftSlotOwnership: SpellTargetOwnership | null = pendingSpell
     ? leftSlot.side === pendingSpell.side
@@ -539,7 +543,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
             setSelectedCardId(leftSlot.card.id);
           }
         }}
-        className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+        className="relative w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
         style={{
           backgroundColor:
             dragOverWheel === index || isLeftSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
@@ -562,6 +566,15 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
             {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
           </div>
         )}
+        {leftSkillEmoji ? (
+          <span
+            aria-hidden
+            className="skill-pop pointer-events-none absolute inset-0 flex items-center justify-center text-[28px]"
+            style={{ textShadow: "0 2px 6px rgba(0,0,0,0.7)" }}
+          >
+            {leftSkillEmoji}
+          </span>
+        ) : null}
       </div>
 
       <div
@@ -602,7 +615,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       </div>
 
       <div
-        className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+        className="relative w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
         style={{
           backgroundColor:
             dragOverWheel === index || isRightSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
@@ -658,6 +671,15 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
             {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
           </div>
         )}
+        {rightSkillEmoji ? (
+          <span
+            aria-hidden
+            className="skill-pop pointer-events-none absolute inset-0 flex items-center justify-center text-[28px]"
+            style={{ textShadow: "0 2px 6px rgba(0,0,0,0.7)" }}
+          >
+            {rightSkillEmoji}
+          </span>
+        ) : null}
       </div>
     </div>
   );

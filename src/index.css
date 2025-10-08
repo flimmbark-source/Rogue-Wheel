@@ -141,3 +141,26 @@ div.relative[aria-label^="Wheel"]:last-of-type {
   margin-bottom: 1rem;
 }
 
+@keyframes skill-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  35% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  70% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+}
+
+.skill-pop {
+  animation: skill-pop 0.95s ease-out forwards;
+}
+
