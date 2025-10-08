@@ -21,19 +21,17 @@ export const GAME_MODE_DETAILS: Record<
   }
 > = {
   skill: {
-    title: "Skill Mode",
-    subtitle: "Unlock lane abilities between rounds for tactical plays.",
+    title: "Skills",
+    subtitle: "Use abilities on card for tactical plays.",
     highlights: [
-      "Board cards grant one-shot abilities during the Skill Phase.",
-      "Swap, reroll, and boost using reserve tactics before combat.",
-      "Enter a Skill Phase to activate abilities on your lanes.",
+      "Cards on board grant one-shot abilities like Swap, Reroll, and Boost.",
     ],
   },
   grimoire: {
     title: "Grimoire",
     subtitle: "Adds spells, which can alter match outcomes.",
     highlights: [
-      "Use Reserve to gain Mana, spend Mana to cast spells.",
+      "Card totals in Reserve grant Mana, spend Mana to cast spells and use arcana symbols to boost them.",
     ],
   },
   ante: {
