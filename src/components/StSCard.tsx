@@ -36,11 +36,10 @@ function getSkillNumberColorClass(card: Card): string {
   return SKILL_VALUE_COLOR_CLASS.high;
 }
 
-function ArcanaGlyph({ arcana }: { arcana: Arcana }) {
+function ArcanaGlyph({ arcana, className = "" }: { arcana: Arcana; className?: string }) {
   const icon = getArcanaIcon(arcana);
-  const color = ARCANA_COLOR_CLASS[arcana] ?? "text-slate-200";
   return (
-    <span aria-hidden className={`text-1x2 leading-none ${color}`}>
+    <span aria-hidden className={`text-1x2 leading-none ${className}`.trim()}>
       {icon}
     </span>
   );
@@ -82,7 +81,7 @@ export default memo(function StSCard({
 }: StSCardProps) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
   const arcana = useMemo(() => getCardArcana(card), [card]);
-  const arcanaColorClass = useMemo(
+  const arcanaGlyphColorClass = useMemo(
     () => ARCANA_COLOR_CLASS[arcana] ?? "text-slate-200",
     [arcana],
   );
@@ -90,8 +89,8 @@ export default memo(function StSCard({
     if (numberColorMode === "skill") {
       return getSkillNumberColorClass(card);
     }
-    return arcanaColorClass;
-  }, [arcanaColorClass, card, numberColorMode]);
+    return arcanaGlyphColorClass;
+  }, [arcanaGlyphColorClass, card, numberColorMode]);
 
   return (
     <button
@@ -137,7 +136,7 @@ export default memo(function StSCard({
           </div>
         )}
         <div className="pointer-events-none mt-1 flex items-center justify-center card-arcana">
-          <ArcanaGlyph arcana={arcana} />
+          <ArcanaGlyph arcana={arcana} className={arcanaGlyphColorClass} />
         </div>
       </div>
     </button>
