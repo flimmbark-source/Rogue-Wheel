@@ -38,7 +38,11 @@ type ConnectOptions = {
   requireExistingMembers?: boolean;
 };
 
-const LOBBY_MODE_OPTIONS: readonly GameModeOption[] = GAME_MODE_OPTIONS;
+// Surface the new Skill mode alongside the existing multiplayer toggles.
+const LOBBY_MODE_OPTIONS: readonly GameModeOption[] = [
+  "skill",
+  ...GAME_MODE_OPTIONS.filter((mode) => mode !== "skill"),
+];
 const MODE_LABELS: Record<GameModeOption, string> = GAME_MODE_LABELS;
 
 export default function MultiplayerRoute({
