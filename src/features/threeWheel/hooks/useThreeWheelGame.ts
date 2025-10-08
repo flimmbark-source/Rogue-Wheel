@@ -20,15 +20,11 @@ import {
   type Players,
   type CorePhase,
   LEGACY_FROM_SIDE,
-} from "../../../game/types";
-import { DEFAULT_GAME_MODE, normalizeGameMode, type GameMode } from "../../../gameModes";
-import { easeInOutCubic, inSection, createSeededRng } from "../../../game/math";
-import { genWheelSections } from "../../../game/wheel";
-import {
-  determineSkillAbility,
-  getSkillCardValue,
-  type AbilityKind,
-} from "../../../game/skills";
+} from "../../../game/types.js";
+import { DEFAULT_GAME_MODE, normalizeGameMode, type GameMode } from "../../../gameModes.js";
+import { easeInOutCubic, inSection, createSeededRng } from "../../../game/math.js";
+import { genWheelSections } from "../../../game/wheel.js";
+import { getSkillCardValue, type AbilityKind } from "../../../game/skills.js";
 import {
   makeFighter,
   refillTo,
@@ -36,29 +32,35 @@ import {
   recordMatchResult,
   type MatchResultSummary,
   type LevelProgress,
-} from "../../../player/profileStore";
-import { fmtNum, isNormal } from "../../../game/values";
-import type { WheelHandle } from "../../../components/CanvasWheel";
+} from "../../../player/profileStore.js";
+import { fmtNum, isNormal } from "../../../game/values.js";
+import type { WheelHandle } from "../../../components/CanvasWheel.js";
 import {
   applySpellEffects as runSpellEffects,
   type AssignmentState,
   type LaneChillStacks,
   type LegacySide,
   type SpellEffectPayload,
-} from "../../../game/spellEngine";
+} from "../../../game/spellEngine.js";
 import {
   summarizeRoundOutcome,
   type RoundAnalysis,
   type WheelOutcome,
-} from "./roundOutcomeSummary";
-import { determinePostResolvePhase } from "../utils/skillPhase";
+} from "./roundOutcomeSummary.js";
+import { determinePostResolvePhase } from "../utils/skillPhase.js";
 import {
   applySkillAbilityEffect,
   type SkillAbilityTarget,
-} from "../utils/skillAbilityExecution";
+} from "../utils/skillAbilityExecution.js";
+import {
+  createSkillState,
+  reconcileSkillStateWithAssignments,
+  type SkillLane,
+  type SkillState,
+} from "./skillState.js";
 
-export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine";
-export type { SkillAbilityTarget } from "../utils/skillAbilityExecution";
+export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine.js";
+export type { SkillAbilityTarget } from "../utils/skillAbilityExecution.js";
 
 export type MPIntent =
   | { type: "assign"; lane: number; side: LegacySide; card: Card }
@@ -132,42 +134,6 @@ const createEmptySpellHighlights = (): SpellHighlightState => ({
   reserve: { player: false, enemy: false },
 });
 
-type SkillLane = {
-  ability: AbilityKind | null;
-  cardId: string | null;
-  exhausted: boolean;
-  usesRemaining: number;
-};
-
-type SkillState = {
-  enabled: boolean;
-  completed: boolean;
-  lanes: Record<LegacySide, SkillLane[]>;
-};
-
-const createEmptySkillLane = (): SkillLane => ({
-  ability: null,
-  cardId: null,
-  exhausted: true,
-  usesRemaining: 0,
-});
-
-const INITIAL_SKILL_USES: Record<AbilityKind, number> = {
-  swapReserve: 1,
-  rerollReserve: 2,
-  boostCard: 1,
-  reserveBoost: 1,
-};
-
-const getInitialSkillUses = (ability: AbilityKind | null): number => {
-  if (!ability) return 0;
-  return INITIAL_SKILL_USES[ability] ?? 1;
-};
-
-const createSkillLanes = (): Record<LegacySide, SkillLane[]> => ({
-  player: [createEmptySkillLane(), createEmptySkillLane(), createEmptySkillLane()],
-  enemy: [createEmptySkillLane(), createEmptySkillLane(), createEmptySkillLane()],
-});
 
 const resetCardNumberToBase = (card: Card): Card => {
   const base = card.baseNumber;
@@ -424,11 +390,7 @@ export function useThreeWheelGame({
     bets: { player: 0, enemy: 0 },
     odds: { player: 1.2, enemy: 1.2 },
   }));
-  const [skillState, setSkillState] = useState<SkillState>(() => ({
-    enabled: isSkillMode,
-    completed: !isSkillMode,
-    lanes: createSkillLanes(),
-  }));
+  const [skillState, setSkillState] = useState<SkillState>(() => createSkillState(isSkillMode));
   const skillStateRef = useRef(skillState);
   useEffect(() => {
     skillStateRef.current = skillState;
@@ -449,61 +411,15 @@ export function useThreeWheelGame({
       if (prev.enabled === isSkillMode) {
         return prev;
       }
-      return {
-        enabled: isSkillMode,
-        completed: !isSkillMode,
-        lanes: isSkillMode ? prev.lanes : createSkillLanes(),
-      };
+      if (!isSkillMode) {
+        return createSkillState(false);
+      }
+      return { ...prev, enabled: true };
     });
   }, [isSkillMode]);
 
   useEffect(() => {
-    setSkillState((prev) => {
-      if (!isSkillMode) {
-        if (!prev.enabled && prev.completed) {
-          return prev;
-        }
-        return { enabled: false, completed: true, lanes: createSkillLanes() };
-      }
-
-      let changed = prev.enabled !== isSkillMode;
-      const nextLanes: Record<LegacySide, SkillLane[]> = {
-        player: [...prev.lanes.player],
-        enemy: [...prev.lanes.enemy],
-      };
-
-      const sides: LegacySide[] = ["player", "enemy"];
-      for (const side of sides) {
-        for (let i = 0; i < nextLanes[side].length; i++) {
-          const card = assign[side][i];
-          const ability: AbilityKind | null = card ? determineSkillAbility(card) : null;
-          const cardId = card?.id ?? null;
-          const lane = nextLanes[side][i];
-          if (!lane || lane.cardId !== cardId || lane.ability !== ability) {
-            nextLanes[side][i] = {
-              ability,
-              cardId,
-              exhausted: ability ? false : true,
-              usesRemaining: getInitialSkillUses(ability),
-            };
-            changed = true;
-          } else if (!ability && (!lane.exhausted || lane.usesRemaining !== 0)) {
-            nextLanes[side][i] = { ability: null, cardId, exhausted: true, usesRemaining: 0 };
-            changed = true;
-          }
-        }
-      }
-
-      if (!changed) {
-        return prev;
-      }
-
-      return {
-        enabled: true,
-        completed: prev.completed,
-        lanes: nextLanes,
-      };
-    });
+    setSkillState((prev) => reconcileSkillStateWithAssignments(prev, assign, isSkillMode));
   }, [assign, isSkillMode]);
   const [freezeLayout, setFreezeLayout] = useState(false);
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
@@ -1685,11 +1601,7 @@ export function useThreeWheelGame({
       reservePenaltiesRef.current = { player: 0, enemy: 0 };
       reserveReportsRef.current = { player: null, enemy: null };
 
-      const resetSkill: SkillState = {
-        enabled: isSkillMode,
-        completed: !isSkillMode,
-        lanes: createSkillLanes(),
-      };
+      const resetSkill: SkillState = createSkillState(isSkillMode);
       skillStateRef.current = resetSkill;
       setSkillState(resetSkill);
 
@@ -2019,6 +1931,25 @@ export function useThreeWheelGame({
         if (!lane || lane.exhausted || lane.ability !== ability) {
           return prev;
         }
+        const cardId = lane.cardId;
+        let nextCardStatus = prev.cardStatus;
+        if (cardId) {
+          const existingStatus = prev.cardStatus[cardId];
+          if (
+            !existingStatus ||
+            existingStatus.ability !== ability ||
+            existingStatus.exhausted !== willExhaust ||
+            existingStatus.usesRemaining !== nextUsesRemaining
+          ) {
+            nextCardStatus =
+              nextCardStatus === prev.cardStatus ? { ...prev.cardStatus } : nextCardStatus;
+            nextCardStatus[cardId] = {
+              ability,
+              exhausted: willExhaust,
+              usesRemaining: nextUsesRemaining,
+            };
+          }
+        }
         const updatedLane: SkillLane = {
           ...lane,
           exhausted: willExhaust,
@@ -2029,6 +1960,7 @@ export function useThreeWheelGame({
         const next: SkillState = {
           ...prev,
           lanes: { ...prev.lanes, [side]: updatedLanesForSide },
+          cardStatus: nextCardStatus,
         };
         skillStateRef.current = next;
         return next;
