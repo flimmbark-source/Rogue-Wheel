@@ -12,7 +12,9 @@
     "tests/**/*.ts",
     "src/game/**/*.ts",
     "src/features/threeWheel/utils/slotVisibility.ts",
+    "src/features/threeWheel/utils/skillAbilityExecution.ts",
     "src/features/threeWheel/hooks/roundOutcomeSummary.ts",
+    "src/features/threeWheel/hooks/skillState.ts",
     "src/vite-env.d.ts"
   ],
   "exclude": []

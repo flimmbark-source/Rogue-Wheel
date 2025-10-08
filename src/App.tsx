@@ -1,5 +1,10 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useThreeWheelGame, type GameLogEntry } from "./features/threeWheel/hooks/useThreeWheelGame";
+import {
+  useThreeWheelGame,
+  type GameLogEntry,
+  type SkillAbilityTarget,
+  type SkillAbilityUsageResult,
+} from "./features/threeWheel/hooks/useThreeWheelGame";
 import React, {
   useMemo,
   useRef,
@@ -93,6 +98,8 @@ import {
 import { countSymbolsFromCards, getVisibleSpellsForHand } from "./game/grimoire";
 import StSCard from "./components/StSCard";
 import { chooseCpuSpellResponse, type CpuSpellDecision } from "./game/ai/grimoireCpu";
+import { chooseCpuSkillResponse } from "./game/ai/skillCpu";
+import { isReserveBoostTarget, type AbilityKind } from "./game/skills";
 
 // ---- Local aliases/types/state helpers
 type AblyRealtime = InstanceType<typeof Realtime>;
@@ -101,6 +108,68 @@ type LegacySide = "player" | "enemy";
 
 type SideState<T> = Record<LegacySide, T>;
 type WheelSideState<T> = [SideState<T>, SideState<T>, SideState<T>];
+
+const SKILL_ABILITY_LABELS: Record<AbilityKind, string> = {
+  swapReserve: "Swap Reserve",
+  rerollReserve: "Reroll Reserve",
+  boostCard: "Boost Card",
+  reserveBoost: "Reserve Boost",
+};
+
+type ReserveTargetSpec = {
+  kind: "reserve";
+  prompt: string;
+  requirePositiveReserve?: boolean;
+};
+
+type FriendlyLaneTargetSpec = {
+  kind: "friendlyLane";
+  prompt: string;
+};
+
+type ReserveThenLaneTargetSpec = {
+  kind: "reserveThenLane";
+  reservePrompt: string;
+  lanePrompt: string;
+  requirePositiveReserve?: boolean;
+};
+
+type SkillTargetSpec = ReserveTargetSpec | FriendlyLaneTargetSpec | ReserveThenLaneTargetSpec;
+
+const SKILL_TARGET_SPECS: Record<AbilityKind, SkillTargetSpec> = {
+  swapReserve: {
+    kind: "reserveThenLane",
+    reservePrompt: "Select a reserve card to swap into a lane.",
+    lanePrompt: "Select a lane to receive the reserve card.",
+  },
+  rerollReserve: {
+    kind: "reserve",
+    prompt: "Select a reserve card to discard and draw a new one (up to twice).",
+  },
+  boostCard: {
+    kind: "friendlyLane",
+    prompt: "Select a friendly lane to boost.",
+  },
+  reserveBoost: {
+    kind: "reserveThenLane",
+    reservePrompt: "Select a positive reserve card to exhaust for a boost.",
+    lanePrompt: "Select a friendly lane to receive the reserve boost.",
+    requirePositiveReserve: true,
+  },
+};
+
+type SkillTargetingState = {
+  side: LegacySide;
+  laneIndex: number;
+  ability: AbilityKind;
+  spec: SkillTargetSpec;
+  activeKind: "reserve" | "friendlyLane";
+  pendingReserveCardId?: string | null;
+};
+
+type SkillTargetSelection =
+  | { type: "reserve"; cardId: string }
+  | { type: "lane"; laneIndex: number };
 
 function createWheelSideState<T>(value: T): WheelSideState<T> {
   return [
@@ -193,6 +262,13 @@ const THEME = {
   textWarm:  '#ead9b9',
 };
 
+const SKILL_EFFECT_EMOJIS: Record<AbilityKind, { lane?: string; reserve?: string }> = {
+  swapReserve: { lane: "🔄", reserve: "🔄" },
+  rerollReserve: { reserve: "🎲" },
+  boostCard: { lane: "💥" },
+  reserveBoost: { lane: "✨", reserve: "✨" },
+};
+
 // ---------------- Main Component ----------------
 export default function ThreeWheel_WinsOnly({
   localSide,
@@ -259,6 +335,7 @@ export default function ThreeWheel_WinsOnly({
     lockedWheelSize,
     log,
     spellHighlights,
+    skill,
   } = state;
 
   const {
@@ -274,6 +351,7 @@ export default function ThreeWheel_WinsOnly({
     winnerName,
     localName,
     remoteName,
+    isSkillMode: hookSkillMode,
     canReveal,
   } = derived;
 
@@ -293,6 +371,7 @@ export default function ThreeWheel_WinsOnly({
     handleExitClick,
     applySpellEffects,
     setAnteBet,
+    useSkillAbility: useSkillAbilityBase,
   } = actions;
 
   // --- local UI/Grimoire state (from Spells branch) ---
@@ -302,10 +381,12 @@ export default function ThreeWheel_WinsOnly({
   );
   const isGrimoireMode = activeGameModes.includes("grimoire");
   const isAnteMode = activeGameModes.includes("ante");
+  const isSkillMode = activeGameModes.includes("skill") || hookSkillMode;
   const effectiveGameMode = activeGameModes.length > 0 ? activeGameModes.join("+") : "classic";
   const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
 
-  const [cpuResponseTick, setCpuResponseTick] = useState(0);
+  const [cpuSpellResponseTick, setCpuSpellResponseTick] = useState(0);
+  const [cpuSkillResponseTick, setCpuSkillResponseTick] = useState(0);
 
   const applySpellEffectsWithAi = useCallback(
     (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => {
@@ -316,7 +397,7 @@ export default function ThreeWheel_WinsOnly({
         payload.caster === localLegacySide &&
         remoteLegacySide !== localLegacySide
       ) {
-        setCpuResponseTick((tick) => tick + 1);
+        setCpuSpellResponseTick((tick) => tick + 1);
       }
     },
     [
@@ -364,6 +445,14 @@ export default function ThreeWheel_WinsOnly({
   const [spellBannerEntry, setSpellBannerEntry] = useState<GameLogEntry | null>(null);
   const spellBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestSpellEntry = log.find((entry) => entry.type === "spell") ?? null;
+  const [skillBannerEntry, setSkillBannerEntry] = useState<GameLogEntry | null>(null);
+  const skillBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestSkillEntry = log.find((entry) => entry.type === "skill") ?? null;
+  const [skillEffectMarkers, setSkillEffectMarkers] = useState<{
+    lanes: Array<{ side: LegacySide; laneIndex: number; emoji: string }>;
+    reserves: Array<{ side: LegacySide; emoji: string }>;
+  }>({ lanes: [], reserves: [] });
+  const skillEffectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!latestSpellEntry) {
@@ -400,10 +489,102 @@ export default function ThreeWheel_WinsOnly({
   }, [latestSpellEntry]);
 
   useEffect(() => {
+    if (!latestSkillEntry) {
+      setSkillBannerEntry(null);
+      if (skillBannerTimeoutRef.current) {
+        clearTimeout(skillBannerTimeoutRef.current);
+        skillBannerTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    setSkillBannerEntry(latestSkillEntry);
+    if (skillBannerTimeoutRef.current) {
+      clearTimeout(skillBannerTimeoutRef.current);
+    }
+
+    const timeoutId = setTimeout(() => {
+      setSkillBannerEntry((current) =>
+        current && current.id === latestSkillEntry.id ? null : current,
+      );
+      if (skillBannerTimeoutRef.current === timeoutId) {
+        skillBannerTimeoutRef.current = null;
+      }
+    }, 2400);
+
+    skillBannerTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (skillBannerTimeoutRef.current === timeoutId) {
+        skillBannerTimeoutRef.current = null;
+      }
+    };
+  }, [latestSkillEntry]);
+
+  useEffect(() => {
+    const meta = latestSkillEntry?.meta?.skillEffect;
+    if (!meta) {
+      return;
+    }
+
+    const emojiDef = SKILL_EFFECT_EMOJIS[meta.ability];
+    if (!emojiDef) {
+      return;
+    }
+
+    const laneMarkers: Array<{ side: LegacySide; laneIndex: number; emoji: string }> = [];
+    const reserveMarkers: Array<{ side: LegacySide; emoji: string }> = [];
+
+    if (emojiDef.lane && meta.affectedLanes) {
+      meta.affectedLanes.forEach((laneIndex) => {
+        laneMarkers.push({ side: meta.side, laneIndex, emoji: emojiDef.lane! });
+      });
+    }
+
+    if (emojiDef.reserve && meta.affectedReserve) {
+      reserveMarkers.push({ side: meta.side, emoji: emojiDef.reserve });
+    }
+
+    if (laneMarkers.length === 0 && reserveMarkers.length === 0) {
+      return;
+    }
+
+    setSkillEffectMarkers({ lanes: laneMarkers, reserves: reserveMarkers });
+    if (skillEffectTimeoutRef.current) {
+      clearTimeout(skillEffectTimeoutRef.current);
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSkillEffectMarkers({ lanes: [], reserves: [] });
+      if (skillEffectTimeoutRef.current === timeoutId) {
+        skillEffectTimeoutRef.current = null;
+      }
+    }, 1500);
+
+    skillEffectTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (skillEffectTimeoutRef.current === timeoutId) {
+        skillEffectTimeoutRef.current = null;
+      }
+    };
+  }, [latestSkillEntry]);
+
+  useEffect(() => {
     return () => {
       if (spellBannerTimeoutRef.current) {
         clearTimeout(spellBannerTimeoutRef.current);
         spellBannerTimeoutRef.current = null;
+      }
+      if (skillBannerTimeoutRef.current) {
+        clearTimeout(skillBannerTimeoutRef.current);
+        skillBannerTimeoutRef.current = null;
+      }
+      if (skillEffectTimeoutRef.current) {
+        clearTimeout(skillEffectTimeoutRef.current);
+        skillEffectTimeoutRef.current = null;
       }
     };
   }, []);
@@ -412,6 +593,23 @@ export default function ThreeWheel_WinsOnly({
   const localHandSymbols = useMemo(() => countSymbolsFromCards(localHandCards), [localHandCards]);
   const spellHighlightedCardIds = spellHighlights.cards;
   const reserveSpellHighlights = spellHighlights.reserve;
+  const skillEffectEmojiMap = useMemo(() => {
+    const base: Record<LegacySide, Map<number, string>> = {
+      player: new Map<number, string>(),
+      enemy: new Map<number, string>(),
+    };
+    skillEffectMarkers.lanes.forEach((entry) => {
+      base[entry.side].set(entry.laneIndex, entry.emoji);
+    });
+    return base;
+  }, [skillEffectMarkers]);
+  const skillReserveEmojis = useMemo(() => {
+    const base: Record<LegacySide, string | null> = { player: null, enemy: null };
+    skillEffectMarkers.reserves.forEach((entry) => {
+      base[entry.side] = entry.emoji;
+    });
+    return base;
+  }, [skillEffectMarkers]);
   const [spellLock, setSpellLock] = useState<{ round: number | null; ids: SpellId[] }>({
     round: null,
     ids: [],
@@ -466,6 +664,8 @@ export default function ThreeWheel_WinsOnly({
   }, [awaitingSpellTarget, pendingSpell]);
 
   const phaseForLogic: CorePhase = phaseBeforeSpell ?? basePhase;
+  const normalizedPhaseForSpells: CorePhase =
+    phaseForLogic === "skill" ? "roundEnd" : phaseForLogic;
   const phase: Phase = spellTargetingSide ? "spellTargeting" : basePhase;
   const castCpuSpell = useCallback(
     (decision: CpuSpellDecision) => {
@@ -594,7 +794,7 @@ export default function ThreeWheel_WinsOnly({
 
     visibleSpells.forEach((spell) => {
       const allowedPhases = spell.allowedPhases ?? ["choose"];
-      if (!allowedPhases.includes(phaseForLogic)) return;
+      if (!allowedPhases.includes(normalizedPhaseForSpells)) return;
       const cost = computeSpellCost(spell, {
         caster,
         opponent,
@@ -657,15 +857,62 @@ export default function ThreeWheel_WinsOnly({
     spellRuntimeStateRef,
   ]);
 
+  const attemptCpuSkill = useCallback(async () => {
+    if (!isSkillMode || isMultiplayer) return;
+    if (phaseForLogic !== "skill") return;
+    const cpuSide = remoteLegacySide;
+    if (cpuSide === localLegacySide) return;
+    if (skill.completed) return;
+
+    const decision = chooseCpuSkillResponse({
+      side: cpuSide,
+      board: assign,
+      skillLanes: skill.lanes[cpuSide] ?? [],
+      fighter: cpuSide === "player" ? player : enemy,
+      opponent: cpuSide === "player" ? enemy : player,
+    });
+
+    if (!decision) return;
+
+    await useSkillAbilityBase(cpuSide, decision.laneIndex, decision.target);
+  }, [
+    assign,
+    enemy,
+    isMultiplayer,
+    isSkillMode,
+    localLegacySide,
+    phaseForLogic,
+    player,
+    remoteLegacySide,
+    skill,
+    useSkillAbilityBase,
+  ]);
+
+  const attemptCpuSkillRef = useRef(attemptCpuSkill);
+
   useEffect(() => {
-    if (cpuResponseTick === 0) return;
+    attemptCpuSkillRef.current = attemptCpuSkill;
+  }, [attemptCpuSkill]);
+
+  useEffect(() => {
+    if (cpuSpellResponseTick === 0) return;
     const timeout = window.setTimeout(() => {
       attemptCpuSpell();
     }, 1000);
     return () => {
       window.clearTimeout(timeout);
     };
-  }, [attemptCpuSpell, cpuResponseTick]);
+  }, [attemptCpuSpell, cpuSpellResponseTick]);
+
+  useEffect(() => {
+    if (cpuSkillResponseTick === 0) return;
+    const timeout = window.setTimeout(() => {
+      void attemptCpuSkillRef.current();
+    }, 1000);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [cpuSkillResponseTick]);
 
   useEffect(() => {
     if (!isGrimoireMode) {
@@ -869,7 +1116,9 @@ export default function ThreeWheel_WinsOnly({
   }, [showGrimoire, updateGrimoirePosition]);
 
   useEffect(() => {
-    if (!(phaseForLogic === "roundEnd" || phaseForLogic === "ended")) {
+    if (!(
+      phaseForLogic === "skill" || phaseForLogic === "roundEnd" || phaseForLogic === "ended"
+    )) {
       return;
     }
     if (!reserveSums) {
@@ -923,7 +1172,7 @@ export default function ThreeWheel_WinsOnly({
   }, [onboardingStage, playerAssignedCount, persistStage, totalWheelSlots]);
 
   useEffect(() => {
-    if (onboardingStage === 2 && phaseForLogic === "roundEnd") {
+    if (onboardingStage === 2 && (phaseForLogic === "skill" || phaseForLogic === "roundEnd")) {
       persistStage(3);
     }
   }, [onboardingStage, phaseForLogic, persistStage]);
@@ -972,10 +1221,11 @@ export default function ThreeWheel_WinsOnly({
 
   const localAdvanceReady = advanceVotes[localLegacySide];
   const remoteAdvanceReady = advanceVotes[remoteLegacySide];
+  const isAdvancePhase = phase === "roundEnd" || phase === "skill";
   const advanceButtonDisabled = isMultiplayer && localAdvanceReady;
   const advanceButtonLabel = isMultiplayer && localAdvanceReady ? "Ready" : "Next";
   const advanceStatusText =
-    isMultiplayer && phase === "roundEnd"
+    isMultiplayer && isAdvancePhase
       ? localAdvanceReady && !remoteAdvanceReady
         ? `Waiting for ${namesByLegacy[remoteLegacySide]}...`
         : !localAdvanceReady && remoteAdvanceReady
@@ -1005,6 +1255,7 @@ export default function ThreeWheel_WinsOnly({
     "classic-mode",
     isGrimoireMode && "grimoire-mode",
     isAnteMode && "ante-mode",
+    isSkillMode && "skill-mode",
   ]
     .filter(Boolean)
     .join(" ");
@@ -1052,7 +1303,258 @@ export default function ThreeWheel_WinsOnly({
         }
       })()
     : "";
+  const skillPhaseActive = isSkillMode && phaseForLogic === "skill" && !skill.completed;
+  const [skillTargeting, setSkillTargeting] = useState<SkillTargetingState | null>(null);
+
+  useEffect(() => {
+    if (!skillPhaseActive) {
+      setSkillTargeting(null);
+    }
+  }, [skillPhaseActive]);
+
+  useEffect(() => {
+    if (!skillTargeting) return;
+    const laneState = skill.lanes[skillTargeting.side]?.[skillTargeting.laneIndex];
+    if (!laneState || laneState.exhausted || laneState.ability !== skillTargeting.ability) {
+      setSkillTargeting(null);
+    }
+  }, [skill.lanes, skillTargeting]);
+
+  useEffect(() => {
+    if (isAwaitingSpellTarget) {
+      setSkillTargeting(null);
+    }
+  }, [isAwaitingSpellTarget]);
+
+  const skillTargetingForChildren = skillTargeting
+    ? {
+        side: skillTargeting.side,
+        laneIndex: skillTargeting.laneIndex,
+        ability: skillTargeting.ability,
+        specKind: skillTargeting.activeKind,
+      }
+    : null;
+
+  const useSkillAbility = useCallback(
+    async (
+      side: LegacySide,
+      laneIndex: number,
+      target?: SkillAbilityTarget,
+    ): Promise<SkillAbilityUsageResult> => {
+      const result = await useSkillAbilityBase(side, laneIndex, target);
+      if (
+        result.success &&
+        !isMultiplayer &&
+        isSkillMode &&
+        side === localLegacySide &&
+        remoteLegacySide !== localLegacySide &&
+        phaseForLogic === "skill" &&
+        !skill.completed
+      ) {
+        setCpuSkillResponseTick((tick) => tick + 1);
+      }
+      return result;
+    },
+    [
+      isMultiplayer,
+      isSkillMode,
+      localLegacySide,
+      phaseForLogic,
+      remoteLegacySide,
+      skill.completed,
+      useSkillAbilityBase,
+    ],
+  );
+
+  const skillTargetableReserveIds = useMemo(() => {
+    if (!skillTargeting || skillTargeting.side !== localLegacySide) return null;
+    if (skillTargeting.activeKind !== "reserve") return null;
+    const requiresPositiveReserve =
+      skillTargeting.spec.kind === "reserve"
+        ? skillTargeting.spec.requirePositiveReserve
+        : skillTargeting.spec.kind === "reserveThenLane"
+          ? skillTargeting.spec.requirePositiveReserve
+          : undefined;
+    const cards = localLegacySide === "player" ? player.hand : enemy.hand;
+    const allowed = cards.filter((card) =>
+      requiresPositiveReserve ? isReserveBoostTarget(card) : true,
+    );
+    return new Set(allowed.map((card) => card.id));
+  }, [enemy.hand, localLegacySide, player.hand, skillTargeting]);
+
+  const skillTargetableLaneIndexes = useMemo(() => {
+    if (!skillTargeting || skillTargeting.side !== localLegacySide) return null;
+    if (skillTargeting.activeKind !== "friendlyLane") return null;
+    const lanes = assign[localLegacySide];
+    const result = new Set<number>();
+    lanes.forEach((card, idx) => {
+      if (card) {
+        result.add(idx);
+      }
+    });
+    return result;
+  }, [assign, localLegacySide, skillTargeting]);
+
+  const skillTargetPrompt = (() => {
+    if (!skillTargeting) return "";
+    const { spec, activeKind, ability, side, laneIndex } = skillTargeting;
+    if (
+      ability === "rerollReserve" &&
+      spec.kind === "reserve" &&
+      activeKind === "reserve"
+    ) {
+      const laneState = skill.lanes[side]?.[laneIndex];
+      if (laneState && !laneState.exhausted && laneState.usesRemaining === 1) {
+        return "Select a second reserve to discard, or cancel to keep the rest.";
+      }
+    }
+    if (spec.kind === "reserveThenLane") {
+      return activeKind === "reserve" ? spec.reservePrompt : spec.lanePrompt;
+    }
+    return spec.prompt;
+  })();
+  const skillAbilityLabel = skillTargeting ? SKILL_ABILITY_LABELS[skillTargeting.ability] : "";
+  const beginSkillTargeting = useCallback(
+    (laneIndex: number, ability: AbilityKind) => {
+      if (!skillPhaseActive) return;
+      if (
+        skillTargeting &&
+        skillTargeting.side === localLegacySide &&
+        skillTargeting.laneIndex !== laneIndex
+      ) {
+        return;
+      }
+      const spec = SKILL_TARGET_SPECS[ability];
+      if (!spec) return;
+      if (
+        skillTargeting &&
+        skillTargeting.side === localLegacySide &&
+        skillTargeting.laneIndex === laneIndex
+      ) {
+        setSkillTargeting(null);
+        return;
+      }
+
+      const needsReserveSelection =
+        spec.kind === "reserve" || spec.kind === "reserveThenLane";
+      if (needsReserveSelection) {
+        const handCards = localLegacySide === "player" ? player.hand : enemy.hand;
+        const requirePositive =
+          spec.kind === "reserve" || spec.kind === "reserveThenLane"
+            ? spec.requirePositiveReserve
+            : undefined;
+        const available = handCards.filter((card) =>
+          requirePositive ? isReserveBoostTarget(card) : true,
+        );
+        if (available.length === 0) {
+          return;
+        }
+      }
+
+      const needsFriendlyLaneSelection =
+        spec.kind === "friendlyLane" || spec.kind === "reserveThenLane";
+      if (needsFriendlyLaneSelection) {
+        const lanes = assign[localLegacySide];
+        if (!lanes.some((card) => Boolean(card))) {
+          return;
+        }
+      }
+
+      setSkillTargeting({
+        side: localLegacySide,
+        laneIndex,
+        ability,
+        spec,
+        activeKind: spec.kind === "friendlyLane" ? "friendlyLane" : "reserve",
+        pendingReserveCardId: null,
+      });
+    },
+    [assign, enemy.hand, localLegacySide, player.hand, skillPhaseActive, skillTargeting],
+  );
+
+  const cancelSkillTargeting = useCallback(() => {
+    setSkillTargeting(null);
+  }, []);
+
+  const handleSkillTargetSelect = useCallback(
+    async (selection: SkillTargetSelection) => {
+      if (!skillTargeting) return;
+      if (skillTargeting.side !== localLegacySide) return;
+      const { spec, laneIndex, activeKind } = skillTargeting;
+      if (activeKind === "reserve" && selection.type === "reserve") {
+        if (spec.kind === "reserve") {
+          const result = await useSkillAbility(localLegacySide, laneIndex, {
+            type: "reserve",
+            cardId: selection.cardId,
+          });
+          if (
+            skillTargeting.ability === "rerollReserve" &&
+            result.success &&
+            !result.exhausted
+          ) {
+            return;
+          }
+          setSkillTargeting(null);
+          return;
+        }
+        if (spec.kind === "reserveThenLane") {
+          setSkillTargeting({
+            ...skillTargeting,
+            activeKind: "friendlyLane",
+            pendingReserveCardId: selection.cardId,
+          });
+          return;
+        }
+      }
+      if (activeKind === "friendlyLane" && selection.type === "lane") {
+        if (spec.kind === "friendlyLane") {
+          await useSkillAbility(localLegacySide, laneIndex, {
+            type: "lane",
+            laneIndex: selection.laneIndex,
+          });
+          setSkillTargeting(null);
+          return;
+        }
+        if (spec.kind === "reserveThenLane" && skillTargeting.pendingReserveCardId) {
+          if (skillTargeting.ability === "swapReserve") {
+            await useSkillAbility(localLegacySide, laneIndex, {
+              type: "reserveToLane",
+              cardId: skillTargeting.pendingReserveCardId,
+              laneIndex: selection.laneIndex,
+            });
+            setSkillTargeting(null);
+            return;
+          }
+          if (skillTargeting.ability === "reserveBoost") {
+            await useSkillAbility(localLegacySide, laneIndex, {
+              type: "reserveBoost",
+              cardId: skillTargeting.pendingReserveCardId,
+              laneIndex: selection.laneIndex,
+            });
+            setSkillTargeting(null);
+            return;
+          }
+        }
+      }
+    },
+    [localLegacySide, skillTargeting, useSkillAbility],
+  );
+
+  const handleSkillLaneTarget = useCallback(
+    ({ laneIndex }: { laneIndex: number; side: LegacySide }) => {
+      void handleSkillTargetSelect({ type: "lane", laneIndex });
+    },
+    [handleSkillTargetSelect],
+  );
+
+  const handleSkillReserveTarget = useCallback(
+    ({ cardId }: { cardId: string }) => {
+      void handleSkillTargetSelect({ type: "reserve", cardId });
+    },
+    [handleSkillTargetSelect],
+  );
   const hudAccentColor = HUD_COLORS[localLegacySide];
+  const skillHudColor = HUD_COLORS[remoteLegacySide];
 
   useEffect(() => {
     if (isAwaitingSpellTarget) {
@@ -1104,6 +1606,30 @@ export default function ThreeWheel_WinsOnly({
         ) : null}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {skillBannerEntry ? (
+          <motion.div
+            key={skillBannerEntry.id}
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.24, ease: "easeOut" }}
+            className="pointer-events-none fixed inset-x-0 top-20 z-[84] flex justify-center px-3"
+          >
+            <div
+              className="pointer-events-none w-full max-w-md rounded-2xl border px-5 py-3 text-center text-[14px] font-semibold tracking-wide text-slate-100 shadow-[0_18px_40px_rgba(8,15,32,0.55)]"
+              style={{
+                borderColor: skillHudColor,
+                background: "rgba(15, 23, 42, 0.92)",
+                color: skillHudColor,
+              }}
+            >
+              {skillBannerEntry.message}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
       {isAwaitingSpellTarget && pendingSpell ? (
         <div className="pointer-events-none fixed inset-x-0 top-20 z-[90] flex justify-center px-3">
           <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-sky-500/60 bg-slate-900/95 px-3 py-2 shadow-2xl">
@@ -1133,6 +1659,24 @@ export default function ThreeWheel_WinsOnly({
             <div className="mt-2 text-[11px] leading-snug text-slate-300">
               {targetingPrompt}
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {skillPhaseActive && skillTargeting ? (
+        <div className="pointer-events-none fixed inset-x-0 top-[132px] z-[82] flex justify-center px-3">
+          <div className="pointer-events-auto w-full max-w-sm rounded-xl border border-amber-400/70 bg-slate-900/95 px-3 py-2 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-[13px] font-semibold text-amber-100">{skillAbilityLabel}</div>
+              <button
+                type="button"
+                onClick={cancelSkillTargeting}
+                className="rounded border border-amber-400/50 px-2 py-1 text-[11px] text-amber-100 transition hover:bg-amber-400/10"
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="mt-2 text-[11px] leading-snug text-amber-200/90">{skillTargetPrompt}</div>
           </div>
         </div>
       ) : null}
@@ -1167,56 +1711,58 @@ export default function ThreeWheel_WinsOnly({
               </button>
 
               {showAnte && (
-                <div className="absolute top-[110%] right-0 w-72 max-w-[calc(100vw-2rem)] sm:w-80 rounded-lg border border-slate-700 bg-slate-800/95 shadow-xl p-3 z-50">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="font-semibold">Ante</div>
-                    <button
-                      onClick={() => setShowAnte(false)}
-                      className="text-xl leading-none text-slate-300 hover:text-white"
-                    >
-                      ×
-                    </button>
-                  </div>
-                  <div className="text-[12px] space-y-3">
-                    <div className="space-y-1">
-                      <div className="font-semibold text-slate-200">Round odds</div>
-                      <div className="flex justify-between text-xs text-slate-300">
-                        <span>
-                          {namesByLegacy.player}: {(ante?.odds?.player ?? 1.1).toFixed(2)}×
-                        </span>
-                        <span>
-                          {namesByLegacy.enemy}: {(ante?.odds?.enemy ?? 1.1).toFixed(2)}×
-                        </span>
-                      </div>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:absolute sm:inset-auto sm:top-[110%] sm:right-0 sm:z-50 sm:block sm:p-0">
+                  <div className="w-full max-w-[calc(100vw-2rem)] rounded-lg border border-slate-700 bg-slate-800/95 p-3 shadow-xl sm:w-80">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="font-semibold">Ante</div>
+                      <button
+                        onClick={() => setShowAnte(false)}
+                        className="text-xl leading-none text-slate-300 hover:text-white"
+                      >
+                        ×
+                      </button>
                     </div>
-                    <div className="space-y-1">
-                      <label className="font-semibold text-slate-200" htmlFor="ante-input">
-                        Your ante (wins)
-                      </label>
-                      <input
-                        id="ante-input"
-                        type="number"
-                        min={0}
-                        max={wins[localLegacySide]}
-                        value={localAnteValue}
-                        onChange={(event) => {
-                          const parsed = Number.parseInt(event.target.value, 10);
-                          setAnteBet(Number.isFinite(parsed) ? parsed : 0);
-                        }}
-                        disabled={phase !== "choose"}
-                        className="w-full rounded border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 disabled:opacity-60"
-                      />
+                    <div className="text-[12px] space-y-3">
+                      <div className="space-y-1">
+                        <div className="font-semibold text-slate-200">Round odds</div>
+                        <div className="flex justify-between text-xs text-slate-300">
+                          <span>
+                            {namesByLegacy.player}: {(ante?.odds?.player ?? 1.1).toFixed(2)}×
+                          </span>
+                          <span>
+                            {namesByLegacy.enemy}: {(ante?.odds?.enemy ?? 1.1).toFixed(2)}×
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="font-semibold text-slate-200" htmlFor="ante-input">
+                          Your ante (wins)
+                        </label>
+                        <input
+                          id="ante-input"
+                          type="number"
+                          min={0}
+                          max={wins[localLegacySide]}
+                          value={localAnteValue}
+                          onChange={(event) => {
+                            const parsed = Number.parseInt(event.target.value, 10);
+                            setAnteBet(Number.isFinite(parsed) ? parsed : 0);
+                          }}
+                          disabled={phase !== "choose"}
+                          className="w-full rounded border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40 disabled:opacity-60"
+                        />
+                        <div className="text-xs text-slate-400">
+                          Available wins: {wins[localLegacySide]}
+                        </div>
+                      </div>
+                      {isMultiplayer && (
+                        <div className="text-xs text-slate-300">
+                          Opponent ante: {remoteAnteValue}
+                        </div>
+                      )}
                       <div className="text-xs text-slate-400">
-                        Available wins: {wins[localLegacySide]}
+                        Ante can only be changed before resolving the round.
                       </div>
-                    </div>
-                    {isMultiplayer && (
-                      <div className="text-xs text-slate-300">
-                        Opponent ante: {remoteAnteValue}
-                      </div>
-                    )}
-                    <div className="text-xs text-slate-400">
-                      Ante can only be changed before resolving the round.
                     </div>
                   </div>
                 </div>
@@ -1294,6 +1840,30 @@ export default function ThreeWheel_WinsOnly({
                       </div>
                     </div>
                   )}
+                  {isSkillMode && (
+                    <div className="space-y-1">
+                      <div>
+                        <span className="font-semibold">Skill Mode - Lane Abilities</span>
+                      </div>
+                      <div>
+                        After Resolve, players enter into a <span className="font-semibold">Skill phase</span>.
+                        Each card in play can be pressed to activate it's skill.
+                      </div>
+                      <div>
+                        Each skill is associated with a specific color depicted on a card's value:
+                        <span className="ml-1 font-semibold text-amber-300">0</span>,
+                        <span className="ml-1 font-semibold text-sky-300">1-2</span>,
+                        <span className="ml-1 font-semibold text-rose-300">3-5</span>,
+                        <span className="ml-1 font-semibold text-emerald-400">6+</span>.
+                      </div>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li><span className="ml-1 font-semibold text-amber-300">0</span> <b>Swap Reserve:</b> Trade a card in play with one from your reserve.</li>
+                        <li><span className="ml-1 font-semibold text-sky-300">1-2</span> <b>Reroll Reserve:</b> Discard up to 2 reserve cards and draw replacements.</li>
+                        <li><span className="ml-1 font-semibold text-rose-300">3-5</span> <b>Boost Card:</b> Add activated card’s value to a card in play.</li>
+                        <li><span className="ml-1 font-semibold text-emerald-400">6+</span> <b>Reserve Boost:</b> Exhaust a reserve card and grant its value to a card in play.</li>
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1316,7 +1886,7 @@ export default function ThreeWheel_WinsOnly({
               )}
             </div>
           )}
-          {phase === "roundEnd" && (
+          {isAdvancePhase && (
             <div className="flex flex-col items-end gap-1">
               <button
                 disabled={advanceButtonDisabled}
@@ -1332,7 +1902,6 @@ export default function ThreeWheel_WinsOnly({
               )}
             </div>
           )}
-
           {/* Grimoire button + popover/modal */}
           {isGrimoireMode && (
             <div className="relative">
@@ -1371,7 +1940,7 @@ export default function ThreeWheel_WinsOnly({
                             <ul className="space-y-2">
                               {localSpellDefinitions.map((spell) => {
                                 const allowedPhases = spell.allowedPhases ?? ["choose"];
-                                const phaseAllowed = allowedPhases.includes(phase);
+                                const phaseAllowed = allowedPhases.includes(normalizedPhaseForSpells);
                                 const effectiveCost = getSpellCost(spell);
                                 const canAfford = localMana >= effectiveCost;
                                 const disabled = !phaseAllowed || !canAfford || !!pendingSpell;
@@ -1440,7 +2009,7 @@ export default function ThreeWheel_WinsOnly({
                             <ul className="space-y-2">
                               {localSpellDefinitions.map((spell) => {
                                 const allowedPhases = spell.allowedPhases ?? ["choose"];
-                                const phaseAllowed = allowedPhases.includes(phase);
+                                const phaseAllowed = allowedPhases.includes(normalizedPhaseForSpells);
                                 const effectiveCost = getSpellCost(spell);
                                 const canAfford = localMana >= effectiveCost;
                                 const disabled = !phaseAllowed || !canAfford || !!pendingSpell;
@@ -1505,12 +2074,13 @@ export default function ThreeWheel_WinsOnly({
           initiative={initiative}
           localLegacySide={localLegacySide}
           phase={phase}
-          theme={THEME}
-          onPlayerManaToggle={handlePlayerManaToggle}
-          isGrimoireOpen={showGrimoire}
-          playerManaButtonRef={playerManaButtonRef}
-          reserveSpellHighlights={reserveSpellHighlights}
-        />
+        theme={THEME}
+        onPlayerManaToggle={handlePlayerManaToggle}
+        isGrimoireOpen={showGrimoire}
+        playerManaButtonRef={playerManaButtonRef}
+        reserveSpellHighlights={reserveSpellHighlights}
+        skillReserveEmojis={skillReserveEmojis}
+      />
       </div>
 
       {/* Wheels center */}
@@ -1562,6 +2132,14 @@ export default function ThreeWheel_WinsOnly({
                 isAwaitingSpellTarget={isAwaitingSpellTarget}
                 variant="grouped"
                 spellHighlightedCardIds={spellHighlightedCardIds}
+                skillPhaseActive={skillPhaseActive}
+                skillLaneStates={skill.lanes}
+                onSkillAbilityStart={beginSkillTargeting}
+                onSkillTargetSelect={handleSkillLaneTarget}
+                skillTargeting={skillTargetingForChildren}
+                skillTargetableLaneIndexes={skillTargetableLaneIndexes}
+                numberColorMode={isSkillMode ? "skill" : "arcana"}
+                skillEffectEmojis={skillEffectEmojiMap}
               />
             </div>
           ))}
@@ -1592,6 +2170,10 @@ export default function ThreeWheel_WinsOnly({
         isAwaitingSpellTarget={isAwaitingSpellTarget}
         onSpellTargetSelect={handleSpellTargetSelect}
         spellHighlightedCardIds={spellHighlightedCardIds}
+        skillTargeting={skillTargetingForChildren}
+        skillTargetableReserveIds={skillTargetableReserveIds}
+        onSkillTargetSelect={handleSkillReserveTarget}
+        numberColorMode={isSkillMode ? "skill" : "arcana"}
       />
 
       <FirstRunCoach

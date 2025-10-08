@@ -372,6 +372,45 @@ function HowToContent() {
           </div>
         </div>
       </div>
+
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold border-b border-white/10 pb-2">Skill Mode</h2>
+        <p>
+          Each card in play grants a <b>Skill</b> after Resolve. You may trigger a card's skill
+          once per round. Skills are associated with specific colors depicted by the card value — <span className="text-amber-300 font-semibold">0</span>,
+          <span className="text-sky-300 font-semibold">1-2</span>, <span className="text-rose-300 font-semibold">3-5</span>,
+          <span className="text-emerald-400 font-semibold">6+</span> — so you can spot skills at a glance.
+        </p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+            <div className="font-semibold">Skill Abilities</div>
+            <ul className="mt-1 list-disc pl-5 space-y-1">
+              <li>
+                <b>Swap Reserve:</b> Trade the positions of the skill card with a reserve card.
+              </li>
+              <li>
+                <b>Reroll Reserve:</b> Discard up to 2 reserve cards and draw fresh replacements.
+              </li>
+              <li>
+                <b>Boost Card:</b> Add that card’s value to a card in play.
+              </li>
+              <li>
+                <b>Reserve Boost:</b> Exhaust a reserve card to grant its value to a card in play.
+              </li>
+            </ul>
+          </div>
+          <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10 space-y-1">
+            <div className="font-semibold">Timing &amp; Tips</div>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Skills each can fire only once per round.</li>
+              <li>
+                Boosts apply immediately — plan your Resolve placement so a later wheel can benefit from the buff.
+              </li>
+              <li>Reserve abilities respect exhaustion: once a reserve card is spent it can’t be used again in the round.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </>
   );
 }

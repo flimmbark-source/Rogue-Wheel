@@ -114,8 +114,18 @@ export default function ModeSelect({
                 aria-pressed={isSelected}
               >
                 <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold sm:text-xl">{info.title}</div>
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <div className="text-lg font-semibold sm:text-xl">{info.title}</div>
+                      <span
+                        className={[
+                          "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+                          info.difficulty.badgeClassName,
+                        ].join(" ")}
+                      >
+                        {info.difficulty.label}
+                      </span>
+                    </div>
                     <div className="text-sm text-slate-300 sm:text-base">{info.subtitle}</div>
                   </div>
                   {isSelected && (

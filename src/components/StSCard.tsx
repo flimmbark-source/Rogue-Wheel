@@ -2,6 +2,7 @@
 import React, { memo, useMemo } from "react";
 import type { Arcana, Card } from "../game/types";
 import { getArcanaIcon, getCardArcana } from "../game/arcana";
+import { getSkillCardValue } from "../game/skills";
 import { fmtNum, isSplit } from "../game/values";
 
 const ARCANA_COLOR_CLASS: Record<Arcana, string> = {
@@ -12,11 +13,33 @@ const ARCANA_COLOR_CLASS: Record<Arcana, string> = {
   serpent: "text-emerald-300",
 };
 
-function ArcanaGlyph({ arcana }: { arcana: Arcana }) {
+const SKILL_VALUE_COLOR_CLASS = {
+  zero: "text-amber-300",
+  low: "text-sky-600",
+  mid: "text-rose-300",
+  high: "text-emerald-400",
+} as const;
+
+function getSkillNumberColorClass(card: Card): string {
+  const raw = getSkillCardValue(card);
+  const normalized = Number.isFinite(raw) ? Math.abs(Math.trunc(raw)) : 0;
+
+  if (normalized === 0) {
+    return SKILL_VALUE_COLOR_CLASS.zero;
+  }
+  if (normalized <= 2) {
+    return SKILL_VALUE_COLOR_CLASS.low;
+  }
+  if (normalized <= 5) {
+    return SKILL_VALUE_COLOR_CLASS.mid;
+  }
+  return SKILL_VALUE_COLOR_CLASS.high;
+}
+
+function ArcanaGlyph({ arcana, className = "" }: { arcana: Arcana; className?: string }) {
   const icon = getArcanaIcon(arcana);
-  const color = ARCANA_COLOR_CLASS[arcana] ?? "text-slate-200";
   return (
-    <span aria-hidden className={`text-1x2 leading-none ${color}`}>
+    <span aria-hidden className={`text-1x2 leading-none ${className}`.trim()}>
       {icon}
     </span>
   );
@@ -34,6 +57,7 @@ type StSCardProps = {
   ariaLabel?: string;
   ariaPressed?: React.AriaAttributes["aria-pressed"];
   onClick?: React.MouseEventHandler<HTMLButtonElement>;
+  numberColorMode?: "arcana" | "skill";
 } & Omit<
   React.ButtonHTMLAttributes<HTMLButtonElement>,
   "onClick" | "children" | "className" | "disabled" | "aria-label" | "aria-pressed"
@@ -51,11 +75,22 @@ export default memo(function StSCard({
   ariaLabel,
   ariaPressed,
   onClick,
+  numberColorMode = "arcana",
   style,
   ...buttonProps
 }: StSCardProps) {
   const dims = size === "lg" ? { w: 120, h: 160 } : size === "md" ? { w: 92, h: 128 } : { w: 72, h: 96 };
   const arcana = useMemo(() => getCardArcana(card), [card]);
+  const arcanaGlyphColorClass = useMemo(
+    () => ARCANA_COLOR_CLASS[arcana] ?? "text-slate-200",
+    [arcana],
+  );
+  const numberColorClass = useMemo(() => {
+    if (numberColorMode === "skill") {
+      return getSkillNumberColorClass(card);
+    }
+    return arcanaGlyphColorClass;
+  }, [arcanaGlyphColorClass, card, numberColorMode]);
 
   return (
     <button
@@ -92,14 +127,16 @@ export default memo(function StSCard({
       <div className="absolute inset-px rounded-[10px] bg-slate-900/85 backdrop-blur-[1px] border border-slate-700/70" />
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         {isSplit(card) ? (
-          <div className="mt-1 text-xl font-extrabold text-white/90 leading-none text-center">
+          <div className={`mt-1 text-xl font-extrabold leading-none text-center ${numberColorClass}`}>
             <div>{fmtNum(card.leftValue!)}<span className="opacity-60">|</span>{fmtNum(card.rightValue!)}</div>
           </div>
         ) : (
-          <div className="mt+10 text-3xl font-extrabold text-white/90">{fmtNum(card.number as number)}</div>
+          <div className={`mt+10 text-3xl font-extrabold ${numberColorClass}`}>
+            {fmtNum(card.number as number)}
+          </div>
         )}
         <div className="pointer-events-none mt-1 flex items-center justify-center card-arcana">
-          <ArcanaGlyph arcana={arcana} />
+          <ArcanaGlyph arcana={arcana} className={arcanaGlyphColorClass} />
         </div>
       </div>
     </button>

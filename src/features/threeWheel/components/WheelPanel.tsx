@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import CanvasWheel, { WheelHandle } from "../../../components/CanvasWheel";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter, Phase, Section } from "../../../game/types";
+import type { AbilityKind } from "../../../game/skills";
 import {
   type SpellDefinition,
   type SpellTargetInstance,
@@ -80,6 +81,20 @@ export interface WheelPanelProps {
   onWheelTargetSelect?: (wheelIndex: number) => void;
   isAwaitingSpellTarget: boolean;
   variant?: "standalone" | "grouped";
+  skillPhaseActive?: boolean;
+  skillLaneStates?: SideState<Array<{ ability: AbilityKind | null; exhausted: boolean }>>;
+  onSkillAbilityStart?: (laneIndex: number, ability: AbilityKind) => void;
+  onSkillAbilityCancel?: () => void;
+  onSkillTargetSelect?: (selection: { laneIndex: number; side: LegacySide }) => void;
+  skillTargeting?: {
+    side: LegacySide;
+    laneIndex: number;
+    ability: AbilityKind;
+    specKind: "reserve" | "friendlyLane";
+  } | null;
+  skillTargetableLaneIndexes?: Set<number> | null;
+  numberColorMode?: "arcana" | "skill";
+  skillEffectEmojis?: Record<LegacySide, Map<number, string>>;
 }
 
 const slotWidthPx = 80;
@@ -133,6 +148,15 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   isAwaitingSpellTarget,
   variant = "standalone",
   spellHighlightedCardIds,
+  skillPhaseActive = false,
+  skillLaneStates,
+  onSkillAbilityStart,
+  onSkillAbilityCancel,
+  onSkillTargetSelect,
+  skillTargeting,
+  skillTargetableLaneIndexes,
+  numberColorMode = "arcana",
+  skillEffectEmojis,
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -165,7 +189,6 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     : null;
 
   const spellHighlightSet = useMemo(() => new Set(spellHighlightedCardIds), [spellHighlightedCardIds]);
-
   const leftSlot: SlotView = { side: "player", card: playerCard, name: namesByLegacy.player };
   const rightSlot: SlotView = { side: "enemy", card: enemyCard, name: namesByLegacy.enemy };
 
@@ -176,6 +199,8 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
 
   const isLeftSelected = !!leftSlot.card && selectedCardId === leftSlot.card.id;
   const isRightSelected = !!rightSlot.card && selectedCardId === rightSlot.card.id;
+  const leftSkillEmoji = skillEffectEmojis?.player?.get(index) ?? null;
+  const rightSkillEmoji = skillEffectEmojis?.enemy?.get(index) ?? null;
 
   const leftSlotOwnership: SpellTargetOwnership | null = pendingSpell
     ? leftSlot.side === pendingSpell.side
@@ -256,6 +281,9 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     (wheelScope === "any" || (wheelScope === "current" && isWheelActive)) &&
     wheelHasRequiredArcana();
 
+  const targetedSkillLane =
+    skillTargeting && skillTargeting.side === localLegacySide && skillTargeting.laneIndex === index;
+
   const renderSlotCard = (
     slot: SlotView,
     isSlotSelected: boolean,
@@ -265,13 +293,54 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     const card = slot.card;
     const isSpellAffected = spellHighlightSet.has(card.id);
     const canInteractNormally =
-      !awaitingSpellTarget && slot.side === localLegacySide && phase === "choose" && isWheelActive;
+      !awaitingSpellTarget && !skillTargeting && slot.side === localLegacySide && phase === "choose" && isWheelActive;
 
-    const cardInteractable = canInteractNormally || slotTargetable;
+    const skillState = skillLaneStates?.[slot.side]?.[index];
+    const hasSkillAbility = Boolean(skillState?.ability && !skillState?.exhausted);
+    const skillAbilityAvailable =
+      skillPhaseActive &&
+      slot.side === localLegacySide &&
+      hasSkillAbility &&
+      (!skillTargeting || targetedSkillLane);
+    const skillTargetingFriendlyLane =
+      skillTargeting &&
+      skillTargeting.side === localLegacySide &&
+      skillTargeting.specKind === "friendlyLane";
+    const laneTargetableForSkill = Boolean(
+      skillTargetingFriendlyLane &&
+        slot.side === localLegacySide &&
+        skillTargetableLaneIndexes?.has(index) &&
+        slot.card,
+    );
+
+    const isSkillAbilityLane = Boolean(targetedSkillLane && slot.side === localLegacySide);
+
+    const cardInteractable =
+      canInteractNormally ||
+      slotTargetable ||
+      skillAbilityAvailable ||
+      laneTargetableForSkill ||
+      isSkillAbilityLane;
+
+    const allowDrag = canInteractNormally;
 
     const handlePick = () => {
       if (slotTargetable && slot.card) {
         onSpellTargetSelect?.({ side: slot.side, lane: index, card: slot.card, location: "board" });
+        return;
+      }
+      if (skillTargeting) {
+        if (laneTargetableForSkill) {
+          onSkillTargetSelect?.({ laneIndex: index, side: slot.side });
+          return;
+        }
+        if (isSkillAbilityLane) {
+          onSkillAbilityCancel?.();
+          return;
+        }
+      }
+      if (skillAbilityAvailable && skillState?.ability) {
+        onSkillAbilityStart?.(index, skillState.ability);
         return;
       }
       if (!canInteractNormally) return;
@@ -283,7 +352,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     };
 
     const handleDragStart = (e: React.DragEvent<HTMLButtonElement>) => {
-      if (!canInteractNormally) return;
+      if (!allowDrag) return;
       setSelectedCardId(card.id);
       setDragCardId(card.id);
       try {
@@ -298,33 +367,47 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     };
 
     const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (!canInteractNormally) return;
+      if (!allowDrag) return;
       e.stopPropagation();
       startPointerDrag(card, e);
     };
 
     const handleTouchStart = (e: React.TouchEvent<HTMLButtonElement>) => {
-      if (!canInteractNormally) return;
+      if (!allowDrag) return;
       e.stopPropagation();
       startTouchDrag(card, e);
     };
 
+    const isExhausted = Boolean(skillState?.exhausted);
+    const rotationClass = `inline-block transition-transform duration-200 ease-out translate-y-[5px] ${
+      isExhausted ? "rotate-90 -translate-x-1 translate-y-[-1.1px]" : ""
+    }`;
+
     return (
-      <StSCard
-        card={card}
-        size="sm"
-        disabled={!cardInteractable}
-        selected={isSlotSelected}
-        spellAffected={isSpellAffected}
-        onPick={handlePick}
-        draggable={canInteractNormally}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-        onPointerDown={handlePointerDown}
-        onTouchStart={handleTouchStart}
-        className={slotTargetable ? "ring-2 ring-sky-400" : undefined}
-        spellTargetable={slotTargetable}
-      />
+      <div className={rotationClass} data-exhausted={isExhausted ? "true" : undefined}>
+        <StSCard
+          card={card}
+          size="sm"
+          numberColorMode={numberColorMode}
+          disabled={!cardInteractable}
+          selected={isSlotSelected || isSkillAbilityLane}
+          spellAffected={isSpellAffected}
+          onPick={handlePick}
+          draggable={allowDrag}
+          onDragStart={allowDrag ? handleDragStart : undefined}
+          onDragEnd={allowDrag ? handleDragEnd : undefined}
+          onPointerDown={handlePointerDown}
+          onTouchStart={handleTouchStart}
+          className={
+            slotTargetable
+              ? "ring-2 ring-sky-400"
+              : laneTargetableForSkill || isSkillAbilityLane
+              ? "ring-2 ring-amber-300"
+              : undefined
+          }
+          spellTargetable={slotTargetable || laneTargetableForSkill}
+        />
+      </div>
     );
   };
 
@@ -397,7 +480,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   const panelStyle = variant === "standalone" ? standaloneStyle : groupedStyle;
 
   const resultIndicators =
-    (phase === "roundEnd" || phase === "ended") && (
+    (phase === "skill" || phase === "roundEnd" || phase === "ended") && (
       <>
         <span
           aria-label={`Wheel ${index + 1} player result`}
@@ -460,7 +543,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
             setSelectedCardId(leftSlot.card.id);
           }
         }}
-        className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+        className="relative w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
         style={{
           backgroundColor:
             dragOverWheel === index || isLeftSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
@@ -483,6 +566,15 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
             {leftSlot.side === localLegacySide ? "Your card" : leftSlot.name}
           </div>
         )}
+        {leftSkillEmoji ? (
+          <span
+            aria-hidden
+            className="skill-pop pointer-events-none absolute inset-0 flex items-center justify-center text-[28px]"
+            style={{ textShadow: "0 2px 6px rgba(0,0,0,0.7)" }}
+          >
+            {leftSkillEmoji}
+          </span>
+        ) : null}
       </div>
 
       <div
@@ -523,7 +615,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
       </div>
 
       <div
-        className="w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
+        className="relative w-[80px] h-[92px] rounded-md border px-1 py-0 flex items-center justify-center flex-none"
         style={{
           backgroundColor:
             dragOverWheel === index || isRightSelected ? "rgba(182,138,78,.12)" : theme.slotBg,
@@ -579,6 +671,15 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
             {rightSlot.side === localLegacySide ? "Your card" : rightSlot.name}
           </div>
         )}
+        {rightSkillEmoji ? (
+          <span
+            aria-hidden
+            className="skill-pop pointer-events-none absolute inset-0 flex items-center justify-center text-[28px]"
+            style={{ textShadow: "0 2px 6px rgba(0,0,0,0.7)" }}
+          >
+            {rightSkillEmoji}
+          </span>
+        ) : null}
       </div>
     </div>
   );

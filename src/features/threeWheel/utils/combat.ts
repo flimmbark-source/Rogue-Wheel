@@ -52,6 +52,7 @@ export function settleFighterAfterRound(f: Fighter, played: Card[]): Fighter {
     deck: [...f.deck],
     hand: [],
     discard: [...f.discard, ...played, ...leftovers],
+    exhaust: [...f.exhaust],
   };
 
   const refilled = refillTo(next, 5);
@@ -71,6 +72,7 @@ export function ensureFiveHand<T extends Fighter>(f: T, TARGET = 5): T {
           : `pad-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       name: "Reserve",
       number: 0,
+      baseNumber: 0,
       kind: "normal",
     } as unknown as Card);
   }

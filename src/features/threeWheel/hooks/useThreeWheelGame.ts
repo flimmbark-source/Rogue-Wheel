@@ -20,33 +20,48 @@ import {
   type Players,
   type CorePhase,
   LEGACY_FROM_SIDE,
-} from "../../../game/types";
-import { DEFAULT_GAME_MODE, normalizeGameMode, type GameMode } from "../../../gameModes";
-import { easeInOutCubic, inSection, createSeededRng } from "../../../game/math";
-import { genWheelSections } from "../../../game/wheel";
+} from "../../../game/types.js";
+import { DEFAULT_GAME_MODE, normalizeGameMode, type GameMode } from "../../../gameModes.js";
+import { easeInOutCubic, inSection, createSeededRng } from "../../../game/math.js";
+import { genWheelSections } from "../../../game/wheel.js";
+import { getSkillCardValue, type AbilityKind } from "../../../game/skills.js";
 import {
   makeFighter,
   refillTo,
+  drawOne,
   recordMatchResult,
   type MatchResultSummary,
   type LevelProgress,
-} from "../../../player/profileStore";
-import { isNormal } from "../../../game/values";
-import type { WheelHandle } from "../../../components/CanvasWheel";
+} from "../../../player/profileStore.js";
+import { fmtNum, isNormal } from "../../../game/values.js";
+import type { WheelHandle } from "../../../components/CanvasWheel.js";
 import {
   applySpellEffects as runSpellEffects,
   type AssignmentState,
   type LaneChillStacks,
   type LegacySide,
   type SpellEffectPayload,
-} from "../../../game/spellEngine";
+} from "../../../game/spellEngine.js";
 import {
   summarizeRoundOutcome,
   type RoundAnalysis,
   type WheelOutcome,
-} from "./roundOutcomeSummary";
+} from "./roundOutcomeSummary.js";
+import { determinePostResolvePhase } from "../utils/skillPhase.js";
+import {
+  applySkillAbilityEffect,
+  type SkillAbilityTarget,
+} from "../utils/skillAbilityExecution.js";
+import {
+  createSkillState,
+  getSkillCardStatusKey,
+  reconcileSkillStateWithAssignments,
+  type SkillLane,
+  type SkillState,
+} from "./skillState.js";
 
-export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine";
+export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine.js";
+export type { SkillAbilityTarget } from "../utils/skillAbilityExecution.js";
 
 export type MPIntent =
   | { type: "assign"; lane: number; side: LegacySide; card: Card }
@@ -76,22 +91,36 @@ type AnteState = {
   odds: Record<LegacySide, number>;
 };
 
-export type GameLogEntryType = "general" | "spell";
+export type GameLogEntryType = "general" | "spell" | "skill";
 
 export type GameLogEntry = {
   id: string;
   message: string;
   type: GameLogEntryType;
+  meta?: GameLogEntryMeta;
+};
+
+type SkillEffectMeta = {
+  side: LegacySide;
+  ability: AbilityKind;
+  affectedLanes?: number[];
+  affectedReserve?: boolean;
+};
+
+type GameLogEntryMeta = {
+  skillEffect?: SkillEffectMeta;
 };
 
 let logIdCounter = 0;
 const createLogEntry = (
   message: string,
   type: GameLogEntryType = "general",
+  meta?: GameLogEntryMeta,
 ): GameLogEntry => ({
   id: `log-${Date.now().toString(36)}-${(logIdCounter++).toString(36)}`,
   message,
   type,
+  meta,
 });
 
 type SideState<T> = Record<LegacySide, T>;
@@ -105,6 +134,60 @@ const createEmptySpellHighlights = (): SpellHighlightState => ({
   cards: [],
   reserve: { player: false, enemy: false },
 });
+
+
+const resetCardNumberToBase = (card: Card): Card => {
+  const base = card.baseNumber;
+  if (typeof base === "number" && card.number !== base) {
+    return { ...card, number: base };
+  }
+  return card;
+};
+
+const resetCardCollectionToBase = (cards: Card[]): Card[] => {
+  let changed = false;
+  const next = cards.map((card) => {
+    const reset = resetCardNumberToBase(card);
+    if (reset !== card) changed = true;
+    return reset;
+  });
+  return changed ? next : cards;
+};
+
+const resetFighterCardsToBase = (fighter: Fighter): Fighter => {
+  const nextDeck = resetCardCollectionToBase(fighter.deck);
+  const nextHand = resetCardCollectionToBase(fighter.hand);
+  const nextDiscard = resetCardCollectionToBase(fighter.discard);
+  const nextExhaust = resetCardCollectionToBase(fighter.exhaust);
+
+  if (
+    nextDeck === fighter.deck &&
+    nextHand === fighter.hand &&
+    nextDiscard === fighter.discard &&
+    nextExhaust === fighter.exhaust
+  ) {
+    return fighter;
+  }
+
+  return {
+    ...fighter,
+    deck: nextDeck,
+    hand: nextHand,
+    discard: nextDiscard,
+    exhaust: nextExhaust,
+  };
+};
+
+const resetPlayedCardsToBase = (cards: Card[]): Card[] => {
+  let changed = false;
+  const next = cards.map((card) => {
+    const reset = resetCardNumberToBase(card);
+    if (reset !== card) changed = true;
+    return reset;
+  });
+  return changed ? next : cards;
+};
+
 
 export type ThreeWheelGameState = {
   player: Fighter;
@@ -139,6 +222,7 @@ export type ThreeWheelGameState = {
   ptrDragType: "pointer" | "touch" | null;
   log: GameLogEntry[];
   spellHighlights: SpellHighlightState;
+  skill: SkillState;
 };
 
 export type ThreeWheelGameDerived = {
@@ -156,12 +240,20 @@ export type ThreeWheelGameDerived = {
   winnerName: string | null;
   localName: string;
   remoteName: string;
+  isSkillMode: boolean;
   canReveal: boolean;
 };
 
 export type ThreeWheelGameRefs = {
   wheelRefs: Array<React.MutableRefObject<WheelHandle | null>>;
   ptrPos: React.MutableRefObject<{ x: number; y: number }>;
+};
+
+export type SkillAbilityUsageResult = {
+  success: boolean;
+  failureReason?: string;
+  exhausted: boolean;
+  usesRemaining: number;
 };
 
 export type ThreeWheelGameActions = {
@@ -178,6 +270,11 @@ export type ThreeWheelGameActions = {
   handleExitClick: () => void;
   applySpellEffects: (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => void;
   setAnteBet: (bet: number) => void;
+  useSkillAbility: (
+    side: LegacySide,
+    laneIndex: number,
+    target?: SkillAbilityTarget,
+  ) => Promise<SkillAbilityUsageResult>;
 };
 
 export type ThreeWheelGameReturn = {
@@ -244,6 +341,7 @@ export function useThreeWheelGame({
 
   const currentGameMode = normalizeGameMode(gameMode ?? DEFAULT_GAME_MODE);
   const isAnteMode = currentGameMode.includes("ante");
+  const isSkillMode = currentGameMode.includes("skill");
 
   const hostLegacySide: LegacySide = (() => {
     if (!hostId) return "player";
@@ -293,6 +391,37 @@ export function useThreeWheelGame({
     bets: { player: 0, enemy: 0 },
     odds: { player: 1.2, enemy: 1.2 },
   }));
+  const [skillState, setSkillState] = useState<SkillState>(() => createSkillState(isSkillMode));
+  const skillStateRef = useRef(skillState);
+  useEffect(() => {
+    skillStateRef.current = skillState;
+  }, [skillState]);
+  const lastPlayerSkillUseTimeRef = useRef<number | null>(null);
+
+  const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>({
+    player: [null, null, null],
+    enemy: [null, null, null],
+  });
+  const assignRef = useRef(assign);
+  useEffect(() => {
+    assignRef.current = assign;
+  }, [assign]);
+
+  useEffect(() => {
+    setSkillState((prev) => {
+      if (prev.enabled === isSkillMode) {
+        return prev;
+      }
+      if (!isSkillMode) {
+        return createSkillState(false);
+      }
+      return { ...prev, enabled: true };
+    });
+  }, [isSkillMode]);
+
+  useEffect(() => {
+    setSkillState((prev) => reconcileSkillStateWithAssignments(prev, assign, isSkillMode));
+  }, [assign, isSkillMode]);
   const [freezeLayout, setFreezeLayout] = useState(false);
   const [lockedWheelSize, setLockedWheelSize] = useState<number | null>(null);
   const [phase, setPhase] = useState<CorePhase>("choose");
@@ -583,20 +712,12 @@ export function useThreeWheelGame({
   const roundStartTokensRef = useRef<[number, number, number] | null>([0, 0, 0]);
   const [active] = useState<[boolean, boolean, boolean]>([true, true, true]);
   const [wheelHUD, setWheelHUD] = useState<[string | null, string | null, string | null]>([null, null, null]);
-  const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>({
-    player: [null, null, null],
-    enemy: [null, null, null],
-  });
   const [laneChillStacks, setLaneChillStacks] = useState<LaneChillStacks>({
     player: [0, 0, 0],
     enemy: [0, 0, 0],
   });
   const laneChillRef = useRef(laneChillStacks);
-  const assignRef = useRef(assign);
   const roundAnalysisRef = useRef<RoundAnalysis | null>(null);
-  useEffect(() => {
-    assignRef.current = assign;
-  }, [assign]);
   useEffect(() => {
     laneChillRef.current = laneChillStacks;
   }, [laneChillStacks]);
@@ -672,8 +793,16 @@ export function useThreeWheelGame({
   const START_LOG = `A ${enemyName} eyes your purse...`;
   const [log, setLog] = useState<GameLogEntry[]>(() => [createLogEntry(START_LOG)]);
 
+  const appendLog = useCallback(
+    (message: string, options?: { type?: GameLogEntryType; meta?: GameLogEntryMeta }) => {
+      const entry = createLogEntry(message, options?.type ?? "general", options?.meta);
+      setLog((prev) => [entry, ...prev].slice(0, 60));
+    },
+    [],
+  );
+
   const [spellHighlights, setSpellHighlights] = useState<SpellHighlightState>(() => createEmptySpellHighlights());
-  const spellHighlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spellHighlightTimeoutRef = useRef<number | null>(null);
 
   const clearSpellHighlights = useCallback(() => {
     setSpellHighlights(createEmptySpellHighlights());
@@ -724,6 +853,36 @@ export function useThreeWheelGame({
     [scheduleSpellHighlightClear],
   );
 
+  const getFighterSnapshot = useCallback(
+    (side: LegacySide): Fighter => (side === "player" ? playerRef.current : enemyRef.current),
+    [],
+  );
+
+  const updateFighter = useCallback(
+    (side: LegacySide, mutator: (prev: Fighter) => Fighter) => {
+      if (side === "player") {
+        setPlayer((prev) => {
+          const next = mutator(prev);
+          playerRef.current = next;
+          return next;
+        });
+      } else {
+        setEnemy((prev) => {
+          const next = mutator(prev);
+          enemyRef.current = next;
+          return next;
+        });
+      }
+    },
+    [setEnemy, setPlayer],
+  );
+
+  const updateReservePreview = useCallback(() => {
+    const playerReserve = computeReserveSum("player", assignRef.current.player);
+    const enemyReserve = computeReserveSum("enemy", assignRef.current.enemy);
+    setReserveSums({ player: playerReserve, enemy: enemyReserve });
+  }, [setReserveSums]);
+
   useEffect(() => {
     return () => {
       if (spellHighlightTimeoutRef.current) {
@@ -731,11 +890,6 @@ export function useThreeWheelGame({
         spellHighlightTimeoutRef.current = null;
       }
     };
-  }, []);
-
-  const appendLog = useCallback((message: string, options?: { type?: GameLogEntryType }) => {
-    const entry = createLogEntry(message, options?.type ?? "general");
-    setLog((prev) => [entry, ...prev].slice(0, 60));
   }, []);
 
   const canReveal = useMemo(() => {
@@ -748,6 +902,31 @@ export function useThreeWheelGame({
     useRef<WheelHandle | null>(null),
     useRef<WheelHandle | null>(null),
   ];
+
+  const recalcWheelForLane = useCallback(
+    (assignments: AssignmentState<Card>, index: number) => {
+      if (index < 0 || index >= assignments.player.length) {
+        return { value: 0, changed: false };
+      }
+      const playerValue = modSlice(cardWheelValue(assignments.player[index] as Card | null));
+      const enemyValue = modSlice(cardWheelValue(assignments.enemy[index] as Card | null));
+      const total = modSlice(playerValue + enemyValue);
+      wheelRefs[index]?.current?.setVisualToken?.(total);
+
+      const prevTokens = tokensRef.current ?? [0, 0, 0];
+      const previous = prevTokens[index] ?? 0;
+      if (total === previous) {
+        return { value: total, changed: false };
+      }
+
+      const nextTokens = [...prevTokens] as [number, number, number];
+      nextTokens[index] = total;
+      tokensRef.current = nextTokens;
+      setTokens(nextTokens);
+      return { value: total, changed: true };
+    },
+    [setTokens, wheelRefs],
+  );
 
   const assignToWheelFor = useCallback(
     (side: LegacySide, laneIndex: number, card: Card) => {
@@ -958,39 +1137,44 @@ export function useThreeWheelGame({
       let winner: LegacySide | null = null;
       let tie = false;
       let detail = "";
-      switch (section.id) {
-        case "Strongest":
-          if (pVal === eVal) tie = true;
-          else winner = pVal > eVal ? "player" : "enemy";
-          detail = `Strongest ${pVal} vs ${eVal}`;
-          break;
-        case "Weakest":
-          if (pVal === eVal) tie = true;
-          else winner = pVal < eVal ? "player" : "enemy";
-          detail = `Weakest ${pVal} vs ${eVal}`;
-          break;
-        case "ReserveSum":
-          if (pReserve === eReserve) tie = true;
-          else winner = pReserve > eReserve ? "player" : "enemy";
-          detail = `Reserve ${pReserve} vs ${eReserve}`;
-          break;
-        case "ClosestToTarget": {
-          const t = targetSlice === 0 ? section.target ?? 0 : targetSlice;
-          const pd = Math.abs(pVal - t);
-          const ed = Math.abs(eVal - t);
-          if (pd === ed) tie = true;
-          else winner = pd < ed ? "player" : "enemy";
-          detail = `Closest to ${t}: ${pVal} vs ${eVal}`;
-          break;
+      if (targetSlice === 0) {
+        tie = true;
+        detail = "Slice 0: no win";
+      } else {
+        switch (section.id) {
+          case "Strongest":
+            if (pVal === eVal) tie = true;
+            else winner = pVal > eVal ? "player" : "enemy";
+            detail = `Strongest ${pVal} vs ${eVal}`;
+            break;
+          case "Weakest":
+            if (pVal === eVal) tie = true;
+            else winner = pVal < eVal ? "player" : "enemy";
+            detail = `Weakest ${pVal} vs ${eVal}`;
+            break;
+          case "ReserveSum":
+            if (pReserve === eReserve) tie = true;
+            else winner = pReserve > eReserve ? "player" : "enemy";
+            detail = `Reserve ${pReserve} vs ${eReserve}`;
+            break;
+          case "ClosestToTarget": {
+            const t = targetSlice === 0 ? section.target ?? 0 : targetSlice;
+            const pd = Math.abs(pVal - t);
+            const ed = Math.abs(eVal - t);
+            if (pd === ed) tie = true;
+            else winner = pd < ed ? "player" : "enemy";
+            detail = `Closest to ${t}: ${pVal} vs ${eVal}`;
+            break;
+          }
+          case "Initiative":
+            winner = initiative;
+            detail = `Initiative -> ${winner}`;
+            break;
+          default:
+            tie = true;
+            detail = `Slice 0: no section`;
+            break;
         }
-        case "Initiative":
-          winner = initiative;
-          detail = `Initiative -> ${winner}`;
-          break;
-        default:
-          tie = true;
-          detail = `Slice 0: no section`;
-          break;
       }
       outcomes.push({ steps, targetSlice, section, winner, tie, wheel: w, detail });
     }
@@ -1117,7 +1301,11 @@ export function useThreeWheelGame({
         flashSpellHighlights(affectedCardIds, affectedReserveSides);
       }
 
-      if (phaseRef.current === "anim" || phaseRef.current === "roundEnd") {
+      if (
+        phaseRef.current === "anim" ||
+        phaseRef.current === "skill" ||
+        phaseRef.current === "roundEnd"
+      ) {
         resolveRound(undefined, {
           skipAnimation: true,
           snapshot: { assign: latestAssignments, tokens: snapshotTokens },
@@ -1150,6 +1338,7 @@ export function useThreeWheelGame({
       deck: [...f.deck],
       hand: [],
       discard: [...f.discard, ...played, ...leftovers],
+      exhaust: [...f.exhaust],
     };
 
     const refilled = refillTo(next, 5);
@@ -1169,6 +1358,7 @@ export function useThreeWheelGame({
             : `pad-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         name: "Reserve",
         number: 0,
+        baseNumber: 0,
         kind: "normal",
       } as unknown as Card);
     }
@@ -1214,9 +1404,19 @@ export function useThreeWheelGame({
     [broadcastLocalReserve, canReveal, isMultiplayer, wheelSize]
   );
 
+  const tryRevealRound = useCallback(
+    (opts?: { force?: boolean }) => {
+      if (!opts?.force && phaseRef.current !== "choose") {
+        return false;
+      }
+      return revealRoundCore(opts);
+    },
+    [revealRoundCore],
+  );
+
   const onReveal = useCallback(() => {
-    revealRoundCore();
-  }, [revealRoundCore]);
+    tryRevealRound();
+  }, [tryRevealRound]);
 
   const attemptAutoReveal = useCallback(() => {
     if (!isMultiplayer) return;
@@ -1224,8 +1424,8 @@ export function useThreeWheelGame({
     if (!canReveal) return;
     const votes = resolveVotesRef.current;
     if (!votes.player || !votes.enemy) return;
-    revealRoundCore();
-  }, [canReveal, isMultiplayer, phase, revealRoundCore]);
+    tryRevealRound();
+  }, [canReveal, isMultiplayer, phase, tryRevealRound]);
 
   useEffect(() => {
     attemptAutoReveal();
@@ -1302,11 +1502,18 @@ export function useThreeWheelGame({
       }
 
       clearAdvanceVotes();
-      setPhase("roundEnd");
+
       if (summary.matchEnded) {
         clearRematchVotes();
         setPhase("ended");
+        return;
       }
+
+      const nextPhase = determinePostResolvePhase({
+        isSkillMode,
+        skillCompleted: skillStateRef.current.completed,
+      });
+      setPhase(nextPhase);
     };
 
     if (options?.skipAnimation) {
@@ -1361,9 +1568,56 @@ export function useThreeWheelGame({
   }
 
 
+  const refreshRoundSummaryAfterSkill = useCallback(
+    (assignments: AssignmentState<Card>) => {
+      if (!isSkillMode) return;
+
+      const played = [0, 1, 2].map((i) => ({
+        p: assignments.player[i] as Card | null,
+        e: assignments.enemy[i] as Card | null,
+      }));
+
+      const latestAnalysis = analyzeRound(played);
+      roundAnalysisRef.current = latestAnalysis;
+
+      const summary = summarizeRoundOutcome({
+        analysis: latestAnalysis,
+        wins,
+        initiative,
+        round,
+        namesByLegacy,
+        HUD_COLORS,
+        isAnteMode,
+        anteState: anteStateRef.current,
+        winGoal,
+        localLegacySide,
+        remoteLegacySide,
+      });
+
+      setWheelHUD(summary.hudColors);
+      pendingWinsRef.current = summary.wins;
+      setInitiative(summary.nextInitiative);
+    },
+    [
+      HUD_COLORS,
+      initiative,
+      isAnteMode,
+      isSkillMode,
+      localLegacySide,
+      namesByLegacy,
+      remoteLegacySide,
+      round,
+      setInitiative,
+      setWheelHUD,
+      winGoal,
+      wins,
+    ],
+  );
+
+
   const nextRoundCore = useCallback(
     (opts?: { force?: boolean }) => {
-      const allow = opts?.force || phase === "roundEnd";
+      const allow = opts?.force || phase === "roundEnd" || phase === "skill";
       if (!allow) return false;
 
       commitPendingWins();
@@ -1380,8 +1634,20 @@ export function useThreeWheelGame({
       setFreezeLayout(false);
       setLockedWheelSize(null);
 
-      setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
-      setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
+      setPlayer((p) => {
+        const basePlayer = isSkillMode ? resetFighterCardsToBase(p) : p;
+        const playedForSettlement = isSkillMode
+          ? resetPlayedCardsToBase(playerPlayed)
+          : playerPlayed;
+        return settleFighterAfterRound(basePlayer, playedForSettlement);
+      });
+      setEnemy((e) => {
+        const baseEnemy = isSkillMode ? resetFighterCardsToBase(e) : e;
+        const playedForSettlement = isSkillMode
+          ? resetPlayedCardsToBase(enemyPlayed)
+          : enemyPlayed;
+        return settleFighterAfterRound(baseEnemy, playedForSettlement);
+      });
 
       setWheelSections(generateWheelSet());
       setAssign({ player: [null, null, null], enemy: [null, null, null] });
@@ -1397,6 +1663,10 @@ export function useThreeWheelGame({
       reservePenaltiesRef.current = { player: 0, enemy: 0 };
       reserveReportsRef.current = { player: null, enemy: null };
 
+      const resetSkill: SkillState = createSkillState(isSkillMode);
+      skillStateRef.current = resetSkill;
+      setSkillState(resetSkill);
+
       setPhase("choose");
       setRound((r) => r + 1);
 
@@ -1409,6 +1679,7 @@ export function useThreeWheelGame({
       generateWheelSet,
       phase,
       setDragOverWheel,
+      isSkillMode,
     ]
   );
 
@@ -1561,12 +1832,13 @@ export function useThreeWheelGame({
     if (phase !== "choose" || !canReveal) return;
 
     if (!isMultiplayer) {
-      onReveal();
+      tryRevealRound();
       return;
     }
 
     markResolveVote(localLegacySide);
     sendIntent({ type: "reveal", side: localLegacySide });
+    tryRevealRound();
     setTimeout(() => {
       attemptAutoReveal();
     }, 0);
@@ -1576,14 +1848,247 @@ export function useThreeWheelGame({
     isMultiplayer,
     localLegacySide,
     markResolveVote,
-    onReveal,
     phase,
     resolveVotes,
     sendIntent,
+    tryRevealRound,
   ]);
 
+  const completeSkillPhase = useCallback(() => {
+    let updated = false;
+    setSkillState((prev) => {
+      if (prev.completed) return prev;
+      updated = true;
+      const next = { ...prev, completed: true };
+      skillStateRef.current = next;
+      return next;
+    });
+    return updated;
+  }, [setSkillState]);
+
+  const buildSkillEffectMeta = useCallback(
+    (
+      ability: AbilityKind,
+      side: LegacySide,
+      target?: SkillAbilityTarget,
+    ): SkillEffectMeta | null => {
+      switch (ability) {
+        case "swapReserve":
+          if (target && target.type === "reserveToLane") {
+            return { side, ability, affectedLanes: [target.laneIndex], affectedReserve: true };
+          }
+          return { side, ability, affectedReserve: true };
+        case "rerollReserve":
+          return { side, ability, affectedReserve: true };
+        case "boostCard":
+          if (target && target.type === "lane") {
+            return { side, ability, affectedLanes: [target.laneIndex] };
+          }
+          return { side, ability };
+        case "reserveBoost":
+          if (target && target.type === "reserveBoost") {
+            return { side, ability, affectedLanes: [target.laneIndex], affectedReserve: true };
+          }
+          return { side, ability, affectedReserve: true };
+        default:
+          return null;
+      }
+    },
+    [],
+  );
+
+  const useSkillAbility = useCallback(
+    async (
+      side: LegacySide,
+      laneIndex: number,
+      target?: SkillAbilityTarget,
+    ): Promise<SkillAbilityUsageResult> => {
+      const isCpuActor = !isMultiplayer && side === remoteLegacySide;
+      if (
+        isCpuActor &&
+        isSkillMode &&
+        lastPlayerSkillUseTimeRef.current !== null &&
+        lastPlayerSkillUseTimeRef.current !== undefined
+      ) {
+        const elapsed = Date.now() - lastPlayerSkillUseTimeRef.current;
+        const waitMs = Math.max(0, 1000 - elapsed);
+        if (waitMs > 0) {
+          await new Promise<void>((resolve) => {
+            setSafeTimeout(resolve, waitMs);
+          });
+        }
+        lastPlayerSkillUseTimeRef.current = null;
+      }
+
+      const assignments = assignRef.current;
+      const laneCards = assignments[side];
+      const skillCard = laneCards?.[laneIndex] ?? null;
+      const storedSkillValue = skillCard ? getSkillCardValue(skillCard) : 0;
+      const actorName = namesByLegacy[side];
+
+      const laneState = skillStateRef.current.lanes[side]?.[laneIndex];
+      if (!laneState || !laneState.ability) {
+        return {
+          success: false,
+          exhausted: true,
+          usesRemaining: 0,
+        };
+      }
+
+      if (laneState.exhausted) {
+        appendLog(`${actorName}'s ${laneState.ability} has already been used.`);
+        return {
+          success: false,
+          failureReason: `${laneState.ability} exhausted`,
+          exhausted: true,
+          usesRemaining: laneState.usesRemaining,
+        };
+      }
+
+      const ability = laneState.ability;
+      const sideAssignments: AssignmentState<Card> = {
+        player: [...assignments.player],
+        enemy: [...assignments.enemy],
+      };
+
+      const result = applySkillAbilityEffect({
+        ability,
+        actorName,
+        side,
+        laneIndex,
+        target,
+        skillCard,
+        storedSkillValue,
+        sideAssignments,
+        concludeAssignUpdate: (nextAssign) => {
+          assignRef.current = nextAssign;
+          setAssign(() => nextAssign);
+        },
+        recalcWheelForLane,
+        getFighterSnapshot,
+        updateFighter,
+        drawOne,
+        updateReservePreview,
+        appendLog,
+      });
+
+      if (!result.success) {
+        if (result.failureReason) {
+          appendLog(`${actorName}'s ${ability} failed: ${result.failureReason}`);
+        }
+        return {
+          success: false,
+          failureReason: result.failureReason,
+          exhausted: laneState.exhausted,
+          usesRemaining: laneState.usesRemaining,
+        };
+      }
+
+      const nextUsesRemaining = Math.max(0, laneState.usesRemaining - 1);
+      const willExhaust = nextUsesRemaining <= 0;
+
+      setSkillState((prev) => {
+        const lanes = prev.lanes[side];
+        const lane = lanes?.[laneIndex];
+        if (!lane || lane.exhausted || lane.ability !== ability) {
+          return prev;
+        }
+        const cardId = lane.cardId;
+        let nextCardStatus = prev.cardStatus;
+        if (cardId) {
+          const statusKey = getSkillCardStatusKey(side, cardId);
+          const existingStatus = prev.cardStatus[statusKey];
+          if (
+            !existingStatus ||
+            existingStatus.ability !== ability ||
+            existingStatus.exhausted !== willExhaust ||
+            existingStatus.usesRemaining !== nextUsesRemaining
+          ) {
+            nextCardStatus =
+              nextCardStatus === prev.cardStatus ? { ...prev.cardStatus } : nextCardStatus;
+            nextCardStatus[statusKey] = {
+              ability,
+              exhausted: willExhaust,
+              usesRemaining: nextUsesRemaining,
+            };
+          }
+        }
+        const updatedLane: SkillLane = {
+          ...lane,
+          exhausted: willExhaust,
+          usesRemaining: nextUsesRemaining,
+        };
+        const updatedLanesForSide = [...lanes];
+        updatedLanesForSide[laneIndex] = updatedLane;
+        const next: SkillState = {
+          ...prev,
+          lanes: { ...prev.lanes, [side]: updatedLanesForSide },
+          cardStatus: nextCardStatus,
+        };
+        skillStateRef.current = next;
+        return next;
+      });
+
+      const cpuSkillMeta = isCpuActor ? buildSkillEffectMeta(ability, side, target) : null;
+
+      if (isCpuActor) {
+        appendLog(`${actorName} used ${ability}.`, {
+          type: "skill",
+          meta: cpuSkillMeta ? { skillEffect: cpuSkillMeta } : undefined,
+        });
+      }
+
+      if (ability === "rerollReserve") {
+        appendLog(
+          willExhaust
+            ? `${actorName} finished their Reroll Reserve.`
+            : `${actorName} can discard another reserve or cancel to finish the skill.`,
+        );
+      } else if (!isCpuActor) {
+        appendLog(`${actorName} used ${ability}.`);
+      }
+
+      if (isSkillMode && result.changedLanes && result.changedLanes.length > 0) {
+        refreshRoundSummaryAfterSkill(assignRef.current);
+      }
+
+      if (!isMultiplayer && isSkillMode && side === localLegacySide) {
+        lastPlayerSkillUseTimeRef.current = Date.now();
+      }
+
+      return {
+        success: true,
+        exhausted: willExhaust,
+        usesRemaining: nextUsesRemaining,
+      };
+    },
+    [
+      appendLog,
+      assignRef,
+      applySkillAbilityEffect,
+      buildSkillEffectMeta,
+      getFighterSnapshot,
+      getSkillCardValue,
+      namesByLegacy,
+      localLegacySide,
+      isMultiplayer,
+      isSkillMode,
+      remoteLegacySide,
+      setSafeTimeout,
+      recalcWheelForLane,
+      setAssign,
+      setSkillState,
+      drawOne,
+      updateFighter,
+      updateReservePreview,
+      refreshRoundSummaryAfterSkill,
+    ],
+  );
+
   const handleNextClick = useCallback(() => {
-    if (phase !== "roundEnd") return;
+    if (!(phase === "roundEnd" || phase === "skill")) return;
+
+    completeSkillPhase();
 
     if (!isMultiplayer) {
       nextRound();
@@ -1594,14 +2099,24 @@ export function useThreeWheelGame({
 
     markAdvanceVote(localLegacySide);
     sendIntent({ type: "nextRound", side: localLegacySide });
-  }, [advanceVotes, isMultiplayer, localLegacySide, markAdvanceVote, nextRound, phase, sendIntent]);
+  }, [
+    advanceVotes,
+    completeSkillPhase,
+    isMultiplayer,
+    localLegacySide,
+    markAdvanceVote,
+    nextRound,
+    phase,
+    sendIntent,
+  ]);
 
   useEffect(() => {
     if (!isMultiplayer) return;
-    if (phase !== "roundEnd") return;
+    if (!(phase === "roundEnd" || phase === "skill")) return;
     if (!advanceVotes.player || !advanceVotes.enemy) return;
+    completeSkillPhase();
     nextRound();
-  }, [advanceVotes, isMultiplayer, nextRound, phase]);
+  }, [advanceVotes, completeSkillPhase, isMultiplayer, nextRound, phase]);
 
   const resetMatch = useCallback(() => {
     clearResolveVotes();
@@ -1880,6 +2395,7 @@ export function useThreeWheelGame({
     ptrDragType,
     log,
     spellHighlights,
+    skill: skillState,
   };
 
   const derived: ThreeWheelGameDerived = {
@@ -1897,6 +2413,7 @@ export function useThreeWheelGame({
     winnerName,
     localName,
     remoteName,
+    isSkillMode,
     canReveal,
   };
 
@@ -1919,6 +2436,7 @@ export function useThreeWheelGame({
     handleExitClick,
     applySpellEffects,
     setAnteBet,
+    useSkillAbility,
   };
 
   return { state, derived, refs, actions };

@@ -1,0 +1,142 @@
+import assert from "node:assert/strict";
+
+import {
+  describeSkillAbility,
+  determineSkillAbility,
+  getReserveBoostValue,
+  getSkillCardValue,
+  isReserveBoostTarget,
+} from "../src/game/skills.js";
+import type { Card } from "../src/game/types.js";
+
+const makeCard = (overrides: Partial<Record<keyof Card, unknown>>): Card => {
+  const card: Card = {
+    id: "test-card",
+    name: "Test",
+    tags: [],
+  };
+  Object.assign(card as unknown as Record<string, unknown>, overrides);
+  return card;
+};
+
+{
+  const card = makeCard({ number: 1, baseNumber: 1 });
+  assert.equal(getSkillCardValue(card), 1);
+  assert.equal(determineSkillAbility(card), "rerollReserve");
+}
+
+{
+  const card = makeCard({ number: "1" as unknown as number });
+  assert.equal(getSkillCardValue(card), 1);
+  assert.equal(determineSkillAbility(card), "rerollReserve");
+}
+
+{
+  const card = makeCard({ number: "8" as unknown as number });
+  assert.equal(determineSkillAbility(card), "reserveBoost");
+}
+
+{
+  const card = makeCard({ baseNumber: "3" as unknown as number });
+  assert.equal(determineSkillAbility(card), "boostCard");
+  assert.equal(
+    describeSkillAbility("boostCard", card),
+    "Select a friendly lane to add 3.",
+  );
+}
+
+{
+  const card = makeCard({ baseNumber: 5, number: 8 });
+  assert.equal(determineSkillAbility(card), "boostCard");
+  assert.equal(
+    describeSkillAbility("boostCard", card),
+    "Select a friendly lane to add 8.",
+  );
+}
+
+{
+  assert.equal(
+    describeSkillAbility("swapReserve"),
+    "Select a reserve card to swap into a lane.",
+  );
+}
+
+{
+  const card = makeCard({ baseNumber: 1 });
+  assert.equal(
+    describeSkillAbility("rerollReserve", card),
+    "Select a reserve card to discard and draw a replacement.",
+  );
+}
+
+{
+  const card = makeCard({ baseNumber: 5 });
+  assert.equal(
+    describeSkillAbility("reserveBoost", card),
+    "Select a positive reserve card to exhaust and boost a friendly lane by 5.",
+  );
+}
+
+{
+  const card = makeCard({ number: 5, baseNumber: 5 });
+  assert.equal(isReserveBoostTarget(card), true);
+}
+
+{
+  const card = makeCard({ number: 5, baseNumber: 5, reserveExhausted: true });
+  assert.equal(getReserveBoostValue(card), 0);
+  assert.equal(isReserveBoostTarget(card), false);
+  assert.equal(describeSkillAbility("reserveBoost", card), "-");
+}
+
+{
+  const card = makeCard({ number: 0, baseNumber: 0 });
+  assert.equal(isReserveBoostTarget(card), false);
+}
+
+{
+  const card = makeCard({ number: -2, baseNumber: -2 });
+  assert.equal(isReserveBoostTarget(card), false);
+}
+
+{
+  const card = makeCard({ number: -7, baseNumber: 4 });
+  assert.equal(getSkillCardValue(card), 4);
+  assert.equal(determineSkillAbility(card), "boostCard");
+  assert.equal(isReserveBoostTarget(card), true);
+}
+
+{
+  const card = makeCard({ number: 6, baseNumber: -1 });
+  assert.equal(getSkillCardValue(card), -1);
+  assert.equal(determineSkillAbility(card), "swapReserve");
+  assert.equal(isReserveBoostTarget(card), false);
+}
+
+{
+  const card = makeCard({ baseNumber: 2 });
+  assert.equal(getSkillCardValue(card), 2);
+  assert.equal(determineSkillAbility(card), "rerollReserve");
+}
+
+{
+  const cards = [
+    makeCard({ id: "positive", number: 5, baseNumber: 5 }),
+    makeCard({ id: "zero", number: 0, baseNumber: 0 }),
+    makeCard({ id: "negative", number: -2, baseNumber: -2 }),
+    makeCard({ id: "basePositive", number: -7, baseNumber: 4 }),
+  ];
+  const reserveBoostTargets = cards
+    .filter((card) => isReserveBoostTarget(card))
+    .map((card) => card.id);
+  assert.deepEqual(reserveBoostTargets, ["positive", "basePositive"]);
+}
+
+{
+  const card = makeCard({ number: 5, baseNumber: 0 });
+  assert.equal(getSkillCardValue(card), 0);
+  assert.equal(getReserveBoostValue(card), 5);
+  assert.equal(isReserveBoostTarget(card), true);
+}
+
+console.log("skill ability classification tests passed");

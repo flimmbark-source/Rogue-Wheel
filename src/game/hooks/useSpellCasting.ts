@@ -93,16 +93,18 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
   const [phaseBeforeSpell, setPhaseBeforeSpell] = useState<CorePhase | null>(null);
 
   const phaseForLogic = phaseBeforeSpell ?? phase;
+  const normalizedPhaseForLogic: CorePhase =
+    phaseForLogic === "skill" ? "roundEnd" : phaseForLogic;
 
   const getSpellCost = useCallback(
     (spell: SpellDefinition): number =>
       computeSpellCost(spell, {
         caster,
         opponent,
-        phase: phaseForLogic,
+        phase: normalizedPhaseForLogic,
         runtimeState: runtimeStateRef.current,
       }),
-    [caster, opponent, phaseForLogic, runtimeStateRef],
+    [caster, normalizedPhaseForLogic, opponent, runtimeStateRef],
   );
 
   const handleResolvePendingSpell = useCallback(
@@ -112,7 +114,7 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
         targetOverride,
         caster,
         opponent,
-        phase: phaseForLogic,
+        phase: normalizedPhaseForLogic,
         runtimeState: runtimeStateRef.current,
       });
 
@@ -159,8 +161,8 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
       caster,
       clearPendingSpell,
       closeGrimoire,
+      normalizedPhaseForLogic,
       opponent,
-      phaseForLogic,
       runtimeStateRef,
       setManaPools,
     ],
@@ -196,7 +198,7 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
         pendingSpell && pendingSpell.side === localSide ? pendingSpell : null;
 
       const allowedPhases = spell.allowedPhases ?? ["choose"];
-      if (!allowedPhases.includes(phaseForLogic)) return;
+      if (!allowedPhases.includes(normalizedPhaseForLogic)) return;
 
       const effectiveCost = getSpellCost(spell);
       const availableMana = refundablePending ? localMana + refundablePending.spentMana : localMana;
@@ -234,6 +236,7 @@ export function useSpellCasting(options: UseSpellCastingOptions): UseSpellCastin
       handlePendingSpellCancel,
       localMana,
       localSide,
+      normalizedPhaseForLogic,
       pendingSpell,
       phaseForLogic,
       setManaPools,

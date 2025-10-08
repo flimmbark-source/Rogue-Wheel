@@ -93,7 +93,7 @@ h1, h2, h3, h4, h5, h6 {
 /*
  * Wood-themed frames for wheels and card slots.
  */
-div.relative[aria-label^="Wheel"] {
+div.relative[data-drop="wheel"][aria-label^="Wheel"] {
   background-image: url("/assets/wheel-frame.png");
   background-size: contain;
   background-repeat: no-repeat;
@@ -132,16 +132,35 @@ button[aria-label^="Card"] > div:nth-child(2) {
   background-color: transparent;
   border: none;
 }
-button[aria-label^="Card"] .text-3xl {
-  color: #f5e7c4;
-}
-
 [data-spells-enabled="false"] .card-arcana {
   display: none;
 }
 
 /* Add margin below the last wheel to prevent overlap with the player's hand */
-div.relative[aria-label^="Wheel"]:last-of-type {
+div[data-drop="wheel"][aria-label^="Wheel"]:last-of-type {
   margin-bottom: 1rem;
+}
+
+@keyframes skill-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  35% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  70% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+}
+
+.skill-pop {
+  animation: skill-pop 0.95s ease-out forwards;
 }
 

@@ -1,4 +1,4 @@
-export const GAME_MODE_OPTIONS = ["grimoire", "ante"] as const;
+export const GAME_MODE_OPTIONS = ["grimoire", "ante", "skill"] as const;
 
 export type GameModeOption = (typeof GAME_MODE_OPTIONS)[number];
 
@@ -7,6 +7,7 @@ export type GameMode = GameModeOption[];
 export const DEFAULT_GAME_MODE: GameMode = [];
 
 export const GAME_MODE_LABELS: Record<GameModeOption, string> = {
+  skill: "Skill Mode",
   grimoire: "Grimoire",
   ante: "Ante",
 };
@@ -17,14 +18,33 @@ export const GAME_MODE_DETAILS: Record<
     title: string;
     subtitle: string;
     highlights: string[];
+    difficulty: {
+      label: string;
+      badgeClassName: string;
+    };
   }
 > = {
+  skill: {
+    title: "Skills",
+    subtitle: "Use abilities on cards for tactical plays.",
+    highlights: [
+      "Cards on board grant one-shot abilities like Swap, Reroll, and Boost.",
+    ],
+    difficulty: {
+      label: "Intermediate",
+      badgeClassName: "border-amber-400/60 bg-amber-500/10 text-amber-300",
+    },
+  },
   grimoire: {
     title: "Grimoire",
     subtitle: "Adds spells, which can alter match outcomes.",
     highlights: [
-      "Use Reserve to gain Mana, spend Mana to cast spells.",
+      "Card totals in Reserve grant Mana, spend Mana to cast spells and use arcana symbols to boost them.",
     ],
+    difficulty: {
+      label: "Expert",
+      badgeClassName: "border-rose-400/60 bg-rose-500/10 text-rose-300",
+    },
   },
   ante: {
     title: "Ante",
@@ -32,6 +52,10 @@ export const GAME_MODE_DETAILS: Record<
     highlights: [
       "Win rounds to multiply your ante by dynamic odds",
     ],
+    difficulty: {
+      label: "Easy",
+      badgeClassName: "border-emerald-400/60 bg-emerald-500/10 text-emerald-300",
+    },
   },
 };
 

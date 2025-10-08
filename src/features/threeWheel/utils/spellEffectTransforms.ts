@@ -42,7 +42,13 @@ export type SpellEffectPayload = {
   handAdjustments?: Array<{ side: LegacySide; cardId: string; numberDelta?: number }>;
   handDiscards?: Array<{ side: LegacySide; cardId: string }>;
   positionSwaps?: Array<{ side: LegacySide; laneA: number; laneB: number }>;
-  initiativeChallenges?: Array<{ side: LegacySide; lane: number; cardId: string; mode: "higher" | "lower" }>;
+  initiativeChallenges?: Array<{
+    side: LegacySide;
+    lane: number;
+    cardId: string;
+    mode: "higher" | "lower";
+    winOnTie?: boolean;
+  }>;
   chilledCards?: ChilledCardUpdate[];
   delayedEffects?: string[];
   initiative?: LegacySide | null;

@@ -12,6 +12,7 @@ import {
   type AssignmentState,
   type SpellEffectPayload,
 } from "../src/game/spellEngine.js";
+import { handleInitiativeEffects } from "../src/game/spellEffectHandlers.js";
 import type { Card, Fighter } from "../src/game/types.js";
 
 const opponentOf = (side: LegacySide): LegacySide => (side === "player" ? "enemy" : "player");
@@ -125,12 +126,14 @@ const opponentOf = (side: LegacySide): LegacySide => (side === "player" ? "enemy
       { id: "ph2", name: "Guard", number: 5, tags: [] },
     ],
     discard: [],
+    exhaust: [],
   };
   let enemyFighter: Fighter = {
     name: "Target",
     deck: [],
     hand: [{ id: "eh1", name: "Shade", number: 4, tags: [] }],
     discard: [],
+    exhaust: [],
   };
 
   const payload: SpellEffectPayload = {
@@ -199,6 +202,37 @@ const opponentOf = (side: LegacySide): LegacySide => (side === "player" ? "enemy
   assert.deepEqual(tokens, [0, 0, 0]);
   assert.deepEqual(reserveSums, { player: 5, enemy: 5 });
   assert.deepEqual(chillStacks, { player: [0, 0, 0], enemy: [0, 0, 0] });
+}
+
+// handleInitiativeEffects honors winOnTie when challenge values match.
+{
+  const assignState: AssignmentState<Card> = {
+    player: [
+      { id: "p0", name: "Duelist", number: 4, tags: [] },
+      null,
+      null,
+    ],
+    enemy: [
+      { id: "e0", name: "Raider", number: 4, tags: [] },
+      null,
+      null,
+    ],
+  };
+  let initiative: LegacySide = "enemy";
+
+  handleInitiativeEffects<Card>({
+    initiativeChallenges: [
+      { side: "player", lane: 0, cardId: "p0", mode: "higher", winOnTie: true },
+    ],
+    initiativeTarget: null,
+    latestAssignments: assignState,
+    setInitiative: (side) => {
+      initiative = side;
+    },
+    currentInitiative: initiative,
+  });
+
+  assert.equal(initiative, "player");
 }
 
 console.log("spellEffects tests passed");

@@ -36,10 +36,12 @@ export type Card = {
   name: string;
   type?: CardType;      // default "normal"
   number?: number;      // when type === "normal"
+  baseNumber?: number;
   leftValue?: number;   // when type === "split"
   rightValue?: number;  // when type === "split"
   tags: TagId[];
   arcana?: Arcana;
+  reserveExhausted?: boolean;
 };
 
 export type VC =
@@ -62,10 +64,12 @@ export type Fighter = {
   deck: Card[];
   hand: Card[];
   discard: Card[];
+  exhaust: Card[];
 };
 
 export type Phase =
   | "choose"
+  | "skill"
   | "showEnemy"
   | "anim"
   | "roundEnd"
