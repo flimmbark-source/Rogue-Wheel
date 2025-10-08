@@ -57,6 +57,8 @@ interface SkillPhaseState {
     targetSpec: TargetSpec;
     selectedTargets: Array<string | number>;
     snapshotBefore: Snapshot;
+    side: Side;
+    cardId: string;
   };
   rngSeed: number;
 }
@@ -376,6 +378,9 @@ function beginActivation(state: SkillPhaseState, side: Side, laneIndex: number):
   if (!lane) {
     throw new Error(`Lane ${laneIndex} not found for ${side}`);
   }
+  if (!lane.card) {
+    throw new Error("Lane has no card to activate");
+  }
   const options = computeLaneAvailability(state, side).find((opt) => opt.laneIndex === laneIndex);
   if (!options || !options.available || !options.ability || !options.targetSpec) {
     throw new Error("Lane not available for activation");
@@ -391,6 +396,8 @@ function beginActivation(state: SkillPhaseState, side: Side, laneIndex: number):
     targetSpec: options.targetSpec,
     selectedTargets: [],
     snapshotBefore: snapshot,
+    side,
+    cardId: lane.card.id,
   };
   const next = withUpdatedState(state, { targeting });
   applyUi(next, "log", `Begin activation from lane ${laneIndex}`);
@@ -442,9 +449,16 @@ function findReserveIndex(reserves: Card[], cardId: string): number {
   return reserves.findIndex((card) => card.id === cardId);
 }
 
-function consumeLaneUse(lanes: Lane[], laneIndex: number): Lane[] {
+function consumeLaneUse(
+  lanes: Lane[],
+  laneIndex: number,
+  side: Side,
+  cardId: string,
+): Lane[] {
   const updated = cloneLanes(lanes);
-  const lane = updated.find((l) => l.index === laneIndex);
+  const lane =
+    updated.find((l) => l.card?.id === cardId && l.side === side) ??
+    updated.find((l) => l.index === laneIndex && l.side === side);
   if (lane) {
     lane.usesRemaining = Math.max(0, lane.usesRemaining - 1);
     lane.exhausted = lane.usesRemaining <= 0;
@@ -552,9 +566,7 @@ function confirmActivation(state: SkillPhaseState): SkillPhaseState {
   if (targeting.selectedTargets.length !== targeting.targetSpec.count) {
     throw new Error("Targets incomplete");
   }
-  const laneIndex = targeting.laneIndex;
-  const side = state.lanes.find((l) => l.index === laneIndex)?.side;
-  if (!side) throw new Error("Invalid lane");
+  const { laneIndex, side, cardId } = targeting;
   let nextState: SkillPhaseState = state;
   switch (targeting.ability) {
     case "swapReserve": {
@@ -586,7 +598,7 @@ function confirmActivation(state: SkillPhaseState): SkillPhaseState {
     default:
       throw new Error("Unknown ability");
   }
-  const lanesAfter = consumeLaneUse(nextState.lanes, laneIndex);
+  const lanesAfter = consumeLaneUse(nextState.lanes, laneIndex, side, cardId);
   const passed = { ...nextState.passed, [side]: false };
   const cleaned: InternalState = {
     ...(nextState as InternalState),
