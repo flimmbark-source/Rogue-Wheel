@@ -64,6 +64,10 @@ export function getReserveBoostValue(card: Card): number {
     return 0;
   }
 
+  if (card.reserveExhausted) {
+    return 0;
+  }
+
   const base = sanitizeNumber(card.baseNumber);
   if (base !== undefined && base > 0) {
     return base;
@@ -79,6 +83,10 @@ export function getReserveBoostValue(card: Card): number {
 
 export function isReserveBoostTarget(card: Card): boolean {
   if (hasNegativeBase(card)) {
+    return false;
+  }
+
+  if (card.reserveExhausted) {
     return false;
   }
 
@@ -106,7 +114,7 @@ const ABILITY_DESCRIPTIONS: Record<AbilityKind, (card?: Card) => string> = {
   reserveBoost: (card) => {
     const value = getReserveBoostValue(card ?? ({} as Card));
     return value > 0
-      ? `Select a positive reserve card to boost a friendly lane by ${value}.`
+      ? `Select a positive reserve card to exhaust and boost a friendly lane by ${value}.`
       : "-";
   },
 };

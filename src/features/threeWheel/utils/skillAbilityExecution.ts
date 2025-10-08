@@ -195,15 +195,19 @@ export const applySkillAbilityEffect = (
         return { success: false, failureReason: "That reserve card is no longer available." };
       }
       const reserveCard = fighter.hand[reserveIndex];
+      if (reserveCard.reserveExhausted) {
+        return { success: false, failureReason: "That reserve card has already been exhausted." };
+      }
       const storedReserveValue = Math.max(0, getReserveBoostValue(reserveCard));
 
       updateFighter(side, (prev) => {
-        const nextHand = [...prev.hand];
-        const idx = nextHand.findIndex((card) => card.id === target.cardId);
+        const idx = prev.hand.findIndex((card) => card.id === target.cardId);
         if (idx === -1) return prev;
-        const [removed] = nextHand.splice(idx, 1);
-        const nextExhaust = removed ? [...prev.exhaust, removed] : [...prev.exhaust];
-        return { ...prev, hand: nextHand, exhaust: nextExhaust };
+        const existing = prev.hand[idx];
+        if (existing.reserveExhausted) return prev;
+        const nextHand = [...prev.hand];
+        nextHand[idx] = { ...existing, reserveExhausted: true };
+        return { ...prev, hand: nextHand };
       });
 
       updateReservePreview();
