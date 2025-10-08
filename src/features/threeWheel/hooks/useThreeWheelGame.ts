@@ -1245,6 +1245,105 @@ export function useThreeWheelGame({
     broadcastLocalReserve();
   }, [broadcastLocalReserve, assign, player, enemy, localLegacySide, round, isMultiplayer]);
 
+  const refreshRoundSummaryAfterSkill = useCallback(
+    (
+      assignments: AssignmentState<Card>,
+      options?: { updateInitiative?: boolean },
+    ): RoundOutcomeSummary => {
+      const played = [0, 1, 2].map((i) => ({
+        p: assignments.player[i] as Card | null,
+        e: assignments.enemy[i] as Card | null,
+      }));
+
+      const latestAnalysis = analyzeRound(played);
+      roundAnalysisRef.current = latestAnalysis;
+
+      const summary = summarizeRoundOutcome({
+        analysis: latestAnalysis,
+        wins,
+        initiative,
+        round,
+        namesByLegacy,
+        HUD_COLORS,
+        isAnteMode,
+        anteState: anteStateRef.current,
+        winGoal,
+        localLegacySide,
+        remoteLegacySide,
+      });
+
+      setWheelHUD(summary.hudColors);
+      pendingWinsRef.current = summary.wins;
+
+      const shouldUpdateInitiative = options?.updateInitiative ?? isSkillMode;
+      if (shouldUpdateInitiative) {
+        setInitiative(summary.nextInitiative);
+      }
+
+      return summary;
+    },
+    [
+      HUD_COLORS,
+      initiative,
+      isAnteMode,
+      isSkillMode,
+      localLegacySide,
+      namesByLegacy,
+      remoteLegacySide,
+      round,
+      setInitiative,
+      setWheelHUD,
+      winGoal,
+      wins,
+    ],
+  );
+
+  const runRecalculationPhase = useCallback(
+    (originPhase?: CorePhase | null) => {
+      const previousPhase = originPhase ?? phaseRef.current;
+
+      if (previousPhase !== "recalc") {
+        phaseRef.current = "recalc";
+        setPhase("recalc");
+      }
+
+      const assignments = assignRef.current;
+      const shouldUpdateCardTotals = previousPhase === "skill" || previousPhase === "choose";
+
+      if (shouldUpdateCardTotals) {
+        for (let laneIndex = 0; laneIndex < assignments.player.length; laneIndex++) {
+          recalcWheelForLane(assignments, laneIndex);
+        }
+      }
+
+      updateReservePreview();
+
+      const shouldUpdateInitiative =
+        previousPhase === "skill" || previousPhase === "roundEnd" || previousPhase === "anim";
+      const summary = refreshRoundSummaryAfterSkill(assignments, {
+        updateInitiative: shouldUpdateInitiative,
+      });
+
+      if (summary) {
+        commitPendingWins();
+      }
+
+      if (previousPhase !== "recalc") {
+        setSafeTimeout(() => {
+          phaseRef.current = previousPhase;
+          setPhase(previousPhase);
+        }, 0);
+      }
+    },
+    [
+      commitPendingWins,
+      recalcWheelForLane,
+      refreshRoundSummaryAfterSkill,
+      setSafeTimeout,
+      updateReservePreview,
+    ],
+  );
+
   const applySpellEffects = useCallback(
     (payload: SpellEffectPayload, options?: { broadcast?: boolean }) => {
       let latestAssignments: AssignmentState<Card> = assignRef.current;
@@ -1616,106 +1715,6 @@ export function useThreeWheelGame({
 
     void animateSpins();
   }
-
-
-  const refreshRoundSummaryAfterSkill = useCallback(
-    (
-      assignments: AssignmentState<Card>,
-      options?: { updateInitiative?: boolean },
-    ): RoundOutcomeSummary => {
-      const played = [0, 1, 2].map((i) => ({
-        p: assignments.player[i] as Card | null,
-        e: assignments.enemy[i] as Card | null,
-      }));
-
-      const latestAnalysis = analyzeRound(played);
-      roundAnalysisRef.current = latestAnalysis;
-
-      const summary = summarizeRoundOutcome({
-        analysis: latestAnalysis,
-        wins,
-        initiative,
-        round,
-        namesByLegacy,
-        HUD_COLORS,
-        isAnteMode,
-        anteState: anteStateRef.current,
-        winGoal,
-        localLegacySide,
-        remoteLegacySide,
-      });
-
-      setWheelHUD(summary.hudColors);
-      pendingWinsRef.current = summary.wins;
-
-      const shouldUpdateInitiative = options?.updateInitiative ?? isSkillMode;
-      if (shouldUpdateInitiative) {
-        setInitiative(summary.nextInitiative);
-      }
-
-      return summary;
-    },
-    [
-      HUD_COLORS,
-      initiative,
-      isAnteMode,
-      isSkillMode,
-      localLegacySide,
-      namesByLegacy,
-      remoteLegacySide,
-      round,
-      setInitiative,
-      setWheelHUD,
-      winGoal,
-      wins,
-    ],
-  );
-
-  const runRecalculationPhase = useCallback(
-    (originPhase?: CorePhase | null) => {
-      const previousPhase = originPhase ?? phaseRef.current;
-
-      if (previousPhase !== "recalc") {
-        phaseRef.current = "recalc";
-        setPhase("recalc");
-      }
-
-      const assignments = assignRef.current;
-      const shouldUpdateCardTotals = previousPhase === "skill" || previousPhase === "choose";
-
-      if (shouldUpdateCardTotals) {
-        for (let laneIndex = 0; laneIndex < assignments.player.length; laneIndex++) {
-          recalcWheelForLane(assignments, laneIndex);
-        }
-      }
-
-      updateReservePreview();
-
-      const shouldUpdateInitiative =
-        previousPhase === "skill" || previousPhase === "roundEnd" || previousPhase === "anim";
-      const summary = refreshRoundSummaryAfterSkill(assignments, {
-        updateInitiative: shouldUpdateInitiative,
-      });
-
-      if (summary) {
-        commitPendingWins();
-      }
-
-      if (previousPhase !== "recalc") {
-        setSafeTimeout(() => {
-          phaseRef.current = previousPhase;
-          setPhase(previousPhase);
-        }, 0);
-      }
-    },
-    [
-      commitPendingWins,
-      recalcWheelForLane,
-      refreshRoundSummaryAfterSkill,
-      setSafeTimeout,
-      updateReservePreview,
-    ],
-  );
 
 
   const nextRoundCore = useCallback(
