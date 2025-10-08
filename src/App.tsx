@@ -256,6 +256,13 @@ const THEME = {
   textWarm:  '#ead9b9',
 };
 
+const SKILL_EFFECT_EMOJIS: Record<AbilityKind, { lane?: string; reserve?: string }> = {
+  swapReserve: { lane: "🔄", reserve: "🔄" },
+  rerollReserve: { reserve: "🎲" },
+  boostCard: { lane: "💥" },
+  reserveBoost: { lane: "✨", reserve: "✨" },
+};
+
 // ---------------- Main Component ----------------
 export default function ThreeWheel_WinsOnly({
   localSide,
@@ -431,6 +438,14 @@ export default function ThreeWheel_WinsOnly({
   const [spellBannerEntry, setSpellBannerEntry] = useState<GameLogEntry | null>(null);
   const spellBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestSpellEntry = log.find((entry) => entry.type === "spell") ?? null;
+  const [skillBannerEntry, setSkillBannerEntry] = useState<GameLogEntry | null>(null);
+  const skillBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestSkillEntry = log.find((entry) => entry.type === "skill") ?? null;
+  const [skillEffectMarkers, setSkillEffectMarkers] = useState<{
+    lanes: Array<{ side: LegacySide; laneIndex: number; emoji: string }>;
+    reserves: Array<{ side: LegacySide; emoji: string }>;
+  }>({ lanes: [], reserves: [] });
+  const skillEffectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!latestSpellEntry) {
@@ -467,10 +482,102 @@ export default function ThreeWheel_WinsOnly({
   }, [latestSpellEntry]);
 
   useEffect(() => {
+    if (!latestSkillEntry) {
+      setSkillBannerEntry(null);
+      if (skillBannerTimeoutRef.current) {
+        clearTimeout(skillBannerTimeoutRef.current);
+        skillBannerTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    setSkillBannerEntry(latestSkillEntry);
+    if (skillBannerTimeoutRef.current) {
+      clearTimeout(skillBannerTimeoutRef.current);
+    }
+
+    const timeoutId = setTimeout(() => {
+      setSkillBannerEntry((current) =>
+        current && current.id === latestSkillEntry.id ? null : current,
+      );
+      if (skillBannerTimeoutRef.current === timeoutId) {
+        skillBannerTimeoutRef.current = null;
+      }
+    }, 2400);
+
+    skillBannerTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (skillBannerTimeoutRef.current === timeoutId) {
+        skillBannerTimeoutRef.current = null;
+      }
+    };
+  }, [latestSkillEntry]);
+
+  useEffect(() => {
+    const meta = latestSkillEntry?.meta?.skillEffect;
+    if (!meta) {
+      return;
+    }
+
+    const emojiDef = SKILL_EFFECT_EMOJIS[meta.ability];
+    if (!emojiDef) {
+      return;
+    }
+
+    const laneMarkers: Array<{ side: LegacySide; laneIndex: number; emoji: string }> = [];
+    const reserveMarkers: Array<{ side: LegacySide; emoji: string }> = [];
+
+    if (emojiDef.lane && meta.affectedLanes) {
+      meta.affectedLanes.forEach((laneIndex) => {
+        laneMarkers.push({ side: meta.side, laneIndex, emoji: emojiDef.lane! });
+      });
+    }
+
+    if (emojiDef.reserve && meta.affectedReserve) {
+      reserveMarkers.push({ side: meta.side, emoji: emojiDef.reserve });
+    }
+
+    if (laneMarkers.length === 0 && reserveMarkers.length === 0) {
+      return;
+    }
+
+    setSkillEffectMarkers({ lanes: laneMarkers, reserves: reserveMarkers });
+    if (skillEffectTimeoutRef.current) {
+      clearTimeout(skillEffectTimeoutRef.current);
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSkillEffectMarkers({ lanes: [], reserves: [] });
+      if (skillEffectTimeoutRef.current === timeoutId) {
+        skillEffectTimeoutRef.current = null;
+      }
+    }, 1500);
+
+    skillEffectTimeoutRef.current = timeoutId;
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (skillEffectTimeoutRef.current === timeoutId) {
+        skillEffectTimeoutRef.current = null;
+      }
+    };
+  }, [latestSkillEntry]);
+
+  useEffect(() => {
     return () => {
       if (spellBannerTimeoutRef.current) {
         clearTimeout(spellBannerTimeoutRef.current);
         spellBannerTimeoutRef.current = null;
+      }
+      if (skillBannerTimeoutRef.current) {
+        clearTimeout(skillBannerTimeoutRef.current);
+        skillBannerTimeoutRef.current = null;
+      }
+      if (skillEffectTimeoutRef.current) {
+        clearTimeout(skillEffectTimeoutRef.current);
+        skillEffectTimeoutRef.current = null;
       }
     };
   }, []);
@@ -479,6 +586,23 @@ export default function ThreeWheel_WinsOnly({
   const localHandSymbols = useMemo(() => countSymbolsFromCards(localHandCards), [localHandCards]);
   const spellHighlightedCardIds = spellHighlights.cards;
   const reserveSpellHighlights = spellHighlights.reserve;
+  const skillEffectEmojiMap = useMemo(() => {
+    const base: Record<LegacySide, Map<number, string>> = {
+      player: new Map<number, string>(),
+      enemy: new Map<number, string>(),
+    };
+    skillEffectMarkers.lanes.forEach((entry) => {
+      base[entry.side].set(entry.laneIndex, entry.emoji);
+    });
+    return base;
+  }, [skillEffectMarkers]);
+  const skillReserveEmojis = useMemo(() => {
+    const base: Record<LegacySide, string | null> = { player: null, enemy: null };
+    skillEffectMarkers.reserves.forEach((entry) => {
+      base[entry.side] = entry.emoji;
+    });
+    return base;
+  }, [skillEffectMarkers]);
   const [spellLock, setSpellLock] = useState<{ round: number | null; ids: SpellId[] }>({
     round: null,
     ids: [],
@@ -1269,13 +1393,13 @@ export default function ThreeWheel_WinsOnly({
   }, []);
 
   const handleSkillTargetSelect = useCallback(
-    (selection: SkillTargetSelection) => {
+    async (selection: SkillTargetSelection) => {
       if (!skillTargeting) return;
       if (skillTargeting.side !== localLegacySide) return;
       const { spec, laneIndex, activeKind } = skillTargeting;
       if (activeKind === "reserve" && selection.type === "reserve") {
         if (spec.kind === "reserve") {
-          const result = useSkillAbility(localLegacySide, laneIndex, {
+          const result = await useSkillAbility(localLegacySide, laneIndex, {
             type: "reserve",
             cardId: selection.cardId,
           });
@@ -1300,7 +1424,7 @@ export default function ThreeWheel_WinsOnly({
       }
       if (activeKind === "friendlyLane" && selection.type === "lane") {
         if (spec.kind === "friendlyLane") {
-          useSkillAbility(localLegacySide, laneIndex, {
+          await useSkillAbility(localLegacySide, laneIndex, {
             type: "lane",
             laneIndex: selection.laneIndex,
           });
@@ -1309,7 +1433,7 @@ export default function ThreeWheel_WinsOnly({
         }
         if (spec.kind === "reserveThenLane" && skillTargeting.pendingReserveCardId) {
           if (skillTargeting.ability === "swapReserve") {
-            useSkillAbility(localLegacySide, laneIndex, {
+            await useSkillAbility(localLegacySide, laneIndex, {
               type: "reserveToLane",
               cardId: skillTargeting.pendingReserveCardId,
               laneIndex: selection.laneIndex,
@@ -1318,7 +1442,7 @@ export default function ThreeWheel_WinsOnly({
             return;
           }
           if (skillTargeting.ability === "reserveBoost") {
-            useSkillAbility(localLegacySide, laneIndex, {
+            await useSkillAbility(localLegacySide, laneIndex, {
               type: "reserveBoost",
               cardId: skillTargeting.pendingReserveCardId,
               laneIndex: selection.laneIndex,
@@ -1334,18 +1458,19 @@ export default function ThreeWheel_WinsOnly({
 
   const handleSkillLaneTarget = useCallback(
     ({ laneIndex }: { laneIndex: number; side: LegacySide }) => {
-      handleSkillTargetSelect({ type: "lane", laneIndex });
+      void handleSkillTargetSelect({ type: "lane", laneIndex });
     },
     [handleSkillTargetSelect],
   );
 
   const handleSkillReserveTarget = useCallback(
     ({ cardId }: { cardId: string }) => {
-      handleSkillTargetSelect({ type: "reserve", cardId });
+      void handleSkillTargetSelect({ type: "reserve", cardId });
     },
     [handleSkillTargetSelect],
   );
   const hudAccentColor = HUD_COLORS[localLegacySide];
+  const skillHudColor = HUD_COLORS[remoteLegacySide];
 
   useEffect(() => {
     if (isAwaitingSpellTarget) {
@@ -1392,6 +1517,30 @@ export default function ThreeWheel_WinsOnly({
               }}
             >
               {spellBannerEntry.message}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {skillBannerEntry ? (
+          <motion.div
+            key={skillBannerEntry.id}
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.24, ease: "easeOut" }}
+            className="pointer-events-none fixed inset-x-0 top-20 z-[84] flex justify-center px-3"
+          >
+            <div
+              className="pointer-events-none w-full max-w-md rounded-2xl border px-5 py-3 text-center text-[14px] font-semibold tracking-wide text-slate-100 shadow-[0_18px_40px_rgba(8,15,32,0.55)]"
+              style={{
+                borderColor: skillHudColor,
+                background: "rgba(15, 23, 42, 0.92)",
+                color: skillHudColor,
+              }}
+            >
+              {skillBannerEntry.message}
             </div>
           </motion.div>
         ) : null}
@@ -1844,12 +1993,13 @@ export default function ThreeWheel_WinsOnly({
           initiative={initiative}
           localLegacySide={localLegacySide}
           phase={phase}
-          theme={THEME}
-          onPlayerManaToggle={handlePlayerManaToggle}
-          isGrimoireOpen={showGrimoire}
-          playerManaButtonRef={playerManaButtonRef}
-          reserveSpellHighlights={reserveSpellHighlights}
-        />
+        theme={THEME}
+        onPlayerManaToggle={handlePlayerManaToggle}
+        isGrimoireOpen={showGrimoire}
+        playerManaButtonRef={playerManaButtonRef}
+        reserveSpellHighlights={reserveSpellHighlights}
+        skillReserveEmojis={skillReserveEmojis}
+      />
       </div>
 
       {/* Wheels center */}
@@ -1908,6 +2058,7 @@ export default function ThreeWheel_WinsOnly({
                 skillTargeting={skillTargetingForChildren}
                 skillTargetableLaneIndexes={skillTargetableLaneIndexes}
                 numberColorMode={isSkillMode ? "skill" : "arcana"}
+                skillEffectEmojis={skillEffectEmojiMap}
               />
             </div>
           ))}

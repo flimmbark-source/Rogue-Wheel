@@ -26,6 +26,7 @@ interface HUDPanelsProps {
   isGrimoireOpen?: boolean;
   playerManaButtonRef?: React.Ref<HTMLButtonElement>;
   reserveSpellHighlights: Record<LegacySide, boolean>;
+  skillReserveEmojis: Record<LegacySide, string | null>;
 }
 
 const HUDPanels: React.FC<HUDPanelsProps> = ({
@@ -43,6 +44,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
   isGrimoireOpen,
   playerManaButtonRef,
   reserveSpellHighlights,
+  skillReserveEmojis,
 }) => {
   const rsP = reserveSums ? reserveSums.player : null;
   const rsE = reserveSums ? reserveSums.enemy : null;
@@ -62,6 +64,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
         phase === "ended") &&
       rs !== null;
     const reserveHighlighted = Boolean(reserveSpellHighlights?.[side]);
+    const reserveSkillEmoji = skillReserveEmojis?.[side] ?? null;
 
     const manaCount = isPlayer ? manaPools.player : manaPools.enemy;
 
@@ -159,8 +162,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
             </div>
             {isReserveVisible && (
               <div
-
-                className="flex items-center gap-1 rounded-full border px-3 py-1 sm:px-2 sm:py-0.5 text-[11px] sm:max-w-[44vw] overflow-hidden text-ellipsis whitespace-nowrap flex-shrink-0"
+                className="relative flex items-center gap-1 rounded-full border px-3 py-1 sm:px-2 sm:py-0.5 text-[11px] sm:max-w-[44vw] overflow-hidden text-ellipsis whitespace-nowrap flex-shrink-0"
                 style={{
                   minWidth: "90px",
                   background: "#1b1209ee",
@@ -170,6 +172,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
                 }}
                 title={rs !== null ? `Reserve: ${rs}` : undefined}
                 data-spell-affected={reserveHighlighted ? "true" : undefined}
+                data-skill-affected={reserveSkillEmoji ? "true" : undefined}
               >
                 <span className="sm:hidden mr-1">Reserve:</span>
                 <span className="hidden sm:inline">Reserve: </span>
@@ -181,6 +184,15 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
                     style={{ textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}
                   >
                     ✨
+                  </span>
+                ) : null}
+                {reserveSkillEmoji ? (
+                  <span
+                    aria-hidden
+                    className="skill-pop pointer-events-none absolute inset-0 flex items-center justify-center text-[20px]"
+                    style={{ textShadow: "0 2px 6px rgba(0,0,0,0.7)" }}
+                  >
+                    {reserveSkillEmoji}
                   </span>
                 ) : null}
               </div>

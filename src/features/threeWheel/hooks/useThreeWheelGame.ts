@@ -88,22 +88,36 @@ type AnteState = {
   odds: Record<LegacySide, number>;
 };
 
-export type GameLogEntryType = "general" | "spell";
+export type GameLogEntryType = "general" | "spell" | "skill";
 
 export type GameLogEntry = {
   id: string;
   message: string;
   type: GameLogEntryType;
+  meta?: GameLogEntryMeta;
+};
+
+type SkillEffectMeta = {
+  side: LegacySide;
+  ability: AbilityKind;
+  affectedLanes?: number[];
+  affectedReserve?: boolean;
+};
+
+type GameLogEntryMeta = {
+  skillEffect?: SkillEffectMeta;
 };
 
 let logIdCounter = 0;
 const createLogEntry = (
   message: string,
   type: GameLogEntryType = "general",
+  meta?: GameLogEntryMeta,
 ): GameLogEntry => ({
   id: `log-${Date.now().toString(36)}-${(logIdCounter++).toString(36)}`,
   message,
   type,
+  meta,
 });
 
 type SideState<T> = Record<LegacySide, T>;
@@ -293,7 +307,7 @@ export type ThreeWheelGameActions = {
     side: LegacySide,
     laneIndex: number,
     target?: SkillAbilityTarget,
-  ) => SkillAbilityUsageResult;
+  ) => Promise<SkillAbilityUsageResult>;
 };
 
 export type ThreeWheelGameReturn = {
@@ -419,6 +433,7 @@ export function useThreeWheelGame({
   useEffect(() => {
     skillStateRef.current = skillState;
   }, [skillState]);
+  const lastPlayerSkillUseTimeRef = useRef<number | null>(null);
 
   const [assign, setAssign] = useState<{ player: (Card | null)[]; enemy: (Card | null)[] }>({
     player: [null, null, null],
@@ -861,10 +876,13 @@ export function useThreeWheelGame({
   const START_LOG = `A ${enemyName} eyes your purse...`;
   const [log, setLog] = useState<GameLogEntry[]>(() => [createLogEntry(START_LOG)]);
 
-  const appendLog = useCallback((message: string, options?: { type?: GameLogEntryType }) => {
-    const entry = createLogEntry(message, options?.type ?? "general");
-    setLog((prev) => [entry, ...prev].slice(0, 60));
-  }, []);
+  const appendLog = useCallback(
+    (message: string, options?: { type?: GameLogEntryType; meta?: GameLogEntryMeta }) => {
+      const entry = createLogEntry(message, options?.type ?? "general", options?.meta);
+      setLog((prev) => [entry, ...prev].slice(0, 60));
+    },
+    [],
+  );
 
   const [spellHighlights, setSpellHighlights] = useState<SpellHighlightState>(() => createEmptySpellHighlights());
   const spellHighlightTimeoutRef = useRef<number | null>(null);
@@ -1874,12 +1892,60 @@ export function useThreeWheelGame({
     return updated;
   }, [setSkillState]);
 
-  const useSkillAbility = useCallback(
+  const buildSkillEffectMeta = useCallback(
     (
+      ability: AbilityKind,
+      side: LegacySide,
+      target?: SkillAbilityTarget,
+    ): SkillEffectMeta | null => {
+      switch (ability) {
+        case "swapReserve":
+          if (target && target.type === "reserveToLane") {
+            return { side, ability, affectedLanes: [target.laneIndex], affectedReserve: true };
+          }
+          return { side, ability, affectedReserve: true };
+        case "rerollReserve":
+          return { side, ability, affectedReserve: true };
+        case "boostCard":
+          if (target && target.type === "lane") {
+            return { side, ability, affectedLanes: [target.laneIndex] };
+          }
+          return { side, ability };
+        case "reserveBoost":
+          if (target && target.type === "reserveBoost") {
+            return { side, ability, affectedLanes: [target.laneIndex], affectedReserve: true };
+          }
+          return { side, ability, affectedReserve: true };
+        default:
+          return null;
+      }
+    },
+    [],
+  );
+
+  const useSkillAbility = useCallback(
+    async (
       side: LegacySide,
       laneIndex: number,
       target?: SkillAbilityTarget,
-    ): SkillAbilityUsageResult => {
+    ): Promise<SkillAbilityUsageResult> => {
+      const isCpuActor = !isMultiplayer && side === remoteLegacySide;
+      if (
+        isCpuActor &&
+        isSkillMode &&
+        lastPlayerSkillUseTimeRef.current !== null &&
+        lastPlayerSkillUseTimeRef.current !== undefined
+      ) {
+        const elapsed = Date.now() - lastPlayerSkillUseTimeRef.current;
+        const waitMs = Math.max(0, 1000 - elapsed);
+        if (waitMs > 0) {
+          await new Promise<void>((resolve) => {
+            setSafeTimeout(resolve, waitMs);
+          });
+        }
+        lastPlayerSkillUseTimeRef.current = null;
+      }
+
       const assignments = assignRef.current;
       const laneCards = assignments[side];
       const skillCard = laneCards?.[laneIndex] ?? null;
@@ -1968,14 +2034,27 @@ export function useThreeWheelGame({
         return next;
       });
 
+      const cpuSkillMeta = isCpuActor ? buildSkillEffectMeta(ability, side, target) : null;
+
+      if (isCpuActor) {
+        appendLog(`${actorName} used ${ability}.`, {
+          type: "skill",
+          meta: cpuSkillMeta ? { skillEffect: cpuSkillMeta } : undefined,
+        });
+      }
+
       if (ability === "rerollReserve") {
         appendLog(
           willExhaust
             ? `${actorName} finished their Reroll Reserve.`
             : `${actorName} can discard another reserve or cancel to finish the skill.`,
         );
-      } else {
+      } else if (!isCpuActor) {
         appendLog(`${actorName} used ${ability}.`);
+      }
+
+      if (!isMultiplayer && isSkillMode && side === localLegacySide) {
+        lastPlayerSkillUseTimeRef.current = Date.now();
       }
 
       return {
@@ -1988,9 +2067,15 @@ export function useThreeWheelGame({
       appendLog,
       assignRef,
       applySkillAbilityEffect,
+      buildSkillEffectMeta,
       getFighterSnapshot,
       getSkillCardValue,
       namesByLegacy,
+      localLegacySide,
+      isMultiplayer,
+      isSkillMode,
+      remoteLegacySide,
+      setSafeTimeout,
       recalcWheelForLane,
       setAssign,
       setSkillState,
