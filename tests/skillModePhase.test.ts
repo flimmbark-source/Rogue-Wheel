@@ -50,6 +50,7 @@ interface SkillPhaseState {
   reserves: Reserves;
   activeSide: Side;
   passed: Record<Side, boolean>;
+  playLocked: Record<Side, boolean>;
   limits: PhaseLimits;
   targeting?: {
     laneIndex: number;
@@ -328,6 +329,7 @@ function initSkillPhase(
     reserves: cloneReserves(reserves),
     activeSide: startingSide,
     passed: { you: false, rival: false },
+    playLocked: { you: false, rival: false },
     limits: { rerollsUsed: { you: 0, rival: 0 } },
     rngSeed,
   };
@@ -338,6 +340,7 @@ function initSkillPhase(
   if (!startInfo.start) {
     applyUi(state, "banner", startInfo.reason ?? "Skill phase skipped.");
     state.passed = { you: true, rival: true };
+    state.playLocked = { you: true, rival: true };
     applyUi(state, "onStateChange", state);
     return state;
   }
@@ -377,6 +380,9 @@ function beginActivation(state: SkillPhaseState, side: Side, laneIndex: number):
   const lane = state.lanes.find((l) => l.index === laneIndex && l.side === side);
   if (!lane) {
     throw new Error(`Lane ${laneIndex} not found for ${side}`);
+  }
+  if (state.activeSide !== side || state.playLocked[side]) {
+    throw new Error("Cannot activate without play");
   }
   if (!lane.card) {
     throw new Error("Lane has no card to activate");
@@ -614,7 +620,8 @@ function confirmActivation(state: SkillPhaseState): SkillPhaseState {
 
 function pass(state: SkillPhaseState, side: Side): SkillPhaseState {
   const nextPassed = { ...state.passed, [side]: true };
-  const nextState = withUpdatedState(state, { passed: nextPassed });
+  const nextLocked = { ...state.playLocked, [side]: true };
+  const nextState = withUpdatedState(state, { passed: nextPassed, playLocked: nextLocked });
   applyUi(nextState, "log", `${side} passes`);
   const advanced = advanceTurn(nextState, false);
   applyUi(advanced, "onStateChange", advanced);
@@ -630,34 +637,52 @@ function advanceTurn(state: SkillPhaseState, fromAction: boolean = false): Skill
   const opponentHas = opponentOptions.some((o) => o.available);
 
   let newPassed = { ...state.passed };
+  let newLocked = { ...state.playLocked };
   if (fromAction) {
     newPassed[current] = false;
   }
 
-  if (!currentHas && !opponentHas) {
+  const currentLocked = newLocked[current];
+  const opponentLocked = newLocked[opponent];
+
+  const currentEligible = !currentLocked && currentHas;
+  const opponentEligible = !opponentLocked && opponentHas;
+
+  if (!currentEligible && !opponentEligible) {
     newPassed = { you: true, rival: true };
-    const ended = withUpdatedState(state, { passed: newPassed });
+    const ended = withUpdatedState(state, { passed: newPassed, playLocked: newLocked });
     applyUi(ended, "banner", "Skill Phase ends.");
     return ended;
   }
-  if (state.passed[current] && state.passed[opponent]) {
-    const ended = withUpdatedState(state, { passed: newPassed });
+  if ((state.passed[current] && state.passed[opponent]) || (currentLocked && opponentLocked)) {
+    const ended = withUpdatedState(state, { passed: newPassed, playLocked: newLocked });
     applyUi(ended, "banner", "Skill Phase ends.");
     return ended;
   }
-  if (state.passed[current] || !currentHas) {
-    if (opponentHas) {
-      return withUpdatedState(state, { activeSide: opponent, passed: newPassed });
-    }
-    return withUpdatedState(state, { passed: newPassed });
-  }
-  if (!opponentHas) {
-    return withUpdatedState(state, { activeSide: current, passed: newPassed });
-  }
+
+  let nextActive: Side = state.activeSide;
+
   if (fromAction) {
-    return withUpdatedState(state, { activeSide: opponent, passed: newPassed });
+    if (opponentEligible) {
+      nextActive = opponent;
+    } else if (currentEligible) {
+      nextActive = current;
+    }
+  } else {
+    if (state.passed[current] || currentLocked || !currentHas) {
+      if (opponentEligible) {
+        nextActive = opponent;
+      } else if (currentEligible) {
+        nextActive = current;
+      }
+    }
   }
-  return withUpdatedState(state, { passed: newPassed });
+
+  return withUpdatedState(state, {
+    activeSide: nextActive,
+    passed: newPassed,
+    playLocked: newLocked,
+  });
 }
 
 function evaluateLaneScore(lane: Lane, opponentLane: Lane | undefined): number {
@@ -904,6 +929,74 @@ test("Turn advances only when opponent can act", () => {
   state = pickTarget(state, 0);
   state = confirmActivation(state);
   expect(state.activeSide === "you", "Active side should remain when opponent lacks actions");
+});
+
+test("Activation requires play", () => {
+  const base = initSkillPhase(
+    [
+      { side: "you", index: 0, card: { id: "a", printed: 5 } },
+    ],
+    { you: [{ id: "boost", printed: 3 }], rival: [] },
+    "you",
+    13,
+  );
+  const rivalTurn = withUpdatedState(base, { activeSide: "rival" });
+  let threw = false;
+  try {
+    void beginActivation(rivalTurn, "you", 0);
+  } catch (err) {
+    threw = String(err).includes("play");
+  }
+  expect(threw, "Should block activation when lacking play");
+});
+
+test("Play passes to opponent after activation", () => {
+  let state = initSkillPhase(
+    [
+      { side: "you", index: 0, card: { id: "you", printed: 5 } },
+      { side: "rival", index: 0, card: { id: "them", printed: 3 } },
+    ],
+    {
+      you: [{ id: "boost", printed: 3 }],
+      rival: [{ id: "reserve", printed: 2 }],
+    },
+    "you",
+    21,
+  );
+  state = beginActivation(state, "you", 0);
+  state = pickTarget(state, "boost");
+  state = pickTarget(state, 0);
+  state = confirmActivation(state);
+  expect(state.activeSide === "rival", "Play should hand off after activation");
+});
+
+test("Passing yields play for the rest of the round", () => {
+  let state = initSkillPhase(
+    [
+      { side: "you", index: 0, card: { id: "you", printed: 5 } },
+      { side: "rival", index: 0, card: { id: "them", printed: 5 } },
+    ],
+    {
+      you: [{ id: "boost", printed: 3 }],
+      rival: [{ id: "other", printed: 2 }],
+    },
+    "you",
+    33,
+  );
+  state = pass(state, "you");
+  expect(state.activeSide === "rival", "Passing should hand play to opponent");
+  state = beginActivation(state, "rival", 0);
+  state = pickTarget(state, "other");
+  state = pickTarget(state, 0);
+  state = confirmActivation(state);
+  expect(state.activeSide === "rival", "Opponent should retain play after acting");
+  let blocked = false;
+  try {
+    void beginActivation(state, "you", 0);
+  } catch (err) {
+    blocked = String(err).includes("play");
+  }
+  expect(blocked, "Passing should prevent further activations");
 });
 
 test("Swap reserve exchanges cards", () => {
