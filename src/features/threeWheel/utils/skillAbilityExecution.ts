@@ -3,6 +3,8 @@ import { getCurrentSkillCardValue, getReserveBoostValue } from "../../../game/sk
 import type { Card, Fighter, LegacySide } from "../../../game/types.js";
 import type { AssignmentState } from "../../../game/spellEngine.js";
 
+type WheelRecalcResult = { value: number; changed: boolean };
+
 export type SkillAbilityTarget =
   | { type: "reserve"; cardId: string }
   | { type: "lane"; laneIndex: number }
@@ -19,7 +21,10 @@ export type SkillAbilityEffectOptions = {
   storedSkillValue: number;
   sideAssignments: AssignmentState<Card>;
   concludeAssignUpdate: (nextAssign: AssignmentState<Card>) => void;
-  recalcWheelForLane: (nextAssign: AssignmentState<Card>, laneIndex: number) => void;
+  recalcWheelForLane: (
+    nextAssign: AssignmentState<Card>,
+    laneIndex: number,
+  ) => WheelRecalcResult;
   getFighterSnapshot: (side: LegacySide) => Fighter;
   updateFighter: (
     side: LegacySide,
@@ -33,6 +38,7 @@ export type SkillAbilityEffectOptions = {
 export type SkillAbilityEffectResult = {
   success: boolean;
   failureReason?: string;
+  changedLanes?: number[];
 };
 
 const isValidLaneIndex = (
@@ -98,10 +104,10 @@ export const applySkillAbilityEffect = (
       laneArr[targetLaneIndex] = { ...reserveCard };
 
       concludeAssignUpdate(nextAssign);
-      recalcWheelForLane(nextAssign, targetLaneIndex);
+      const { changed } = recalcWheelForLane(nextAssign, targetLaneIndex);
       updateReservePreview();
       appendLog(`${actorName} swapped a reserve card onto lane ${targetLaneIndex + 1}.`);
-      return { success: true };
+      return { success: true, changedLanes: changed ? [targetLaneIndex] : undefined };
     }
     case "rerollReserve": {
       if (!target || target.type !== "reserve") {
@@ -173,9 +179,9 @@ export const applySkillAbilityEffect = (
       laneArr[targetLane] = updatedCard;
 
       concludeAssignUpdate(nextAssign);
-      recalcWheelForLane(nextAssign, targetLane);
+      const { changed } = recalcWheelForLane(nextAssign, targetLane);
       appendLog(`${actorName} boosted lane ${targetLane + 1} by ${boostAmount}.`);
-      return { success: true };
+      return { success: true, changedLanes: changed ? [targetLane] : undefined };
     }
     case "reserveBoost": {
       if (!target || target.type !== "reserveBoost") {
@@ -223,13 +229,13 @@ export const applySkillAbilityEffect = (
         updatedCard.number = baseValue + storedReserveValue;
         laneArr[targetLaneIndex] = updatedCard;
         concludeAssignUpdate(nextAssign);
-        recalcWheelForLane(nextAssign, targetLaneIndex);
+        const { changed } = recalcWheelForLane(nextAssign, targetLaneIndex);
         appendLog(
           `${actorName} infused lane ${targetLaneIndex + 1} with +${storedReserveValue} from reserve.`,
         );
-      } else {
-        appendLog(`${actorName} exhausted a reserve card with no value to boost.`);
+        return { success: true, changedLanes: changed ? [targetLaneIndex] : undefined };
       }
+      appendLog(`${actorName} exhausted a reserve card with no value to boost.`);
       return { success: true };
     }
     default:
