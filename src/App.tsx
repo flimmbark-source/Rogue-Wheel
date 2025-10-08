@@ -1624,10 +1624,10 @@ export default function ThreeWheel_WinsOnly({
                         <span className="ml-1 font-semibold text-emerald-400">6+</span>.
                       </div>
                       <ul className="list-disc pl-5 space-y-1">
-                        <li><b>Swap Reserve:</b> Trade a card in play with one from your reserve.</li>
-                        <li><b>Reroll Reserve:</b> Discard up to 2 reserve cards and draw replacements.</li>
-                        <li><b>Boost Card:</b> Add activated card’s value to a card in play.</li>
-                        <li><b>Reserve Boost:</b> Exhaust a reserve card and grant its value to a card in play.</li>
+                        <li><span className="ml-1 font-semibold text-amber-300">0</span> <b>Swap Reserve:</b> Trade a card in play with one from your reserve.</li>
+                        <li><span className="ml-1 font-semibold text-sky-300">1-2</span> <b>Reroll Reserve:</b> Discard up to 2 reserve cards and draw replacements.</li>
+                        <li><span className="ml-1 font-semibold text-rose-300">3-5</span> <b>Boost Card:</b> Add activated card’s value to a card in play.</li>
+                        <li><span className="ml-1 font-semibold text-emerald-400">6+</span> <b>Reserve Boost:</b> Exhaust a reserve card and grant its value to a card in play.</li>
                       </ul>
                     </div>
                   )}
