@@ -135,9 +135,6 @@ export default function ModeSelect({
                   )}
                 </div>
                 <ul className="mt-4 list-disc space-y-2 pl-5 text-sm text-slate-300">
-                  {info.highlights.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
                 </ul>
               </button>
             );

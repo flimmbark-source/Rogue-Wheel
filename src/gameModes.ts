@@ -28,7 +28,7 @@ export const GAME_MODE_DETAILS: Record<
     title: "Skills",
     subtitle: "Use abilities on cards for tactical plays.",
     highlights: [
-      "Cards use abilities like Swap, Boost, and Redraw.",
+      "Cards have skills like Swap, Boost, and Redraw.",
     ],
     difficulty: {
       label: "Intermediate",

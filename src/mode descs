@@ -1,0 +1,4 @@
+on line 137, modeselect
+                  {info.highlights.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
