@@ -70,6 +70,7 @@ export type Fighter = {
 export type Phase =
   | "choose"
   | "skill"
+  | "recalc"
   | "showEnemy"
   | "anim"
   | "roundEnd"

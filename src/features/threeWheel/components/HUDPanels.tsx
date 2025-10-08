@@ -60,6 +60,7 @@ const HUDPanels: React.FC<HUDPanelsProps> = ({
       (phase === "showEnemy" ||
         phase === "anim" ||
         phase === "skill" ||
+        phase === "recalc" ||
         phase === "roundEnd" ||
         phase === "ended") &&
       rs !== null;

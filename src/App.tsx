@@ -1240,7 +1240,7 @@ export default function ThreeWheel_WinsOnly({
 
   const localAdvanceReady = advanceVotes[localLegacySide];
   const remoteAdvanceReady = advanceVotes[remoteLegacySide];
-  const isAdvancePhase = phase === "roundEnd" || phase === "skill";
+  const isAdvancePhase = phase === "roundEnd" || phase === "skill" || phase === "recalc";
   const advanceButtonDisabled = isMultiplayer && localAdvanceReady;
   const advanceButtonLabel = isMultiplayer && localAdvanceReady ? "Ready" : "Next";
   const advanceStatusText =
