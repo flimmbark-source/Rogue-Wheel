@@ -28,7 +28,7 @@ export const GAME_MODE_DETAILS: Record<
     title: "Skills",
     subtitle: "Use abilities on cards for tactical plays.",
     highlights: [
-      "Cards on board grant one-shot abilities like Swap, Reroll, and Boost.",
+      "Cards use abilities like Swap, Boost, and Redraw.",
     ],
     difficulty: {
       label: "Intermediate",
@@ -39,7 +39,7 @@ export const GAME_MODE_DETAILS: Record<
     title: "Grimoire",
     subtitle: "Adds spells, which can alter match outcomes.",
     highlights: [
-      "Card totals in Reserve grant Mana, spend Mana to cast spells and use arcana symbols to boost them.",
+      "Use Mana to cast spells and arcana symbols to boost them.",
     ],
     difficulty: {
       label: "Expert",
@@ -50,7 +50,7 @@ export const GAME_MODE_DETAILS: Record<
     title: "Ante",
     subtitle: "Wager existing wins at the start of every round.",
     highlights: [
-      "Win rounds to multiply your ante by dynamic odds",
+      "Win rounds to multiply your ante.",
     ],
     difficulty: {
       label: "Easy",
