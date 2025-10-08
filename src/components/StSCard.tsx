@@ -15,7 +15,7 @@ const ARCANA_COLOR_CLASS: Record<Arcana, string> = {
 
 const SKILL_VALUE_COLOR_CLASS = {
   zero: "text-amber-300",
-  low: "text-sky-300",
+  low: "text-sky-600",
   mid: "text-rose-300",
   high: "text-emerald-400",
 } as const;
