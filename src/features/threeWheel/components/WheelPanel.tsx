@@ -321,12 +321,12 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         return;
       }
       if (skillTargeting) {
-        if (isSkillAbilityLane) {
-          onSkillAbilityCancel?.();
-          return;
-        }
         if (laneTargetableForSkill) {
           onSkillTargetSelect?.({ laneIndex: index, side: slot.side });
+          return;
+        }
+        if (isSkillAbilityLane) {
+          onSkillAbilityCancel?.();
           return;
         }
       }
