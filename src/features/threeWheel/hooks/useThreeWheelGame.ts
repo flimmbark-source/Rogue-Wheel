@@ -155,6 +155,58 @@ const createSkillLanes = (): Record<LegacySide, SkillLane[]> => ({
   enemy: [createEmptySkillLane(), createEmptySkillLane(), createEmptySkillLane()],
 });
 
+const resetCardNumberToBase = (card: Card): Card => {
+  const base = card.baseNumber;
+  if (typeof base === "number" && card.number !== base) {
+    return { ...card, number: base };
+  }
+  return card;
+};
+
+const resetCardCollectionToBase = (cards: Card[]): Card[] => {
+  let changed = false;
+  const next = cards.map((card) => {
+    const reset = resetCardNumberToBase(card);
+    if (reset !== card) changed = true;
+    return reset;
+  });
+  return changed ? next : cards;
+};
+
+const resetFighterCardsToBase = (fighter: Fighter): Fighter => {
+  const nextDeck = resetCardCollectionToBase(fighter.deck);
+  const nextHand = resetCardCollectionToBase(fighter.hand);
+  const nextDiscard = resetCardCollectionToBase(fighter.discard);
+  const nextExhaust = resetCardCollectionToBase(fighter.exhaust);
+
+  if (
+    nextDeck === fighter.deck &&
+    nextHand === fighter.hand &&
+    nextDiscard === fighter.discard &&
+    nextExhaust === fighter.exhaust
+  ) {
+    return fighter;
+  }
+
+  return {
+    ...fighter,
+    deck: nextDeck,
+    hand: nextHand,
+    discard: nextDiscard,
+    exhaust: nextExhaust,
+  };
+};
+
+const resetPlayedCardsToBase = (cards: Card[]): Card[] => {
+  let changed = false;
+  const next = cards.map((card) => {
+    const reset = resetCardNumberToBase(card);
+    if (reset !== card) changed = true;
+    return reset;
+  });
+  return changed ? next : cards;
+};
+
 
 export type ThreeWheelGameState = {
   player: Fighter;
@@ -1586,8 +1638,20 @@ export function useThreeWheelGame({
       setFreezeLayout(false);
       setLockedWheelSize(null);
 
-      setPlayer((p) => settleFighterAfterRound(p, playerPlayed));
-      setEnemy((e) => settleFighterAfterRound(e, enemyPlayed));
+      setPlayer((p) => {
+        const basePlayer = isSkillMode ? resetFighterCardsToBase(p) : p;
+        const playedForSettlement = isSkillMode
+          ? resetPlayedCardsToBase(playerPlayed)
+          : playerPlayed;
+        return settleFighterAfterRound(basePlayer, playedForSettlement);
+      });
+      setEnemy((e) => {
+        const baseEnemy = isSkillMode ? resetFighterCardsToBase(e) : e;
+        const playedForSettlement = isSkillMode
+          ? resetPlayedCardsToBase(enemyPlayed)
+          : enemyPlayed;
+        return settleFighterAfterRound(baseEnemy, playedForSettlement);
+      });
 
       setWheelSections(generateWheelSet());
       setAssign({ player: [null, null, null], enemy: [null, null, null] });
