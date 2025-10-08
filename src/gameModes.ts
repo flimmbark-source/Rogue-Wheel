@@ -22,7 +22,7 @@ export const GAME_MODE_DETAILS: Record<
 > = {
   skill: {
     title: "Skills",
-    subtitle: "Use abilities on card for tactical plays.",
+    subtitle: "Use abilities on cards for tactical plays.",
     highlights: [
       "Cards on board grant one-shot abilities like Swap, Reroll, and Boost.",
     ],
