@@ -22,6 +22,9 @@ export type SkillState = {
   cardStatus: Record<string, SkillCardStatus>;
 };
 
+export const getSkillCardStatusKey = (side: LegacySide, cardId: string): string =>
+  `${side}:${cardId}`;
+
 export const createEmptySkillLane = (): SkillLane => ({
   ability: null,
   cardId: null,
@@ -110,8 +113,9 @@ export const reconcileSkillStateWithAssignments = (
 
     const ability: AbilityKind | null = determineSkillAbility(card);
     const cardId = card.id;
+    const statusKey = getSkillCardStatusKey(side, cardId);
 
-    let status = nextCardStatus[cardId];
+    let status = nextCardStatus[statusKey];
     if (!status || status.ability !== ability) {
       ensureCardStatusClone();
       status = {
@@ -119,7 +123,7 @@ export const reconcileSkillStateWithAssignments = (
         exhausted: ability ? false : true,
         usesRemaining: getInitialSkillUses(ability),
       };
-      nextCardStatus[cardId] = status;
+      nextCardStatus[statusKey] = status;
     }
 
     const desiredLane: SkillLane = {

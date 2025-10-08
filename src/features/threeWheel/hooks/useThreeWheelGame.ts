@@ -54,6 +54,7 @@ import {
 } from "../utils/skillAbilityExecution.js";
 import {
   createSkillState,
+  getSkillCardStatusKey,
   reconcileSkillStateWithAssignments,
   type SkillLane,
   type SkillState,
@@ -1995,7 +1996,8 @@ export function useThreeWheelGame({
         const cardId = lane.cardId;
         let nextCardStatus = prev.cardStatus;
         if (cardId) {
-          const existingStatus = prev.cardStatus[cardId];
+          const statusKey = getSkillCardStatusKey(side, cardId);
+          const existingStatus = prev.cardStatus[statusKey];
           if (
             !existingStatus ||
             existingStatus.ability !== ability ||
@@ -2004,7 +2006,7 @@ export function useThreeWheelGame({
           ) {
             nextCardStatus =
               nextCardStatus === prev.cardStatus ? { ...prev.cardStatus } : nextCardStatus;
-            nextCardStatus[cardId] = {
+            nextCardStatus[statusKey] = {
               ability,
               exhausted: willExhaust,
               usesRemaining: nextUsesRemaining,
