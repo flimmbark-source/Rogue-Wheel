@@ -93,6 +93,7 @@ export interface WheelPanelProps {
     specKind: "reserve" | "friendlyLane";
   } | null;
   skillTargetableLaneIndexes?: Set<number> | null;
+  numberColorMode?: "arcana" | "skill";
 }
 
 const slotWidthPx = 80;
@@ -153,6 +154,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
   onSkillTargetSelect,
   skillTargeting,
   skillTargetableLaneIndexes,
+  numberColorMode = "arcana",
 }) => {
   const playerCard = assign.player[index];
   const enemyCard = assign.enemy[index];
@@ -382,6 +384,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
         <StSCard
           card={card}
           size="sm"
+          numberColorMode={numberColorMode}
           disabled={!cardInteractable}
           selected={isSlotSelected || isSkillAbilityLane}
           spellAffected={isSpellAffected}
