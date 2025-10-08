@@ -1607,6 +1607,30 @@ export default function ThreeWheel_WinsOnly({
                       </div>
                     </div>
                   )}
+                  {isSkillMode && (
+                    <div className="space-y-1">
+                      <div>
+                        <span className="font-semibold">Skill Mode - Lane Abilities</span>
+                      </div>
+                      <div>
+                        After Resolve, any lane showing a skill icon enters a <span className="font-semibold">Skill phase</span>.
+                        Trigger the lane once per round to apply its effect immediately.
+                      </div>
+                      <div>
+                        Skill numbers glow by strength:
+                        <span className="ml-1 font-semibold text-amber-300">0</span>,
+                        <span className="ml-1 font-semibold text-sky-300">1-2</span>,
+                        <span className="ml-1 font-semibold text-rose-300">3-5</span>,
+                        <span className="ml-1 font-semibold text-emerald-400">6+</span>.
+                      </div>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li><b>Swap Reserve:</b> Trade the lane’s card with one from your reserve.</li>
+                        <li><b>Reroll Reserve:</b> Discard a reserve card to draw a replacement.</li>
+                        <li><b>Boost Card:</b> Add that card’s value to a friendly lane for this round.</li>
+                        <li><b>Reserve Boost:</b> Exhaust a positive reserve card to grant its value to a lane.</li>
+                      </ul>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

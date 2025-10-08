@@ -372,6 +372,45 @@ function HowToContent() {
           </div>
         </div>
       </div>
+
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold border-b border-white/10 pb-2">Skill Mode</h2>
+        <p>
+          Each wheel lane gains a <b>Skill phase</b> after Resolve. If your card in that lane shows an ability, you may trigger it
+          once per round. Skill numbers glow by strength — <span className="text-amber-300 font-semibold">0</span>,
+          <span className="text-sky-300 font-semibold">1-2</span>, <span className="text-rose-300 font-semibold">3-5</span>,
+          <span className="text-emerald-400 font-semibold">6+</span> — so you can spot power cards at a glance.
+        </p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10">
+            <div className="font-semibold">Skill Abilities</div>
+            <ul className="mt-1 list-disc pl-5 space-y-1">
+              <li>
+                <b>Swap Reserve:</b> Trade the skill card with a reserve card and place it in the same lane.
+              </li>
+              <li>
+                <b>Reroll Reserve:</b> Discard a reserve card to draw a fresh replacement.
+              </li>
+              <li>
+                <b>Boost Card:</b> Add that card’s value to a friendly lane for the round.
+              </li>
+              <li>
+                <b>Reserve Boost:</b> Exhaust a positive reserve card to grant its value to a friendly lane.
+              </li>
+            </ul>
+          </div>
+          <div className="rounded-xl bg-white/5 p-3 ring-1 ring-white/10 space-y-1">
+            <div className="font-semibold">Timing &amp; Tips</div>
+            <ul className="list-disc pl-5 space-y-1">
+              <li>Abilities unlock on the lane that played the card; each can fire only once per round.</li>
+              <li>
+                Boosts apply immediately — plan your Resolve placement so a later wheel can benefit from the buff.
+              </li>
+              <li>Reserve abilities respect exhaustion: once a reserve card is spent it can’t be boosted again.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </>
   );
 }
