@@ -104,34 +104,12 @@ div.relative[data-drop="wheel"][aria-label^="Wheel"] {
 /* Player and enemy card slots */
 [aria-label$="player slot"],
 [aria-label$="enemy slot"] {
-  position: relative;
-  background-color: transparent;
-  border: none;
-}
-
-[aria-label$="player slot"]::before,
-[aria-label$="enemy slot"]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
   background-image: url("/assets/card-frame.png");
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
-  border-radius: inherit;
-  pointer-events: none;
-  transform-origin: center;
-  z-index: 0;
-}
-
-[aria-label$="player slot"] > *,
-[aria-label$="enemy slot"] > * {
-  position: relative;
-  z-index: 1;
-}
-
-[aria-label$="right slot"]::before {
-  transform: scaleX(-1);
+  background-color: transparent;
+  border: none;
 }
 
 /*
