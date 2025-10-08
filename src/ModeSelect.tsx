@@ -123,7 +123,7 @@ export default function ModeSelect({
                           info.difficulty.badgeClassName,
                         ].join(" ")}
                       >
-                        [{info.difficulty.label}]
+                        {info.difficulty.label}
                       </span>
                     </div>
                     <div className="text-sm text-slate-300 sm:text-base">{info.subtitle}</div>
