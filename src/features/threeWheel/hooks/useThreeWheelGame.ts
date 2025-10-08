@@ -45,6 +45,7 @@ import {
 import {
   summarizeRoundOutcome,
   type RoundAnalysis,
+  type RoundOutcomeSummary,
   type WheelOutcome,
 } from "./roundOutcomeSummary.js";
 import { determinePostResolvePhase } from "../utils/skillPhase.js";
@@ -209,6 +210,7 @@ export type ThreeWheelGameState = {
   wheelSize: number;
   wheelSections: Section[][];
   tokens: [number, number, number];
+  wheelCardTotals: SideState<[number, number, number]>;
   active: [boolean, boolean, boolean];
   wheelHUD: [string | null, string | null, string | null];
   assign: { player: (Card | null)[]; enemy: (Card | null)[] };
@@ -710,6 +712,11 @@ export function useThreeWheelGame({
   const [tokens, setTokens] = useState<[number, number, number]>([0, 0, 0]);
   const tokensRef = useRef(tokens);
   const roundStartTokensRef = useRef<[number, number, number] | null>([0, 0, 0]);
+  const [wheelCardTotals, setWheelCardTotals] = useState<SideState<[number, number, number]>>({
+    player: [0, 0, 0],
+    enemy: [0, 0, 0],
+  });
+  const wheelCardTotalsRef = useRef(wheelCardTotals);
   const [active] = useState<[boolean, boolean, boolean]>([true, true, true]);
   const [wheelHUD, setWheelHUD] = useState<[string | null, string | null, string | null]>([null, null, null]);
   const [laneChillStacks, setLaneChillStacks] = useState<LaneChillStacks>({
@@ -724,6 +731,9 @@ export function useThreeWheelGame({
   useEffect(() => {
     tokensRef.current = tokens;
   }, [tokens]);
+  useEffect(() => {
+    wheelCardTotalsRef.current = wheelCardTotals;
+  }, [wheelCardTotals]);
 
   const reserveReportsRef = useRef<
     Record<LegacySide, { reserve: number; round: number } | null>
@@ -922,10 +932,36 @@ export function useThreeWheelGame({
       if (index < 0 || index >= assignments.player.length) {
         return { value: 0, changed: false };
       }
-      const playerValue = modSlice(cardWheelValue(assignments.player[index] as Card | null));
-      const enemyValue = modSlice(cardWheelValue(assignments.enemy[index] as Card | null));
-      const total = modSlice(playerValue + enemyValue);
+
+      const playerCard = assignments.player[index] as Card | null;
+      const enemyCard = assignments.enemy[index] as Card | null;
+      const playerValueRaw = cardWheelValue(playerCard);
+      const enemyValueRaw = cardWheelValue(enemyCard);
+      const playerSteps = modSlice(playerValueRaw);
+      const enemySteps = modSlice(enemyValueRaw);
+      const total = modSlice(playerSteps + enemySteps);
       wheelRefs[index]?.current?.setVisualToken?.(total);
+
+      const totalsSnapshot = wheelCardTotalsRef.current;
+      const nextPlayerTotals = [...totalsSnapshot.player] as [number, number, number];
+      const nextEnemyTotals = [...totalsSnapshot.enemy] as [number, number, number];
+      let totalsChanged = false;
+      if (nextPlayerTotals[index] !== playerValueRaw) {
+        nextPlayerTotals[index] = playerValueRaw;
+        totalsChanged = true;
+      }
+      if (nextEnemyTotals[index] !== enemyValueRaw) {
+        nextEnemyTotals[index] = enemyValueRaw;
+        totalsChanged = true;
+      }
+      if (totalsChanged) {
+        const updatedTotals: SideState<[number, number, number]> = {
+          player: nextPlayerTotals,
+          enemy: nextEnemyTotals,
+        };
+        wheelCardTotalsRef.current = updatedTotals;
+        setWheelCardTotals(updatedTotals);
+      }
 
       const prevTokens = tokensRef.current ?? [0, 0, 0];
       const previous = prevTokens[index] ?? 0;
@@ -939,7 +975,7 @@ export function useThreeWheelGame({
       setTokens(nextTokens);
       return { value: total, changed: true };
     },
-    [setTokens, wheelRefs],
+    [setTokens, setWheelCardTotals, wheelRefs],
   );
 
   const assignToWheelFor = useCallback(
@@ -1303,11 +1339,7 @@ export function useThreeWheelGame({
 
       if (assignmentsChanged && !tokensAdjusted) {
         for (let i = 0; i < 3; i++) {
-          const laneTotal = modSlice(
-            modSlice(cardWheelValue(latestAssignments.player[i] as Card | null)) +
-              modSlice(cardWheelValue(latestAssignments.enemy[i] as Card | null)),
-          );
-          wheelRefs[i]?.current?.setVisualToken?.(laneTotal);
+          recalcWheelForLane(latestAssignments, i);
         }
       }
 
@@ -1325,6 +1357,8 @@ export function useThreeWheelGame({
           snapshot: { assign: latestAssignments, tokens: snapshotTokens },
         });
       }
+
+      runRecalculationPhase(phaseRef.current);
     },
     [
       appendLog,
@@ -1341,6 +1375,8 @@ export function useThreeWheelGame({
       wheelRefs,
       tokens,
       flashSpellHighlights,
+      runRecalculationPhase,
+      recalcWheelForLane,
     ],
   );
 
@@ -1583,9 +1619,10 @@ export function useThreeWheelGame({
 
 
   const refreshRoundSummaryAfterSkill = useCallback(
-    (assignments: AssignmentState<Card>) => {
-      if (!isSkillMode) return;
-
+    (
+      assignments: AssignmentState<Card>,
+      options?: { updateInitiative?: boolean },
+    ): RoundOutcomeSummary => {
       const played = [0, 1, 2].map((i) => ({
         p: assignments.player[i] as Card | null,
         e: assignments.enemy[i] as Card | null,
@@ -1610,7 +1647,13 @@ export function useThreeWheelGame({
 
       setWheelHUD(summary.hudColors);
       pendingWinsRef.current = summary.wins;
-      setInitiative(summary.nextInitiative);
+
+      const shouldUpdateInitiative = options?.updateInitiative ?? isSkillMode;
+      if (shouldUpdateInitiative) {
+        setInitiative(summary.nextInitiative);
+      }
+
+      return summary;
     },
     [
       HUD_COLORS,
@@ -1625,6 +1668,52 @@ export function useThreeWheelGame({
       setWheelHUD,
       winGoal,
       wins,
+    ],
+  );
+
+  const runRecalculationPhase = useCallback(
+    (originPhase?: CorePhase | null) => {
+      const previousPhase = originPhase ?? phaseRef.current;
+
+      if (previousPhase !== "recalc") {
+        phaseRef.current = "recalc";
+        setPhase("recalc");
+      }
+
+      const assignments = assignRef.current;
+      const shouldUpdateCardTotals = previousPhase === "skill" || previousPhase === "choose";
+
+      if (shouldUpdateCardTotals) {
+        for (let laneIndex = 0; laneIndex < assignments.player.length; laneIndex++) {
+          recalcWheelForLane(assignments, laneIndex);
+        }
+      }
+
+      updateReservePreview();
+
+      const shouldUpdateInitiative =
+        previousPhase === "skill" || previousPhase === "roundEnd" || previousPhase === "anim";
+      const summary = refreshRoundSummaryAfterSkill(assignments, {
+        updateInitiative: shouldUpdateInitiative,
+      });
+
+      if (summary) {
+        commitPendingWins();
+      }
+
+      if (previousPhase !== "recalc") {
+        setSafeTimeout(() => {
+          phaseRef.current = previousPhase;
+          setPhase(previousPhase);
+        }, 0);
+      }
+    },
+    [
+      commitPendingWins,
+      recalcWheelForLane,
+      refreshRoundSummaryAfterSkill,
+      setSafeTimeout,
+      updateReservePreview,
     ],
   );
 
@@ -1671,6 +1760,7 @@ export function useThreeWheelGame({
       setDragCardId(null);
       setDragOverWheel(null);
       setTokens([0, 0, 0]);
+      setWheelCardTotals({ player: [0, 0, 0], enemy: [0, 0, 0] });
       roundStartTokensRef.current = [0, 0, 0];
       setReserveSums(null);
       setWheelHUD([null, null, null]);
@@ -2062,9 +2152,7 @@ export function useThreeWheelGame({
         appendLog(`${actorName} used ${ability}.`);
       }
 
-      if (isSkillMode && result.changedLanes && result.changedLanes.length > 0) {
-        refreshRoundSummaryAfterSkill(assignRef.current);
-      }
+      runRecalculationPhase(phaseRef.current);
 
       if (!isMultiplayer && isSkillMode && side === localLegacySide) {
         lastPlayerSkillUseTimeRef.current = Date.now();
@@ -2095,7 +2183,7 @@ export function useThreeWheelGame({
       drawOne,
       updateFighter,
       updateReservePreview,
-      refreshRoundSummaryAfterSkill,
+      runRecalculationPhase,
     ],
   );
 
@@ -2170,6 +2258,7 @@ export function useThreeWheelGame({
     _setDragOverWheel(null);
 
     setTokens([0, 0, 0]);
+    setWheelCardTotals({ player: [0, 0, 0], enemy: [0, 0, 0] });
     setReserveSums(null);
     setWheelHUD([null, null, null]);
 
@@ -2396,6 +2485,7 @@ export function useThreeWheelGame({
     wheelSize,
     wheelSections,
     tokens,
+    wheelCardTotals,
     active,
     wheelHUD,
     assign,
