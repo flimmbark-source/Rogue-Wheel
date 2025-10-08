@@ -479,9 +479,12 @@ function applySwapReserve(
   targetLaneIndex: number,
   cardId: string
 ): SkillPhaseState {
-  const lane = state.lanes.find((l) => l.index === laneIndex);
+  const targetingSide = state.targeting?.side ?? null;
+  const lane = state.lanes.find((l) =>
+    targetingSide ? l.index === laneIndex && l.side === targetingSide : l.index === laneIndex,
+  );
   if (!lane || !lane.card) throw new Error("Invalid swap lane");
-  const side = lane.side;
+  const side = targetingSide ?? lane.side;
   const targetLane = state.lanes.find((l) => l.index === targetLaneIndex && l.side === side);
   if (!targetLane) throw new Error("Invalid target lane");
   const reserves = cloneReserves(state.reserves);
@@ -508,9 +511,12 @@ function applySwapReserve(
 }
 
 function applyRerollReserve(state: SkillPhaseState, laneIndex: number, cardId: string): SkillPhaseState {
-  const lane = state.lanes.find((l) => l.index === laneIndex);
+  const targetingSide = state.targeting?.side ?? null;
+  const lane = state.lanes.find((l) =>
+    targetingSide ? l.index === laneIndex && l.side === targetingSide : l.index === laneIndex,
+  );
   if (!lane) throw new Error("Invalid lane");
-  const side = lane.side;
+  const side = targetingSide ?? lane.side;
   const reserves = cloneReserves(state.reserves);
   const reserve = reserves[side];
   const idx = findReserveIndex(reserve, cardId);
@@ -528,7 +534,10 @@ function applyRerollReserve(state: SkillPhaseState, laneIndex: number, cardId: s
 }
 
 function applyBoostCard(state: SkillPhaseState, laneIndex: number, targetLaneIndex: number): SkillPhaseState {
-  const sourceLane = state.lanes.find((l) => l.index === laneIndex);
+  const targetingSide = state.targeting?.side ?? null;
+  const sourceLane = state.lanes.find((l) =>
+    targetingSide ? l.index === laneIndex && l.side === targetingSide : l.index === laneIndex,
+  );
   if (!sourceLane || !sourceLane.card) throw new Error("Invalid source lane");
   const targetLane = state.lanes.find((l) => l.index === targetLaneIndex && l.side === sourceLane.side);
   if (!targetLane) throw new Error("Invalid target lane");
@@ -544,9 +553,12 @@ function applyReserveBoost(
   targetLaneIndex: number,
   cardId: string
 ): SkillPhaseState {
-  const lane = state.lanes.find((l) => l.index === laneIndex);
+  const targetingSide = state.targeting?.side ?? null;
+  const lane = state.lanes.find((l) =>
+    targetingSide ? l.index === laneIndex && l.side === targetingSide : l.index === laneIndex,
+  );
   if (!lane || !lane.card) throw new Error("Invalid lane");
-  const side = lane.side;
+  const side = targetingSide ?? lane.side;
   const reserves = cloneReserves(state.reserves);
   const reserve = reserves[side];
   const idx = findReserveIndex(reserve, cardId);

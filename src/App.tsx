@@ -382,6 +382,7 @@ export default function ThreeWheel_WinsOnly({
   const isGrimoireMode = activeGameModes.includes("grimoire");
   const isAnteMode = activeGameModes.includes("ante");
   const isSkillMode = activeGameModes.includes("skill") || hookSkillMode;
+  const skillUiEnabled = isSkillMode && skill.enabled;
   const effectiveGameMode = activeGameModes.length > 0 ? activeGameModes.join("+") : "classic";
   const spellRuntimeStateRef = useRef<SpellRuntimeState>({});
 
@@ -523,6 +524,15 @@ export default function ThreeWheel_WinsOnly({
   }, [latestSkillEntry]);
 
   useEffect(() => {
+    if (!skillUiEnabled) {
+      setSkillEffectMarkers({ lanes: [], reserves: [] });
+      if (skillEffectTimeoutRef.current) {
+        clearTimeout(skillEffectTimeoutRef.current);
+        skillEffectTimeoutRef.current = null;
+      }
+      return;
+    }
+
     const meta = latestSkillEntry?.meta?.skillEffect;
     if (!meta) {
       return;
@@ -570,7 +580,7 @@ export default function ThreeWheel_WinsOnly({
         skillEffectTimeoutRef.current = null;
       }
     };
-  }, [latestSkillEntry]);
+  }, [latestSkillEntry, skillUiEnabled]);
 
   useEffect(() => {
     return () => {
@@ -594,6 +604,12 @@ export default function ThreeWheel_WinsOnly({
   const spellHighlightedCardIds = spellHighlights.cards;
   const reserveSpellHighlights = spellHighlights.reserve;
   const skillEffectEmojiMap = useMemo(() => {
+    if (!skillUiEnabled) {
+      return {
+        player: new Map<number, string>(),
+        enemy: new Map<number, string>(),
+      } satisfies Record<LegacySide, Map<number, string>>;
+    }
     const base: Record<LegacySide, Map<number, string>> = {
       player: new Map<number, string>(),
       enemy: new Map<number, string>(),
@@ -602,14 +618,17 @@ export default function ThreeWheel_WinsOnly({
       base[entry.side].set(entry.laneIndex, entry.emoji);
     });
     return base;
-  }, [skillEffectMarkers]);
+  }, [skillEffectMarkers, skillUiEnabled]);
   const skillReserveEmojis = useMemo(() => {
+    if (!skillUiEnabled) {
+      return { player: null, enemy: null } satisfies Record<LegacySide, string | null>;
+    }
     const base: Record<LegacySide, string | null> = { player: null, enemy: null };
     skillEffectMarkers.reserves.forEach((entry) => {
       base[entry.side] = entry.emoji;
     });
     return base;
-  }, [skillEffectMarkers]);
+  }, [skillEffectMarkers, skillUiEnabled]);
   const [spellLock, setSpellLock] = useState<{ round: number | null; ids: SpellId[] }>({
     round: null,
     ids: [],
@@ -858,7 +877,7 @@ export default function ThreeWheel_WinsOnly({
   ]);
 
   const attemptCpuSkill = useCallback(async () => {
-    if (!isSkillMode || isMultiplayer) return;
+    if (!skillUiEnabled || isMultiplayer) return;
     if (phaseForLogic !== "skill") return;
     const cpuSide = remoteLegacySide;
     if (cpuSide === localLegacySide) return;
@@ -879,12 +898,12 @@ export default function ThreeWheel_WinsOnly({
     assign,
     enemy,
     isMultiplayer,
-    isSkillMode,
     localLegacySide,
     phaseForLogic,
     player,
     remoteLegacySide,
     skill,
+    skillUiEnabled,
     useSkillAbilityBase,
   ]);
 
@@ -1303,7 +1322,7 @@ export default function ThreeWheel_WinsOnly({
         }
       })()
     : "";
-  const skillPhaseActive = isSkillMode && phaseForLogic === "skill" && !skill.completed;
+  const skillPhaseActive = skillUiEnabled && phaseForLogic === "skill" && !skill.completed;
   const [skillTargeting, setSkillTargeting] = useState<SkillTargetingState | null>(null);
 
   useEffect(() => {
@@ -1311,6 +1330,12 @@ export default function ThreeWheel_WinsOnly({
       setSkillTargeting(null);
     }
   }, [skillPhaseActive]);
+
+  useEffect(() => {
+    if (!skillUiEnabled) {
+      setSkillTargeting(null);
+    }
+  }, [skillUiEnabled]);
 
   useEffect(() => {
     if (!skillTargeting) return;
@@ -1326,7 +1351,7 @@ export default function ThreeWheel_WinsOnly({
     }
   }, [isAwaitingSpellTarget]);
 
-  const skillTargetingForChildren = skillTargeting
+  const skillTargetingForChildren = skillUiEnabled && skillTargeting
     ? {
         side: skillTargeting.side,
         laneIndex: skillTargeting.laneIndex,
@@ -1341,6 +1366,15 @@ export default function ThreeWheel_WinsOnly({
       laneIndex: number,
       target?: SkillAbilityTarget,
     ): Promise<SkillAbilityUsageResult> => {
+      if (!skillUiEnabled) {
+        return {
+          success: false,
+          failureReason: "Skill abilities are disabled.",
+          exhausted: false,
+          usesRemaining: 0,
+        };
+      }
+
       const result = await useSkillAbilityBase(side, laneIndex, target);
       if (
         result.success &&
@@ -1362,12 +1396,14 @@ export default function ThreeWheel_WinsOnly({
       phaseForLogic,
       remoteLegacySide,
       skill.completed,
+      skillUiEnabled,
       useSkillAbilityBase,
     ],
   );
 
   const skillTargetableReserveIds = useMemo(() => {
-    if (!skillTargeting || skillTargeting.side !== localLegacySide) return null;
+    if (!skillUiEnabled || !skillTargeting || skillTargeting.side !== localLegacySide)
+      return null;
     if (skillTargeting.activeKind !== "reserve") return null;
     const requiresPositiveReserve =
       skillTargeting.spec.kind === "reserve"
@@ -1380,10 +1416,11 @@ export default function ThreeWheel_WinsOnly({
       requiresPositiveReserve ? isReserveBoostTarget(card) : true,
     );
     return new Set(allowed.map((card) => card.id));
-  }, [enemy.hand, localLegacySide, player.hand, skillTargeting]);
+  }, [enemy.hand, localLegacySide, player.hand, skillTargeting, skillUiEnabled]);
 
   const skillTargetableLaneIndexes = useMemo(() => {
-    if (!skillTargeting || skillTargeting.side !== localLegacySide) return null;
+    if (!skillUiEnabled || !skillTargeting || skillTargeting.side !== localLegacySide)
+      return null;
     if (skillTargeting.activeKind !== "friendlyLane") return null;
     const lanes = assign[localLegacySide];
     const result = new Set<number>();
@@ -1393,10 +1430,10 @@ export default function ThreeWheel_WinsOnly({
       }
     });
     return result;
-  }, [assign, localLegacySide, skillTargeting]);
+  }, [assign, localLegacySide, skillTargeting, skillUiEnabled]);
 
   const skillTargetPrompt = (() => {
-    if (!skillTargeting) return "";
+    if (!skillUiEnabled || !skillTargeting) return "";
     const { spec, activeKind, ability, side, laneIndex } = skillTargeting;
     if (
       ability === "rerollReserve" &&
@@ -1413,7 +1450,9 @@ export default function ThreeWheel_WinsOnly({
     }
     return spec.prompt;
   })();
-  const skillAbilityLabel = skillTargeting ? SKILL_ABILITY_LABELS[skillTargeting.ability] : "";
+  const skillAbilityLabel =
+    skillUiEnabled && skillTargeting ? SKILL_ABILITY_LABELS[skillTargeting.ability] : "";
+  const numberColorMode = skillUiEnabled ? "skill" : "arcana";
   const beginSkillTargeting = useCallback(
     (laneIndex: number, ability: AbilityKind) => {
       if (!skillPhaseActive) return;
@@ -2133,12 +2172,12 @@ export default function ThreeWheel_WinsOnly({
                 variant="grouped"
                 spellHighlightedCardIds={spellHighlightedCardIds}
                 skillPhaseActive={skillPhaseActive}
-                skillLaneStates={skill.lanes}
+                skillLaneStates={skillUiEnabled ? skill.lanes : undefined}
                 onSkillAbilityStart={beginSkillTargeting}
                 onSkillTargetSelect={handleSkillLaneTarget}
                 skillTargeting={skillTargetingForChildren}
                 skillTargetableLaneIndexes={skillTargetableLaneIndexes}
-                numberColorMode={isSkillMode ? "skill" : "arcana"}
+                numberColorMode={numberColorMode}
                 skillEffectEmojis={skillEffectEmojiMap}
               />
             </div>
@@ -2173,7 +2212,7 @@ export default function ThreeWheel_WinsOnly({
         skillTargeting={skillTargetingForChildren}
         skillTargetableReserveIds={skillTargetableReserveIds}
         onSkillTargetSelect={handleSkillReserveTarget}
-        numberColorMode={isSkillMode ? "skill" : "arcana"}
+        numberColorMode={numberColorMode}
       />
 
       <FirstRunCoach
