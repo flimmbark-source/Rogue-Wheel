@@ -18,6 +18,10 @@ export const GAME_MODE_DETAILS: Record<
     title: string;
     subtitle: string;
     highlights: string[];
+    difficulty: {
+      label: string;
+      badgeClassName: string;
+    };
   }
 > = {
   skill: {
@@ -26,6 +30,10 @@ export const GAME_MODE_DETAILS: Record<
     highlights: [
       "Cards on board grant one-shot abilities like Swap, Reroll, and Boost.",
     ],
+    difficulty: {
+      label: "Intermediate",
+      badgeClassName: "border-amber-400/60 bg-amber-500/10 text-amber-300",
+    },
   },
   grimoire: {
     title: "Grimoire",
@@ -33,6 +41,10 @@ export const GAME_MODE_DETAILS: Record<
     highlights: [
       "Card totals in Reserve grant Mana, spend Mana to cast spells and use arcana symbols to boost them.",
     ],
+    difficulty: {
+      label: "Expert",
+      badgeClassName: "border-rose-400/60 bg-rose-500/10 text-rose-300",
+    },
   },
   ante: {
     title: "Ante",
@@ -40,6 +52,10 @@ export const GAME_MODE_DETAILS: Record<
     highlights: [
       "Win rounds to multiply your ante by dynamic odds",
     ],
+    difficulty: {
+      label: "Easy",
+      badgeClassName: "border-emerald-400/60 bg-emerald-500/10 text-emerald-300",
+    },
   },
 };
 
