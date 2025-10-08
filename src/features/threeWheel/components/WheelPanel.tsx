@@ -82,7 +82,7 @@ export interface WheelPanelProps {
   isAwaitingSpellTarget: boolean;
   variant?: "standalone" | "grouped";
   skillPhaseActive?: boolean;
-  skillLaneStates?: Array<{ ability: AbilityKind | null; exhausted: boolean }>;
+  skillLaneStates?: SideState<Array<{ ability: AbilityKind | null; exhausted: boolean }>>;
   onSkillAbilityStart?: (laneIndex: number, ability: AbilityKind) => void;
   onSkillAbilityCancel?: () => void;
   onSkillTargetSelect?: (selection: { laneIndex: number; side: LegacySide }) => void;
@@ -295,7 +295,7 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
     const canInteractNormally =
       !awaitingSpellTarget && !skillTargeting && slot.side === localLegacySide && phase === "choose" && isWheelActive;
 
-    const skillState = skillLaneStates?.[index];
+    const skillState = skillLaneStates?.[slot.side]?.[index];
     const hasSkillAbility = Boolean(skillState?.ability && !skillState?.exhausted);
     const skillAbilityAvailable =
       skillPhaseActive &&

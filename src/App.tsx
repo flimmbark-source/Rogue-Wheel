@@ -1298,7 +1298,6 @@ export default function ThreeWheel_WinsOnly({
       })()
     : "";
   const skillPhaseActive = isSkillMode && phaseForLogic === "skill" && !skill.completed;
-  const localSkillLanes = skill.lanes[localLegacySide] ?? [];
   const [skillTargeting, setSkillTargeting] = useState<SkillTargetingState | null>(null);
 
   useEffect(() => {
@@ -2131,7 +2130,7 @@ export default function ThreeWheel_WinsOnly({
                 variant="grouped"
                 spellHighlightedCardIds={spellHighlightedCardIds}
                 skillPhaseActive={skillPhaseActive}
-                skillLaneStates={localSkillLanes}
+                skillLaneStates={skill.lanes}
                 onSkillAbilityStart={beginSkillTargeting}
                 onSkillTargetSelect={handleSkillLaneTarget}
                 skillTargeting={skillTargetingForChildren}
