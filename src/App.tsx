@@ -1613,21 +1613,21 @@ export default function ThreeWheel_WinsOnly({
                         <span className="font-semibold">Skill Mode - Lane Abilities</span>
                       </div>
                       <div>
-                        After Resolve, any lane showing a skill icon enters a <span className="font-semibold">Skill phase</span>.
-                        Trigger the lane once per round to apply its effect immediately.
+                        After Resolve, players enter into a <span className="font-semibold">Skill phase</span>.
+                        Each card in play can be pressed to activate it's skill.
                       </div>
                       <div>
-                        Skill numbers glow by strength:
+                        Each skill is associated with a specific color depicted on a card's value:
                         <span className="ml-1 font-semibold text-amber-300">0</span>,
                         <span className="ml-1 font-semibold text-sky-300">1-2</span>,
                         <span className="ml-1 font-semibold text-rose-300">3-5</span>,
                         <span className="ml-1 font-semibold text-emerald-400">6+</span>.
                       </div>
                       <ul className="list-disc pl-5 space-y-1">
-                        <li><b>Swap Reserve:</b> Trade the lane’s card with one from your reserve.</li>
-                        <li><b>Reroll Reserve:</b> Discard a reserve card to draw a replacement.</li>
-                        <li><b>Boost Card:</b> Add that card’s value to a friendly lane for this round.</li>
-                        <li><b>Reserve Boost:</b> Exhaust a positive reserve card to grant its value to a lane.</li>
+                        <li><b>Swap Reserve:</b> Trade a card in play with one from your reserve.</li>
+                        <li><b>Reroll Reserve:</b> Discard up to 2 reserve cards and draw replacements.</li>
+                        <li><b>Boost Card:</b> Add activated card’s value to a card in play.</li>
+                        <li><b>Reserve Boost:</b> Exhaust a reserve card and grant its value to a card in play.</li>
                       </ul>
                     </div>
                   )}
