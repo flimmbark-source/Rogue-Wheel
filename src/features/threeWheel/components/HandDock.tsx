@@ -207,8 +207,9 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
 
     useEffect(() => {
       if (!isPtrDragging) return;
+      if (ptrDragType === "touch") return;
       setHoveredSkillCardId(null);
-    }, [isPtrDragging]);
+    }, [isPtrDragging, ptrDragType]);
 
     const handleSkillHoverStart = useCallback(
       (cardId: string) => {
@@ -367,6 +368,9 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                     }}
                     onPointerUp={() => handleSkillHoverEnd(card.id)}
                     onPointerCancel={() => handleSkillHoverEnd(card.id)}
+                    onTouchStart={() => handleSkillHoverStart(card.id)}
+                    onTouchEnd={() => handleSkillHoverEnd(card.id)}
+                    onTouchCancel={() => handleSkillHoverEnd(card.id)}
                   >
                     <StSCard
                       data-hand-card
