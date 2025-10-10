@@ -326,8 +326,15 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                 skillHoverEnabled &&
                 hoveredSkillCardId === card.id &&
                 abilityDescription.length > 0;
+              const baseZIndex = 10 + idx;
+              const elevatedZIndex = 200 + idx;
+              const containerZIndex = showSkillDescription || isSelected ? elevatedZIndex : baseZIndex;
               return (
-                <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
+                <div
+                  key={card.id}
+                  className="group relative pointer-events-auto"
+                  style={{ zIndex: containerZIndex }}
+                >
                   {showSkillDescription ? (
                     <div className="pointer-events-none absolute bottom-full left-1/2 z-30 w-56 -translate-x-1/2 pb-3">
                       <div className="rounded-md bg-slate-900/95 px-3 py-2 text-xs font-medium leading-snug text-slate-100 shadow-lg ring-1 ring-white/10">
