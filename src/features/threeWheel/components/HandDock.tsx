@@ -30,6 +30,7 @@ interface HandDockProps {
   player: Fighter;
   enemy: Fighter;
   phase: CorePhase;
+  isGrimoireMode: boolean;
   wheelPanelWidth?: number;
   wheelPanelBounds?: { left: number; width: number } | null;
   selectedCardId: string | null;
@@ -76,6 +77,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     player,
     enemy,
     phase,
+    isGrimoireMode,
     wheelPanelWidth,
     wheelPanelBounds,
     selectedCardId,
@@ -270,6 +272,8 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
 
     const spellHighlightSet = useMemo(() => new Set(spellHighlightedCardIds), [spellHighlightedCardIds]);
 
+    const spellsEnabledAttr = isGrimoireMode ? "true" : "false";
+
     const ghost =
       isPtrDragging && ptrDragCard ? (
         <div
@@ -288,6 +292,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
             zIndex: 9999,
           }}
           aria-hidden
+          data-spells-enabled={spellsEnabledAttr}
         >
           <div style={{ transform: "scale(0.9)", filter: "drop-shadow(0 6px 8px rgba(0,0,0,.35))" }}>
             <StSCard card={ptrDragCard} numberColorMode={numberColorMode} />
@@ -302,6 +307,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
           className="fixed bottom-0 z-40 pointer-events-none select-none"
           style={overlayStyle}
           data-awaiting-spell-target={awaitingCardTarget ? "true" : "false"}
+          data-spells-enabled={spellsEnabledAttr}
         >
           <div
             className="mx-auto max-w-[1400px] flex justify-center gap-1.5 py-0.5"
