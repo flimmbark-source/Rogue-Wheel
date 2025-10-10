@@ -2184,6 +2184,7 @@ export default function ThreeWheel_WinsOnly({
         localLegacySide={localLegacySide}
         player={player}
         enemy={enemy}
+        phase={phaseForLogic}
         wheelPanelWidth={wheelPanelLayout.panelWidth}
         wheelPanelBounds={wheelPanelBounds}
         selectedCardId={selectedCardId}

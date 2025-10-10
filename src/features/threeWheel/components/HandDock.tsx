@@ -10,7 +10,7 @@ import React, {
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import StSCard from "../../../components/StSCard";
-import type { Card, Fighter } from "../../../game/types";
+import type { Card, CorePhase, Fighter } from "../../../game/types";
 import {
   describeSkillAbility,
   determineSkillAbility,
@@ -29,6 +29,7 @@ interface HandDockProps {
   localLegacySide: LegacySide;
   player: Fighter;
   enemy: Fighter;
+  phase: CorePhase;
   wheelPanelWidth?: number;
   wheelPanelBounds?: { left: number; width: number } | null;
   selectedCardId: string | null;
@@ -74,6 +75,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     localLegacySide,
     player,
     enemy,
+    phase,
     wheelPanelWidth,
     wheelPanelBounds,
     selectedCardId,
@@ -195,12 +197,13 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     }, [cardDimensionsRef, isPtrDragging, ptrDragType, ptrPos]);
 
     const skillDescriptionsEnabled = numberColorMode === "skill";
+    const skillHoverEnabled = skillDescriptionsEnabled && phase === "choose";
 
     useEffect(() => {
-      if (!skillDescriptionsEnabled) {
+      if (!skillHoverEnabled) {
         setHoveredSkillCardId(null);
       }
-    }, [skillDescriptionsEnabled]);
+    }, [skillHoverEnabled]);
 
     useEffect(() => {
       if (!isPtrDragging) return;
@@ -209,10 +212,10 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
 
     const handleSkillHoverStart = useCallback(
       (cardId: string) => {
-        if (!skillDescriptionsEnabled) return;
+        if (!skillHoverEnabled) return;
         setHoveredSkillCardId(cardId);
       },
-      [skillDescriptionsEnabled],
+      [skillHoverEnabled],
     );
 
     const handleSkillHoverEnd = useCallback((cardId: string) => {
@@ -320,7 +323,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
               const abilityLabel = SKILL_ABILITY_LABELS[ability];
               const abilityDescription = describeSkillAbility(ability, card).trim();
               const showSkillDescription =
-                skillDescriptionsEnabled &&
+                skillHoverEnabled &&
                 hoveredSkillCardId === card.id &&
                 abilityDescription.length > 0;
               return (
