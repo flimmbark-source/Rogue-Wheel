@@ -99,7 +99,7 @@ import { countSymbolsFromCards, getVisibleSpellsForHand } from "./game/grimoire"
 import StSCard from "./components/StSCard";
 import { chooseCpuSpellResponse, type CpuSpellDecision } from "./game/ai/grimoireCpu";
 import { chooseCpuSkillResponse } from "./game/ai/skillCpu";
-import { isReserveBoostTarget, type AbilityKind } from "./game/skills";
+import { isReserveBoostTarget, type AbilityKind, SKILL_ABILITY_LABELS } from "./game/skills";
 
 // ---- Local aliases/types/state helpers
 type AblyRealtime = InstanceType<typeof Realtime>;
@@ -108,13 +108,6 @@ type LegacySide = "player" | "enemy";
 
 type SideState<T> = Record<LegacySide, T>;
 type WheelSideState<T> = [SideState<T>, SideState<T>, SideState<T>];
-
-const SKILL_ABILITY_LABELS: Record<AbilityKind, string> = {
-  swapReserve: "Swap Reserve",
-  rerollReserve: "Reroll Reserve",
-  boostCard: "Boost Card",
-  reserveBoost: "Reserve Boost",
-};
 
 type ReserveTargetSpec = {
   kind: "reserve";
