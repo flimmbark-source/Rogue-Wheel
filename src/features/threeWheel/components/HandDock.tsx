@@ -10,8 +10,13 @@ import React, {
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import StSCard from "../../../components/StSCard";
-import type { Card, Fighter } from "../../../game/types";
-import type { AbilityKind } from "../../../game/skills";
+import type { Card, CorePhase, Fighter } from "../../../game/types";
+import {
+  describeSkillAbility,
+  determineSkillAbility,
+  SKILL_ABILITY_LABELS,
+  type AbilityKind,
+} from "../../../game/skills";
 import type { LegacySide } from "./WheelPanel";
 import { type SpellDefinition, type SpellTargetInstance } from "../../../game/spellEngine";
 import {
@@ -24,6 +29,7 @@ interface HandDockProps {
   localLegacySide: LegacySide;
   player: Fighter;
   enemy: Fighter;
+  phase: CorePhase;
   wheelPanelWidth?: number;
   wheelPanelBounds?: { left: number; width: number } | null;
   selectedCardId: string | null;
@@ -69,6 +75,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     localLegacySide,
     player,
     enemy,
+    phase,
     wheelPanelWidth,
     wheelPanelBounds,
     selectedCardId,
@@ -110,6 +117,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
       [forwardedRef],
     );
     const [liftPx, setLiftPx] = useState<number>(18);
+    const [hoveredSkillCardId, setHoveredSkillCardId] = useState<string | null>(null);
 
     useEffect(() => {
       const compute = () => {
@@ -187,6 +195,32 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
       const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
       el.style.transform = `translate(${x - offsetX}px, ${y - offsetY}px)`;
     }, [cardDimensionsRef, isPtrDragging, ptrDragType, ptrPos]);
+
+    const skillDescriptionsEnabled = numberColorMode === "skill";
+    const skillHoverEnabled = skillDescriptionsEnabled && phase === "choose";
+
+    useEffect(() => {
+      if (!skillHoverEnabled) {
+        setHoveredSkillCardId(null);
+      }
+    }, [skillHoverEnabled]);
+
+    useEffect(() => {
+      if (!isPtrDragging) return;
+      setHoveredSkillCardId(null);
+    }, [isPtrDragging]);
+
+    const handleSkillHoverStart = useCallback(
+      (cardId: string) => {
+        if (!skillHoverEnabled) return;
+        setHoveredSkillCardId(cardId);
+      },
+      [skillHoverEnabled],
+    );
+
+    const handleSkillHoverEnd = useCallback((cardId: string) => {
+      setHoveredSkillCardId((prev) => (prev === cardId ? null : prev));
+    }, []);
 
     const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
@@ -285,8 +319,32 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
               const cardDisabled =
                 (awaitingManualTarget && !cardSelectableForSpell) ||
                 (skillTargetingReserve && !cardSelectableForSkill);
+              const ability = determineSkillAbility(card);
+              const abilityLabel = SKILL_ABILITY_LABELS[ability];
+              const abilityDescription = describeSkillAbility(ability, card).trim();
+              const showSkillDescription =
+                skillHoverEnabled &&
+                hoveredSkillCardId === card.id &&
+                abilityDescription.length > 0;
+              const baseZIndex = 10 + idx;
+              const elevatedZIndex = 200 + idx;
+              const containerZIndex = showSkillDescription || isSelected ? elevatedZIndex : baseZIndex;
               return (
-                <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
+                <div
+                  key={card.id}
+                  className="group relative pointer-events-auto"
+                  style={{ zIndex: containerZIndex }}
+                >
+                  {showSkillDescription ? (
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-30 w-56 -translate-x-1/2 pb-3">
+                      <div className="rounded-md bg-slate-900/95 px-3 py-2 text-xs font-medium leading-snug text-slate-100 shadow-lg ring-1 ring-white/10">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-200/90">
+                          {abilityLabel}
+                        </div>
+                        <div className="mt-1 font-normal text-slate-200/90">{abilityDescription}</div>
+                      </div>
+                    </div>
+                  ) : null}
                   <motion.div
                     data-hand-card
                     initial={false}
@@ -298,6 +356,17 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                     whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }}
                     transition={{ type: "spring", stiffness: 320, damping: 22 }}
                     className={`drop-shadow-xl ${isSelected ? "ring-2 ring-amber-300" : ""}`}
+                    onPointerEnter={() => handleSkillHoverStart(card.id)}
+                    onPointerLeave={() => handleSkillHoverEnd(card.id)}
+                    onFocusCapture={() => handleSkillHoverStart(card.id)}
+                    onBlurCapture={() => handleSkillHoverEnd(card.id)}
+                    onPointerDown={(event) => {
+                      if (event.pointerType !== "mouse") {
+                        handleSkillHoverStart(card.id);
+                      }
+                    }}
+                    onPointerUp={() => handleSkillHoverEnd(card.id)}
+                    onPointerCancel={() => handleSkillHoverEnd(card.id)}
                   >
                     <StSCard
                       data-hand-card
