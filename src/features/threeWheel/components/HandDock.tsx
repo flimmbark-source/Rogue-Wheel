@@ -11,7 +11,12 @@ import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import StSCard from "../../../components/StSCard";
 import type { Card, Fighter } from "../../../game/types";
-import type { AbilityKind } from "../../../game/skills";
+import {
+  describeSkillAbility,
+  determineSkillAbility,
+  SKILL_ABILITY_LABELS,
+  type AbilityKind,
+} from "../../../game/skills";
 import type { LegacySide } from "./WheelPanel";
 import { type SpellDefinition, type SpellTargetInstance } from "../../../game/spellEngine";
 import {
@@ -110,6 +115,7 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
       [forwardedRef],
     );
     const [liftPx, setLiftPx] = useState<number>(18);
+    const [hoveredSkillCardId, setHoveredSkillCardId] = useState<string | null>(null);
 
     useEffect(() => {
       const compute = () => {
@@ -187,6 +193,31 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
       const { x: offsetX, y: offsetY } = ghostOffsetRef.current;
       el.style.transform = `translate(${x - offsetX}px, ${y - offsetY}px)`;
     }, [cardDimensionsRef, isPtrDragging, ptrDragType, ptrPos]);
+
+    const skillDescriptionsEnabled = numberColorMode === "skill";
+
+    useEffect(() => {
+      if (!skillDescriptionsEnabled) {
+        setHoveredSkillCardId(null);
+      }
+    }, [skillDescriptionsEnabled]);
+
+    useEffect(() => {
+      if (!isPtrDragging) return;
+      setHoveredSkillCardId(null);
+    }, [isPtrDragging]);
+
+    const handleSkillHoverStart = useCallback(
+      (cardId: string) => {
+        if (!skillDescriptionsEnabled) return;
+        setHoveredSkillCardId(cardId);
+      },
+      [skillDescriptionsEnabled],
+    );
+
+    const handleSkillHoverEnd = useCallback((cardId: string) => {
+      setHoveredSkillCardId((prev) => (prev === cardId ? null : prev));
+    }, []);
 
     const localFighter: Fighter = localLegacySide === "player" ? player : enemy;
 
@@ -285,8 +316,25 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
               const cardDisabled =
                 (awaitingManualTarget && !cardSelectableForSpell) ||
                 (skillTargetingReserve && !cardSelectableForSkill);
+              const ability = determineSkillAbility(card);
+              const abilityLabel = SKILL_ABILITY_LABELS[ability];
+              const abilityDescription = describeSkillAbility(ability, card).trim();
+              const showSkillDescription =
+                skillDescriptionsEnabled &&
+                hoveredSkillCardId === card.id &&
+                abilityDescription.length > 0;
               return (
                 <div key={card.id} className="group relative pointer-events-auto" style={{ zIndex: 10 + idx }}>
+                  {showSkillDescription ? (
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-30 w-56 -translate-x-1/2 pb-3">
+                      <div className="rounded-md bg-slate-900/95 px-3 py-2 text-xs font-medium leading-snug text-slate-100 shadow-lg ring-1 ring-white/10">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-200/90">
+                          {abilityLabel}
+                        </div>
+                        <div className="mt-1 font-normal text-slate-200/90">{abilityDescription}</div>
+                      </div>
+                    </div>
+                  ) : null}
                   <motion.div
                     data-hand-card
                     initial={false}
@@ -298,6 +346,17 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
                     whileHover={{ y: -Math.max(8, liftPx - 10), opacity: 1, scale: 1.04 }}
                     transition={{ type: "spring", stiffness: 320, damping: 22 }}
                     className={`drop-shadow-xl ${isSelected ? "ring-2 ring-amber-300" : ""}`}
+                    onPointerEnter={() => handleSkillHoverStart(card.id)}
+                    onPointerLeave={() => handleSkillHoverEnd(card.id)}
+                    onFocusCapture={() => handleSkillHoverStart(card.id)}
+                    onBlurCapture={() => handleSkillHoverEnd(card.id)}
+                    onPointerDown={(event) => {
+                      if (event.pointerType !== "mouse") {
+                        handleSkillHoverStart(card.id);
+                      }
+                    }}
+                    onPointerUp={() => handleSkillHoverEnd(card.id)}
+                    onPointerCancel={() => handleSkillHoverEnd(card.id)}
                   >
                     <StSCard
                       data-hand-card

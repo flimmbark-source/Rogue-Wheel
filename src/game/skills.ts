@@ -6,6 +6,13 @@ export type AbilityKind =
   | "boostCard"
   | "reserveBoost";
 
+export const SKILL_ABILITY_LABELS: Record<AbilityKind, string> = {
+  swapReserve: "Swap Reserve",
+  rerollReserve: "Reroll Reserve",
+  boostCard: "Boost Card",
+  reserveBoost: "Reserve Boost",
+};
+
 function sanitizeNumber(value: unknown): number | undefined {
   if (value === null || value === undefined) {
     return undefined;
