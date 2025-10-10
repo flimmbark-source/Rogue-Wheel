@@ -2185,6 +2185,7 @@ export default function ThreeWheel_WinsOnly({
         player={player}
         enemy={enemy}
         phase={phaseForLogic}
+        isGrimoireMode={isGrimoireMode}
         wheelPanelWidth={wheelPanelLayout.panelWidth}
         wheelPanelBounds={wheelPanelBounds}
         selectedCardId={selectedCardId}
