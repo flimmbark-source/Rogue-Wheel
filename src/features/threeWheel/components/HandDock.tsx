@@ -3,6 +3,7 @@ import React, {
   type MutableRefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -120,6 +121,10 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     );
     const [liftPx, setLiftPx] = useState<number>(18);
     const [hoveredSkillCardId, setHoveredSkillCardId] = useState<string | null>(null);
+    const cardNodeRefs = useRef(new Map<string, HTMLDivElement | null>());
+    const skillTooltipRefs = useRef(new Map<string, HTMLDivElement | null>());
+    const skillTooltipShiftRef = useRef(0);
+    const [skillTooltipShift, setSkillTooltipShift] = useState(0);
 
     useEffect(() => {
       const compute = () => {
@@ -201,11 +206,85 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
     const skillDescriptionsEnabled = numberColorMode === "skill";
     const skillHoverEnabled = skillDescriptionsEnabled && phase === "choose";
 
+    const updateSkillTooltipShift = useCallback(() => {
+      if (!skillHoverEnabled || !hoveredSkillCardId) {
+        if (skillTooltipShiftRef.current !== 0) {
+          skillTooltipShiftRef.current = 0;
+          setSkillTooltipShift(0);
+        }
+        return;
+      }
+
+      const cardNode = cardNodeRefs.current.get(hoveredSkillCardId);
+      const tooltipNode = skillTooltipRefs.current.get(hoveredSkillCardId);
+      if (!cardNode || !tooltipNode) return;
+
+      const cardRect = cardNode.getBoundingClientRect();
+      const tooltipRect = tooltipNode.getBoundingClientRect();
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+      const safePadding = 16;
+      const tooltipLeft = cardRect.left + cardRect.width / 2 - tooltipRect.width / 2;
+      const tooltipRight = tooltipLeft + tooltipRect.width;
+      let nextShift = 0;
+      if (tooltipLeft < safePadding) {
+        nextShift = safePadding - tooltipLeft;
+      } else if (tooltipRight > viewportWidth - safePadding) {
+        nextShift = viewportWidth - safePadding - tooltipRight;
+      }
+
+      if (Math.abs(nextShift - skillTooltipShiftRef.current) > 0.5) {
+        skillTooltipShiftRef.current = nextShift;
+        setSkillTooltipShift(nextShift);
+      }
+    }, [hoveredSkillCardId, skillHoverEnabled]);
+
+    useLayoutEffect(() => {
+      if (typeof window === "undefined") return;
+      let rafId: number | null = null;
+      if (skillHoverEnabled && hoveredSkillCardId) {
+        rafId = window.requestAnimationFrame(() => {
+          updateSkillTooltipShift();
+        });
+      } else {
+        updateSkillTooltipShift();
+      }
+
+      return () => {
+        if (rafId !== null) {
+          window.cancelAnimationFrame(rafId);
+        }
+      };
+    }, [hoveredSkillCardId, skillHoverEnabled, updateSkillTooltipShift]);
+
     useEffect(() => {
       if (!skillHoverEnabled) {
         setHoveredSkillCardId(null);
+        if (skillTooltipShiftRef.current !== 0) {
+          skillTooltipShiftRef.current = 0;
+          setSkillTooltipShift(0);
+        }
+        return;
       }
-    }, [skillHoverEnabled]);
+
+      if (typeof window === "undefined") return;
+
+      const handleResize = () => {
+        updateSkillTooltipShift();
+      };
+
+      window.addEventListener("resize", handleResize);
+      window.addEventListener("orientationchange", handleResize);
+      const viewport = window.visualViewport;
+      viewport?.addEventListener("resize", handleResize);
+      viewport?.addEventListener("scroll", handleResize);
+
+      return () => {
+        window.removeEventListener("resize", handleResize);
+        window.removeEventListener("orientationchange", handleResize);
+        viewport?.removeEventListener("resize", handleResize);
+        viewport?.removeEventListener("scroll", handleResize);
+      };
+    }, [skillHoverEnabled, updateSkillTooltipShift]);
 
     useEffect(() => {
       if (!isPtrDragging) return;
@@ -339,11 +418,33 @@ const HandDock = forwardRef<HTMLDivElement, HandDockProps>(
               return (
                 <div
                   key={card.id}
+                  ref={(node) => {
+                    if (node) {
+                      cardNodeRefs.current.set(card.id, node);
+                    } else {
+                      cardNodeRefs.current.delete(card.id);
+                    }
+                  }}
                   className="group relative pointer-events-auto"
                   style={{ zIndex: containerZIndex }}
                 >
                   {showSkillDescription ? (
-                    <div className="pointer-events-none absolute bottom-full left-1/2 z-30 w-56 -translate-x-1/2 pb-3">
+                    <div
+                      ref={(node) => {
+                        if (node) {
+                          skillTooltipRefs.current.set(card.id, node);
+                        } else {
+                          skillTooltipRefs.current.delete(card.id);
+                        }
+                      }}
+                      className="pointer-events-none absolute bottom-full left-1/2 z-30 pb-3"
+                      style={{
+                        transform: `translateX(calc(-50% + ${
+                          hoveredSkillCardId === card.id ? skillTooltipShift : 0
+                        }px))`,
+                        width: "min(14rem, calc(100vw - 32px))",
+                      }}
+                    >
                       <div className="rounded-md bg-slate-900/95 px-3 py-2 text-xs font-medium leading-snug text-slate-100 shadow-lg ring-1 ring-white/10">
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-200/90">
                           {abilityLabel}
