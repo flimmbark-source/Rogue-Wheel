@@ -116,7 +116,7 @@ const ABILITY_DESCRIPTIONS: Record<AbilityKind, (card?: Card) => string> = {
         ? current
         : getSkillCardValue(card ?? ({} as Card)),
     );
-    return `Boost a card by ${value}.`;
+    return `Boost a card by this card's value.`;
   },
   reserveBoost: (card) => {
     const value = getReserveBoostValue(card ?? ({} as Card));
