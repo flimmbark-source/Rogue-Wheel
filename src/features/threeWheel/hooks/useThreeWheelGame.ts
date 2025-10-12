@@ -1320,13 +1320,9 @@ export function useThreeWheelGame({
 
       const shouldUpdateInitiative =
         previousPhase === "skill" || previousPhase === "roundEnd" || previousPhase === "anim";
-      const summary = refreshRoundSummaryAfterSkill(assignments, {
+      refreshRoundSummaryAfterSkill(assignments, {
         updateInitiative: shouldUpdateInitiative,
       });
-
-      if (summary) {
-        commitPendingWins();
-      }
 
       if (previousPhase !== "recalc") {
         setSafeTimeout(() => {
@@ -1336,7 +1332,6 @@ export function useThreeWheelGame({
       }
     },
     [
-      commitPendingWins,
       recalcWheelForLane,
       refreshRoundSummaryAfterSkill,
       setSafeTimeout,
