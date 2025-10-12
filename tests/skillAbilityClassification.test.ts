@@ -41,7 +41,7 @@ const makeCard = (overrides: Partial<Record<keyof Card, unknown>>): Card => {
   assert.equal(determineSkillAbility(card), "boostCard");
   assert.equal(
     describeSkillAbility("boostCard", card),
-    "Boost a card by 3.",
+    "Boost a card by this card's value.",
   );
 }
 
@@ -50,7 +50,7 @@ const makeCard = (overrides: Partial<Record<keyof Card, unknown>>): Card => {
   assert.equal(determineSkillAbility(card), "boostCard");
   assert.equal(
     describeSkillAbility("boostCard", card),
-    "Boost a card by 8.",
+    "Boost a card by this card's value.",
   );
 }
 
