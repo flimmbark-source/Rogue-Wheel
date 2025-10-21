@@ -9,12 +9,14 @@ import {
   type GameMode,
   type GameModeOption,
 } from "./gameModes";
+import EasyModeSwitch from "./components/EasyModeSwitch";
 
 type ModeSelectProps = {
   initialMode?: GameMode;
   initialTargetWins?: number;
+  initialEasyMode?: boolean;
   showTargetWinsInput?: boolean;
-  onConfirm: (mode: GameMode, targetWins: number) => void;
+  onConfirm: (mode: GameMode, targetWins: number, easyMode: boolean) => void;
   onBack: () => void;
   backLabel?: string;
   confirmLabel?: string;
@@ -23,6 +25,7 @@ type ModeSelectProps = {
 export default function ModeSelect({
   initialMode = DEFAULT_GAME_MODE,
   initialTargetWins = TARGET_WINS,
+  initialEasyMode = false,
   showTargetWinsInput = false,
   onConfirm,
   onBack,
@@ -32,6 +35,7 @@ export default function ModeSelect({
   const [selectedModes, setSelectedModes] = useState<GameMode>(() => normalizeGameMode(initialMode));
   const [targetWins, setTargetWins] = useState<number>(() => clampTargetWins(initialTargetWins));
   const [targetWinsInput, setTargetWinsInput] = useState<string>(String(clampTargetWins(initialTargetWins)));
+  const [easyMode, setEasyMode] = useState<boolean>(Boolean(initialEasyMode));
 
   const detailEntries = useMemo(
     () =>
@@ -51,6 +55,10 @@ export default function ModeSelect({
   useEffect(() => {
     setSelectedModes(normalizeGameMode(initialMode));
   }, [initialMode]);
+
+  useEffect(() => {
+    setEasyMode(Boolean(initialEasyMode));
+  }, [initialEasyMode]);
 
   const handleWinsChange = (value: string) => {
     if (!/^\d*$/.test(value)) return;
@@ -144,9 +152,12 @@ export default function ModeSelect({
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {showTargetWinsInput && (
             <div className="flex flex-col gap-1 text-left sm:flex-row sm:items-center sm:gap-3">
-              <label className="text-xs font-medium text-slate-300 sm:text-sm" htmlFor="target-wins-input">
-                Wins to take the match
-              </label>
+              <div className="flex items-center justify-between gap-3">
+                <label className="text-xs font-medium text-slate-300 sm:text-sm" htmlFor="target-wins-input">
+                  Wins to take the match
+                </label>
+                <EasyModeSwitch checked={easyMode} onToggle={setEasyMode} />
+              </div>
               <div className="flex items-center gap-2">
                 <input
                   id="target-wins-input"
@@ -165,7 +176,7 @@ export default function ModeSelect({
           )}
           <button
             type="button"
-            onClick={() => onConfirm(normalizeGameMode(selectedModes), targetWins)}
+            onClick={() => onConfirm(normalizeGameMode(selectedModes), targetWins, easyMode)}
             className="inline-flex items-center justify-center rounded-full bg-emerald-400 px-6 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
           >
             {confirmLabel}
