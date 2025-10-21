@@ -26,24 +26,26 @@ export default function EasyModeSwitch({
         }
       }}
       className={[
-        "group inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide transition",
-        disabled ? "cursor-not-allowed text-slate-500" : "text-slate-300 hover:text-slate-100",
+        "group inline-flex items-center gap-3 rounded-full border border-transparent px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide transition",
+        disabled
+          ? "cursor-not-allowed text-slate-500"
+          : "text-slate-300 hover:border-emerald-400/60 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40",
         className,
       ].join(" ")}
     >
-      <span>Easy Mode</span>
+      <span className="select-none">Easy Mode</span>
       <span
         className={[
-          "relative inline-flex h-5 w-10 items-center rounded-full border transition",
+          "relative inline-flex h-6 w-12 items-center rounded-full border transition-colors",
           checked
-            ? "bg-emerald-400/20 border-emerald-400"
+            ? "border-emerald-400 bg-emerald-400/20"
             : "border-slate-600 bg-slate-800",
           disabled ? "opacity-60" : "",
         ].join(" ")}
       >
         <span
           className={[
-            "absolute left-1 h-3.5 w-3.5 rounded-full transition-transform",
+            "absolute left-1 h-4 w-4 rounded-full transition-transform",
             checked ? "translate-x-5 bg-emerald-300" : "translate-x-0 bg-slate-400",
           ].join(" ")}
         />
