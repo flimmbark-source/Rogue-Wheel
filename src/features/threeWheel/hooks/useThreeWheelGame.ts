@@ -379,8 +379,16 @@ export function useThreeWheelGame({
   useEffect(() => {
     setEnemy((prev) => (prev.name === enemyName ? prev : { ...prev, name: enemyName }));
   }, [enemyName]);
-  const [initiative, setInitiative] = useState<LegacySide>(() =>
+  const [initiative, setInitiativeState] = useState<LegacySide>(() =>
     hostId ? hostLegacySide : localLegacySide
+  );
+  const initiativeRef = useRef<LegacySide>(initiative);
+  const setInitiative = useCallback(
+    (side: LegacySide) => {
+      initiativeRef.current = side;
+      setInitiativeState(side);
+    },
+    [setInitiativeState]
   );
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
   const pendingWinsRef = useRef<{ player: number; enemy: number } | null>(null);
@@ -1175,6 +1183,7 @@ export function useThreeWheelGame({
     const eReserve = localLegacySide === "enemy" ? localReserve : remoteReserve;
 
     const outcomes: WheelOutcome[] = [];
+    const currentInitiative = initiativeRef.current;
     const tokensSnapshot =
       roundStartTokensRef.current ?? tokensRef.current ?? tokens;
 
@@ -1224,8 +1233,8 @@ export function useThreeWheelGame({
             break;
           }
           case "Initiative":
-            winner = initiative;
-            detail = `Initiative -> ${winner}`;
+            winner = currentInitiative;
+            detail = `Initiative -> ${currentInitiative}`;
             break;
           default:
             tie = true;
@@ -1268,7 +1277,7 @@ export function useThreeWheelGame({
       const summary = summarizeRoundOutcome({
         analysis: latestAnalysis,
         wins,
-        initiative,
+        initiative: initiativeRef.current,
         round,
         namesByLegacy,
         HUD_COLORS,
@@ -1291,7 +1300,6 @@ export function useThreeWheelGame({
     },
     [
       HUD_COLORS,
-      initiative,
       isAnteMode,
       isSkillMode,
       localLegacySide,
@@ -1404,7 +1412,7 @@ export function useThreeWheelGame({
           updateLaneChillStacks: setLaneChillStacks,
           setInitiative,
           appendLog,
-          initiative,
+          initiative: initiativeRef.current,
           isMultiplayer,
           broadcastEffects: (outgoing) => {
             sendIntent({ type: "spellEffects", payload: outgoing });
@@ -1463,7 +1471,6 @@ export function useThreeWheelGame({
     },
     [
       appendLog,
-      initiative,
       isMultiplayer,
       sendIntent,
       setAssign,
@@ -1621,7 +1628,7 @@ export function useThreeWheelGame({
       const summary = summarizeRoundOutcome({
         analysis: finalAnalysis,
         wins,
-        initiative,
+        initiative: initiativeRef.current,
         round,
         namesByLegacy,
         HUD_COLORS,
