@@ -83,6 +83,7 @@ export type ThreeWheelGameProps = {
   hostId?: string;
   targetWins?: number;
   gameMode?: GameMode;
+  easyMode?: boolean;
   onExit?: () => void;
 };
 
@@ -296,6 +297,7 @@ export function useThreeWheelGame({
   hostId,
   targetWins,
   gameMode,
+  easyMode,
   onExit,
 }: ThreeWheelGameProps): ThreeWheelGameReturn {
   const mountedRef = useRef(true);
@@ -342,6 +344,7 @@ export function useThreeWheelGame({
       : TARGET_WINS;
 
   const currentGameMode = normalizeGameMode(gameMode ?? DEFAULT_GAME_MODE);
+  const easyModeEnabled = easyMode === true;
   const isAnteMode = currentGameMode.includes("ante");
   const isSkillMode = currentGameMode.includes("skill");
 
@@ -689,25 +692,29 @@ export function useThreeWheelGame({
     const seeded = createSeededRng(seed);
     wheelRngRef.current = seeded;
     return [
-      genWheelSections("bandit", seeded),
-      genWheelSections("sorcerer", seeded),
-      genWheelSections("beast", seeded),
+      genWheelSections("bandit", seeded, { easyMode: easyModeEnabled }),
+      genWheelSections("sorcerer", seeded, { easyMode: easyModeEnabled }),
+      genWheelSections("beast", seeded, { easyMode: easyModeEnabled }),
     ];
   });
 
   const generateWheelSet = useCallback((): Section[][] => {
     const rng = wheelRngRef.current ?? Math.random;
     return [
-      genWheelSections("bandit", rng),
-      genWheelSections("sorcerer", rng),
-      genWheelSections("beast", rng),
+      genWheelSections("bandit", rng, { easyMode: easyModeEnabled }),
+      genWheelSections("sorcerer", rng, { easyMode: easyModeEnabled }),
+      genWheelSections("beast", rng, { easyMode: easyModeEnabled }),
     ];
-  }, []);
+  }, [easyModeEnabled]);
 
   useEffect(() => {
     wheelRngRef.current = createSeededRng(seed);
     setWheelSections(generateWheelSet());
   }, [seed, generateWheelSet]);
+
+  useEffect(() => {
+    setWheelSections(generateWheelSet());
+  }, [easyModeEnabled, generateWheelSet]);
 
   const [tokens, setTokens] = useState<[number, number, number]>([0, 0, 0]);
   const tokensRef = useRef(tokens);

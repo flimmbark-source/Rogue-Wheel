@@ -272,6 +272,7 @@ export default function ThreeWheel_WinsOnly({
   roomCode,
   hostId,
   targetWins,
+  easyMode = false,
   onExit,
 }: {
   localSide: TwoSide;
@@ -282,9 +283,10 @@ export default function ThreeWheel_WinsOnly({
   roomCode?: string;
   hostId?: string;
   targetWins?: number;
+  easyMode?: boolean;
   onExit?: () => void;
 }) {
-  
+
   const { state, derived, refs, actions } = useThreeWheelGame({
     localSide,
     localPlayerId,
@@ -294,6 +296,7 @@ export default function ThreeWheel_WinsOnly({
     hostId,
     targetWins,
     gameMode,
+    easyMode,
     onExit,
   });
   // --- from hook

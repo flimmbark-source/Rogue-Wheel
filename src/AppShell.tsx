@@ -26,6 +26,7 @@ export default function AppShell() {
   const [mpPayload, setMpPayload] = useState<MPStartPayload | null>(null);
   const [gameMode, setGameMode] = useState<GameMode>(() => [...DEFAULT_GAME_MODE]);
   const [soloTargetWins, setSoloTargetWins] = useState<number>(TARGET_WINS);
+  const [easyMode, setEasyMode] = useState<boolean>(false);
 
   if (view.key === "hub") {
     return (
@@ -45,6 +46,7 @@ export default function AppShell() {
         onBack={() => setView({ key: "hub" })}
         onStart={(payload) => {
           setGameMode(normalizeGameMode(payload.gameMode));
+          setEasyMode(payload.easyMode);
           setMpPayload(payload);
           setView({ key: "game", mode: "mp", mpPayload: payload });
         }}
@@ -77,6 +79,11 @@ export default function AppShell() {
       <ModeSelect
         initialMode={gameMode}
         initialTargetWins={initialTargetWins}
+        initialEasyMode={
+          view.next.mode === "mp"
+            ? view.next.mpPayload?.easyMode ?? mpPayload?.easyMode ?? false
+            : easyMode
+        }
         showTargetWinsInput={view.next.mode === "solo"}
         backLabel={backLabel}
         confirmLabel={confirmLabel}
@@ -84,8 +91,9 @@ export default function AppShell() {
           setView({ key: view.from });
           setMpPayload(null);
         }}
-        onConfirm={(mode, winsGoal) => {
+        onConfirm={(mode, winsGoal, easy) => {
           setGameMode(normalizeGameMode(mode));
+          setEasyMode(easy);
 
           if (view.next.mode === "mp") {
             const payload = view.next.mpPayload ?? mpPayload;
@@ -97,6 +105,7 @@ export default function AppShell() {
               ...payload,
               targetWins: winsGoal,
               gameMode: normalizeGameMode(mode),
+              easyMode: easy,
             };
             setMpPayload(nextPayload);
             setView({ key: "game", mode: "mp", mpPayload: nextPayload });
@@ -116,7 +125,12 @@ export default function AppShell() {
   let players: Players;
   let localSide: Side;
   let localPlayerId: string;
-  let extraProps: { roomCode?: string; hostId?: string; targetWins?: number } = {};
+  let extraProps: {
+    roomCode?: string;
+    hostId?: string;
+    targetWins?: number;
+    easyMode?: boolean;
+  } = {};
 
   if (view.mode === "mp" && (view.mpPayload ?? mpPayload)) {
     const mp = (view.mpPayload ?? mpPayload)!;
@@ -124,7 +138,12 @@ export default function AppShell() {
     players = mp.players;
     localSide = mp.localSide;
     localPlayerId = mp.players[localSide].id;
-    extraProps = { roomCode: mp.roomCode, hostId: mp.hostId, targetWins: mp.targetWins };
+    extraProps = {
+      roomCode: mp.roomCode,
+      hostId: mp.hostId,
+      targetWins: mp.targetWins,
+      easyMode: mp.easyMode,
+    };
   } else {
     seed = Math.floor(Math.random() * 2 ** 31);
     players = {
@@ -133,7 +152,7 @@ export default function AppShell() {
     };
     localSide = "left";
     localPlayerId = "local";
-    extraProps = { targetWins: soloTargetWins };
+    extraProps = { targetWins: soloTargetWins, easyMode };
   }
 
   const exitToMenu = () => {

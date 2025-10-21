@@ -13,6 +13,7 @@ import {
   type GameModeOption,
 } from "./gameModes";
 import LoadingScreen from "./components/LoadingScreen";
+import EasyModeSwitch from "./components/EasyModeSwitch";
 import { uidShort } from "./utils/uid";
 
 // ----- Start payload now includes targetWins (wins goal) -----
@@ -24,6 +25,7 @@ type StartMessagePayload = {
   playersArr?: { clientId: string; name: string }[]; // optional: raw list for debugging
   targetWins: number;        // 👈 merged feature: game wins goal
   gameMode: GameMode;        // 👈 lobby-selected game mode
+  easyMode: boolean;         // 👈 lobby-selected easy mode toggle
 };
 
 type StartPayload = StartMessagePayload & {
@@ -65,6 +67,7 @@ export default function MultiplayerRoute({
 
   // Game mode (host controls)
   const [gameMode, setGameMode] = useState<GameMode>(() => [...DEFAULT_GAME_MODE]);
+  const [easyMode, setEasyMode] = useState<boolean>(false);
 
   const showLoadingScreen = mode === "creating" || mode === "joining";
 
@@ -74,7 +77,13 @@ export default function MultiplayerRoute({
 
   // members list (UI) and authoritative presence map
   const [members, setMembers] = useState<
-    { clientId: string; name: string; targetWins?: number; gameMode?: GameMode }[]
+    {
+      clientId: string;
+      name: string;
+      targetWins?: number;
+      gameMode?: GameMode;
+      easyMode?: boolean;
+    }[]
   >([]);
   const clientId = useMemo(() => uidShort(), []);
 
@@ -84,6 +93,7 @@ export default function MultiplayerRoute({
     ts: number;
     targetWins?: number;
     gameMode?: GameMode;
+    easyMode?: boolean;
   };
   const memberMapRef = useRef<Map<string, MemberEntry>>(new Map());
 
@@ -95,11 +105,12 @@ export default function MultiplayerRoute({
     });
 
     setMembers(
-      ordered.map(({ clientId, name, targetWins, gameMode }) => ({
+      ordered.map(({ clientId, name, targetWins, gameMode, easyMode }) => ({
         clientId,
         name,
         targetWins,
         gameMode: gameMode ? [...gameMode] : undefined,
+        easyMode,
       }))
     );
 
@@ -113,6 +124,7 @@ export default function MultiplayerRoute({
     if (host) {
       const hostModes = host.gameMode ?? DEFAULT_GAME_MODE;
       setGameMode(normalizeGameMode(hostModes));
+      setEasyMode(Boolean(host.easyMode));
     }
   }, []);
 
@@ -127,6 +139,7 @@ export default function MultiplayerRoute({
         const data = (msg.data ?? {}) as any;
         const rawTargetWins = data?.targetWins;
         const rawGameMode = data?.gameMode;
+        const rawEasyMode = data?.easyMode;
         const prev = prevMap.get(msg.clientId);
         const serverTs = typeof msg.timestamp === "number" ? msg.timestamp : undefined;
         const ts =
@@ -148,6 +161,7 @@ export default function MultiplayerRoute({
               ? clampTargetWins(rawTargetWins)
               : prev?.targetWins,
           gameMode: normalizeGameMode(nextMode),
+          easyMode: rawEasyMode === true ? true : prev?.easyMode,
         });
       }
     }
@@ -191,12 +205,14 @@ export default function MultiplayerRoute({
       const name = data?.name ?? existing?.name ?? "Player";
       const rawTargetWins = data?.targetWins;
       const rawGameMode = data?.gameMode;
+      const rawEasyMode = data?.easyMode;
       const memberTargetWins =
         typeof rawTargetWins === "number" && Number.isFinite(rawTargetWins)
           ? clampTargetWins(rawTargetWins)
           : existing?.targetWins;
       const coercedMode = coerceGameMode(rawGameMode);
       const memberGameMode = normalizeGameMode(coercedMode ?? existing?.gameMode ?? DEFAULT_GAME_MODE);
+      const memberEasyMode = rawEasyMode === true ? true : existing?.easyMode;
 
       if (action === "leave" || action === "absent") {
         map.delete(msg.clientId);
@@ -207,6 +223,7 @@ export default function MultiplayerRoute({
           ts,
           targetWins: memberTargetWins,
           gameMode: memberGameMode,
+          easyMode: memberEasyMode,
         });
       }
 
@@ -317,7 +334,7 @@ export default function MultiplayerRoute({
 
       // 3) Enter presence with the current name, targetWins, and gameMode
       const initialGameMode = normalizeGameMode(gameMode);
-      await chan.presence.enter({ name, targetWins, gameMode: initialGameMode });
+      await chan.presence.enter({ name, targetWins, gameMode: initialGameMode, easyMode });
 
       // Seed self immediately so the UI shows the host right away
       {
@@ -327,6 +344,7 @@ export default function MultiplayerRoute({
           ts: Date.now(),
           targetWins,
           gameMode: initialGameMode,
+          easyMode,
         };
         const map = new Map<string, MemberEntry>([[clientId, self]]);
         memberMapRef.current = map;
@@ -432,7 +450,7 @@ export default function MultiplayerRoute({
       if (mode === "in-room" && channelRef.current) {
         try {
           const normalized = normalizeGameMode(gameMode);
-          await channelRef.current.presence.update({ name, targetWins, gameMode: normalized });
+          await channelRef.current.presence.update({ name, targetWins, gameMode: normalized, easyMode });
 
           const current = memberMapRef.current.get(clientId);
           const map = new Map(memberMapRef.current);
@@ -442,13 +460,14 @@ export default function MultiplayerRoute({
             targetWins,
             ts: current?.ts ?? Date.now(),
             gameMode: normalized,
+            easyMode,
           });
           memberMapRef.current = map;
           commitMembers(map);
         } catch { /* no-op */ }
       }
     })();
-  }, [clientId, commitMembers, mode, name, targetWins, gameMode]);
+  }, [clientId, commitMembers, mode, name, targetWins, gameMode, easyMode]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -530,6 +549,7 @@ export default function MultiplayerRoute({
     setTargetWins(TARGET_WINS);
     setTargetWinsInput(TARGET_WINS.toString());
     setGameMode([...DEFAULT_GAME_MODE]);
+    setEasyMode(false);
   }
 
   async function onStartGame() {
@@ -552,6 +572,7 @@ export default function MultiplayerRoute({
       playersArr: members,         // optional, for debugging/analytics
       targetWins: winsGoal,        // 👈 pass wins goal into the game
       gameMode: normalizeGameMode(gameMode), // 👈 pass lobby-selected mode
+      easyMode,
     };
 
     await channelRef.current?.publish("start", payload);
@@ -589,6 +610,14 @@ export default function MultiplayerRoute({
     (option: GameModeOption) => {
       if (!isHost) return;
       setGameMode((prev) => toggleGameMode(prev, option));
+    },
+    [isHost]
+  );
+
+  const handleEasyModeToggle = useCallback(
+    (value: boolean) => {
+      if (!isHost) return;
+      setEasyMode(value);
     },
     [isHost]
   );
@@ -667,7 +696,14 @@ export default function MultiplayerRoute({
             <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-white/10">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div className="flex-1">
-                  <div className="text-sm opacity-80 mb-1">Rounds to win</div>
+                  <div className="mb-1 flex items-center justify-between gap-3">
+                    <div className="text-sm opacity-80">Rounds to win</div>
+                    <EasyModeSwitch
+                      checked={easyMode}
+                      onToggle={handleEasyModeToggle}
+                      disabled={!isHost}
+                    />
+                  </div>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
