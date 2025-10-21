@@ -1220,7 +1220,7 @@ export default function ThreeWheel_WinsOnly({
   const remoteResolveReady = resolveVotes[remoteLegacySide];
 
   const resolveButtonDisabled = !canReveal || (isMultiplayer && localResolveReady);
-  const resolveButtonLabel = isMultiplayer && localResolveReady ? "Ready" : "Resolve";
+  const resolveButtonLabel = isMultiplayer && localResolveReady ? "Ready" : "Spin!";
 
   const resolveStatusText =
     isMultiplayer && phase === "choose"
