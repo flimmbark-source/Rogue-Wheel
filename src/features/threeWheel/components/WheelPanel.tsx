@@ -479,31 +479,30 @@ const WheelPanel: React.FC<WheelPanelProps> = ({
 
   const panelStyle = variant === "standalone" ? standaloneStyle : groupedStyle;
 
+  const playerWon = wheelHudColor === hudColors.player;
+  const enemyWon = wheelHudColor === hudColors.enemy;
+
   const resultIndicators =
     (phase === "skill" || phase === "recalc" || phase === "roundEnd" || phase === "ended") && (
       <>
-        <span
-          aria-label={`Wheel ${index + 1} player result`}
-          className="absolute top-1 left-1 rounded-full border"
-          style={{
-            width: 10,
-            height: 10,
-            background: wheelHudColor === hudColors.player ? hudColors.player : "transparent",
-            borderColor: wheelHudColor === hudColors.player ? hudColors.player : theme.panelBorder,
-            boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
-          }}
-        />
-        <span
-          aria-label={`Wheel ${index + 1} enemy result`}
-          className="absolute top-1 right-1 rounded-full border"
-          style={{
-            width: 10,
-            height: 10,
-            background: wheelHudColor === hudColors.enemy ? hudColors.enemy : "transparent",
-            borderColor: wheelHudColor === hudColors.enemy ? hudColors.enemy : theme.panelBorder,
-            boxShadow: "0 0 0 1px rgba(0,0,0,0.4)",
-          }}
-        />
+        {playerWon && (
+          <span
+            aria-label={`Wheel ${index + 1} player result`}
+            className="absolute top-1 left-1 text-[10px] font-semibold uppercase tracking-wide"
+            style={{ color: hudColors.player }}
+          >
+            Winner
+          </span>
+        )}
+        {enemyWon && (
+          <span
+            aria-label={`Wheel ${index + 1} enemy result`}
+            className="absolute top-1 right-1 text-right text-[10px] font-semibold uppercase tracking-wide"
+            style={{ color: hudColors.enemy }}
+          >
+            Winner
+          </span>
+        )}
       </>
     );
 
