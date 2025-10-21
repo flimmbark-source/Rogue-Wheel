@@ -124,9 +124,11 @@ export default function MultiplayerRoute({
     if (host) {
       const hostModes = host.gameMode ?? DEFAULT_GAME_MODE;
       setGameMode(normalizeGameMode(hostModes));
-      setEasyMode(Boolean(host.easyMode));
+      if (host.clientId !== clientId) {
+        setEasyMode(Boolean(host.easyMode));
+      }
     }
-  }, []);
+  }, [clientId]);
 
   const applySnapshot = useCallback(
   (list: PresenceMessage[] | undefined | null) => {
