@@ -65,9 +65,10 @@ export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine.j
 export type { SkillAbilityTarget } from "../utils/skillAbilityExecution.js";
 
 export type MPIntent =
-  | { type: "assign"; lane: number; side: LegacySide; card: Card }
+  | { type: "assign"; lane: number; side: LegacySide }
   | { type: "clear"; lane: number; side: LegacySide }
-  | { type: "reveal"; side: LegacySide }
+  | { type: "revealIntent"; side: LegacySide }
+  | { type: "shareAssignments"; side: LegacySide; assignments: (Card | null)[] }
   | { type: "nextRound"; side: LegacySide }
   | { type: "rematch"; side: LegacySide }
   | { type: "reserve"; side: LegacySide; reserve: number; round: number }
@@ -420,6 +421,26 @@ export function useThreeWheelGame({
     assignRef.current = assign;
   }, [assign]);
 
+  const [hiddenLaneOccupancy, setHiddenLaneOccupancy] = useState<AssignmentState<boolean>>({
+    player: [false, false, false],
+    enemy: [false, false, false],
+  });
+
+  const assignmentsSharedRef = useRef<SideState<boolean>>({ player: false, enemy: false });
+  const assignmentsReceivedRef = useRef<SideState<boolean>>({ player: false, enemy: false });
+  const [receivedAssignments, setReceivedAssignments] = useState<SideState<boolean>>({
+    player: false,
+    enemy: false,
+  });
+
+  useEffect(() => {
+    assignmentsReceivedRef.current[localLegacySide] = true;
+    setReceivedAssignments((prev) => {
+      if (prev[localLegacySide]) return prev;
+      return { ...prev, [localLegacySide]: true };
+    });
+  }, [localLegacySide]);
+
   useEffect(() => {
     setSkillState((prev) => {
       if (prev.enabled === isSkillMode) {
@@ -514,16 +535,36 @@ export function useThreeWheelGame({
     });
   }, []);
 
-  const clearResolveVotes = useCallback((side?: LegacySide) => {
-    setResolveVotes((prev) => {
+  const clearResolveVotes = useCallback(
+    (side?: LegacySide) => {
       if (side) {
-        if (!prev[side]) return prev;
-        return { ...prev, [side]: false };
+        assignmentsSharedRef.current[side] = false;
+        if (side !== localLegacySide) {
+          assignmentsReceivedRef.current[side] = false;
+          setReceivedAssignments((prev) => {
+            if (!prev[side]) return prev;
+            return { ...prev, [side]: false };
+          });
+        }
+      } else {
+        assignmentsSharedRef.current = { player: false, enemy: false };
+        const resetReceived: SideState<boolean> = { player: false, enemy: false };
+        resetReceived[localLegacySide] = true;
+        assignmentsReceivedRef.current = resetReceived;
+        setReceivedAssignments(resetReceived);
       }
-      if (!prev.player && !prev.enemy) return prev;
-      return { player: false, enemy: false };
-    });
-  }, []);
+
+      setResolveVotes((prev) => {
+        if (side) {
+          if (!prev[side]) return prev;
+          return { ...prev, [side]: false };
+        }
+        if (!prev.player && !prev.enemy) return prev;
+        return { player: false, enemy: false };
+      });
+    },
+    [localLegacySide],
+  );
 
   const markAdvanceVote = useCallback((side: LegacySide) => {
     setAdvanceVotes((prev) => {
@@ -1033,7 +1074,9 @@ export function useThreeWheelGame({
             nextLane[existingIdx] = null;
           }
           nextLane[laneIndex] = card;
-          return isPlayer ? { ...prev, player: nextLane } : { ...prev, enemy: nextLane };
+          const nextAssign = isPlayer ? { ...prev, player: nextLane } : { ...prev, enemy: nextLane };
+          assignRef.current = nextAssign;
+          return nextAssign;
         });
 
         if (isPlayer) {
@@ -1078,7 +1121,10 @@ export function useThreeWheelGame({
           const laneArr = side === "player" ? prevAssign.player : prevAssign.enemy;
           const nextLane = [...laneArr];
           nextLane[laneIndex] = null;
-          return side === "player" ? { ...prevAssign, player: nextLane } : { ...prevAssign, enemy: nextLane };
+          const nextAssign =
+            side === "player" ? { ...prevAssign, player: nextLane } : { ...prevAssign, enemy: nextLane };
+          assignRef.current = nextAssign;
+          return nextAssign;
         });
 
         if (side === "player") {
@@ -1109,7 +1155,7 @@ export function useThreeWheelGame({
     (i: number, card: Card) => {
       const changed = assignToWheelFor(localLegacySide, i, card);
       if (changed && isMultiplayer) {
-        sendIntent({ type: "assign", lane: i, side: localLegacySide, card });
+        sendIntent({ type: "assign", lane: i, side: localLegacySide });
       }
     },
     [assignToWheelFor, isMultiplayer, localLegacySide, sendIntent]
@@ -1582,8 +1628,34 @@ export function useThreeWheelGame({
     if (!canReveal) return;
     const votes = resolveVotesRef.current;
     if (!votes.player || !votes.enemy) return;
+    if (!assignmentsSharedRef.current[localLegacySide]) return;
+    if (!assignmentsReceivedRef.current[remoteLegacySide]) return;
     tryRevealRound();
-  }, [canReveal, isMultiplayer, phase, tryRevealRound]);
+  }, [
+    canReveal,
+    isMultiplayer,
+    localLegacySide,
+    phase,
+    remoteLegacySide,
+    tryRevealRound,
+  ]);
+
+  useEffect(() => {
+    if (!isMultiplayer) return;
+    if (phase !== "choose") return;
+    const votes = resolveVotes;
+    if (!votes.player || !votes.enemy) return;
+    if (assignmentsSharedRef.current[localLegacySide]) return;
+
+    assignmentsSharedRef.current[localLegacySide] = true;
+    const lane = assignRef.current[localLegacySide];
+    const payload = lane.map((card) => (card ? { ...card } : null)) as (Card | null)[];
+    sendIntent({ type: "shareAssignments", side: localLegacySide, assignments: payload });
+
+    setTimeout(() => {
+      attemptAutoReveal();
+    }, 0);
+  }, [attemptAutoReveal, isMultiplayer, localLegacySide, phase, resolveVotes, sendIntent]);
 
   useEffect(() => {
     attemptAutoReveal();
@@ -1762,6 +1834,7 @@ export function useThreeWheelGame({
 
       setWheelSections(generateWheelSet());
       setAssign({ player: [null, null, null], enemy: [null, null, null] });
+      setHiddenLaneOccupancy({ player: [false, false, false], enemy: [false, false, false] });
       setLaneChillStacks({ player: [0, 0, 0], enemy: [0, 0, 0] });
 
       setSelectedCardId(null);
@@ -1802,17 +1875,106 @@ export function useThreeWheelGame({
       switch (msg.type) {
         case "assign": {
           if (senderId && senderId === localPlayerId) break;
-          assignToWheelFor(msg.side, msg.lane, msg.card);
+          setHiddenLaneOccupancy((prev) => {
+            const lane = [...prev[msg.side]];
+            if (lane[msg.lane]) return prev;
+            lane[msg.lane] = true;
+            return msg.side === "player" ? { ...prev, player: lane } : { ...prev, enemy: lane };
+          });
+          setAssign((prev) => {
+            const laneArr = msg.side === "player" ? prev.player : prev.enemy;
+            if (laneArr[msg.lane] === null) return prev;
+            const nextLane = [...laneArr];
+            nextLane[msg.lane] = null;
+            const nextAssign =
+              msg.side === "player"
+                ? { ...prev, player: nextLane }
+                : { ...prev, enemy: nextLane };
+            assignRef.current = nextAssign;
+            return nextAssign;
+          });
+          if (msg.side !== localLegacySide) {
+            assignmentsReceivedRef.current[msg.side] = false;
+            setReceivedAssignments((prev) => {
+              if (!prev[msg.side]) return prev;
+              return { ...prev, [msg.side]: false };
+            });
+          }
+          clearResolveVotes(msg.side);
           break;
         }
         case "clear": {
           if (senderId && senderId === localPlayerId) break;
-          clearAssignFor(msg.side, msg.lane);
+          setHiddenLaneOccupancy((prev) => {
+            const lane = [...prev[msg.side]];
+            if (!lane[msg.lane]) return prev;
+            lane[msg.lane] = false;
+            return msg.side === "player" ? { ...prev, player: lane } : { ...prev, enemy: lane };
+          });
+          setAssign((prev) => {
+            const laneArr = msg.side === "player" ? prev.player : prev.enemy;
+            if (laneArr[msg.lane] === null) return prev;
+            const nextLane = [...laneArr];
+            nextLane[msg.lane] = null;
+            const nextAssign =
+              msg.side === "player"
+                ? { ...prev, player: nextLane }
+                : { ...prev, enemy: nextLane };
+            assignRef.current = nextAssign;
+            return nextAssign;
+          });
+          if (msg.side !== localLegacySide) {
+            assignmentsReceivedRef.current[msg.side] = false;
+            setReceivedAssignments((prev) => {
+              if (!prev[msg.side]) return prev;
+              return { ...prev, [msg.side]: false };
+            });
+          }
+          clearResolveVotes(msg.side);
           break;
         }
-        case "reveal": {
+        case "revealIntent": {
           if (senderId && senderId === localPlayerId) break;
           markResolveVote(msg.side);
+          setTimeout(() => {
+            attemptAutoReveal();
+          }, 0);
+          break;
+        }
+        case "shareAssignments": {
+          if (senderId && senderId === localPlayerId) break;
+          if (!Array.isArray(msg.assignments)) break;
+          const received = msg.assignments.map((card) => (card ? { ...card } : null)) as (
+            | Card
+            | null
+          )[];
+          assignmentsReceivedRef.current[msg.side] = true;
+          setReceivedAssignments((prev) => {
+            if (prev[msg.side]) return prev;
+            return { ...prev, [msg.side]: true };
+          });
+          setHiddenLaneOccupancy((prev) => {
+            const lane = [...prev[msg.side]];
+            let changed = false;
+            received.forEach((card, index) => {
+              const occupied = !!card;
+              if (lane[index] !== occupied) {
+                lane[index] = occupied;
+                changed = true;
+              }
+            });
+            if (!changed) return prev;
+            return msg.side === "player" ? { ...prev, player: lane } : { ...prev, enemy: lane };
+          });
+          setAssign((prev) => {
+            const nextAssign =
+              msg.side === "player"
+                ? { ...prev, player: received }
+                : { ...prev, enemy: received };
+            assignRef.current = nextAssign;
+            return nextAssign;
+          });
+          assignmentsSharedRef.current[msg.side] = true;
           setTimeout(() => {
             attemptAutoReveal();
           }, 0);
@@ -1863,15 +2025,20 @@ export function useThreeWheelGame({
       }
     },
     [
-      assignToWheelFor,
-      clearAssignFor,
       localPlayerId,
+      localLegacySide,
       markAdvanceVote,
       markRematchVote,
       markResolveVote,
       attemptAutoReveal,
       applySpellEffects,
       storeReserveReport,
+      clearResolveVotes,
+      clampAnteValue,
+      wins,
+      winGoal,
+      initiative,
+      isAnteMode,
     ]
   );
 
@@ -1949,8 +2116,7 @@ export function useThreeWheelGame({
     }
 
     markResolveVote(localLegacySide);
-    sendIntent({ type: "reveal", side: localLegacySide });
-    tryRevealRound();
+    sendIntent({ type: "revealIntent", side: localLegacySide });
     setTimeout(() => {
       attemptAutoReveal();
     }, 0);
@@ -1961,7 +2127,6 @@ export function useThreeWheelGame({
     localLegacySide,
     markResolveVote,
     phase,
-    resolveVotes,
     sendIntent,
     tryRevealRound,
   ]);
@@ -2258,6 +2423,7 @@ export function useThreeWheelGame({
     };
     assignRef.current = emptyAssign;
     setAssign(emptyAssign);
+    setHiddenLaneOccupancy({ player: [false, false, false], enemy: [false, false, false] });
     setLaneChillStacks({ player: [0, 0, 0], enemy: [0, 0, 0] });
 
     setSelectedCardId(null);
@@ -2473,6 +2639,27 @@ export function useThreeWheelGame({
     [active, addTouchDragCss, assignToWheelLocal, getDropTargetAt, setDragOverWheel]
   );
 
+  const shouldMaskRemoteAssignments =
+    isMultiplayer && phase === "choose" && !receivedAssignments[remoteLegacySide];
+
+  const assignForDisplay = useMemo(() => {
+    if (!shouldMaskRemoteAssignments) {
+      return assign;
+    }
+
+    const occupancy = hiddenLaneOccupancy[remoteLegacySide];
+    const maskedLane = occupancy.map((occupied, index) =>
+      occupied
+        ? ({ id: `hidden-${remoteLegacySide}-${index}`, name: "Hidden", tags: [] } as Card)
+        : null,
+    ) as (Card | null)[];
+
+    if (remoteLegacySide === "player") {
+      return { ...assign, player: maskedLane };
+    }
+    return { ...assign, enemy: maskedLane };
+  }, [assign, hiddenLaneOccupancy, remoteLegacySide, shouldMaskRemoteAssignments]);
+
   const state: ThreeWheelGameState = {
     player,
     enemy,
@@ -2496,7 +2683,7 @@ export function useThreeWheelGame({
     wheelCardTotals,
     active,
     wheelHUD,
-    assign,
+    assign: assignForDisplay,
     laneChillStacks,
     dragCardId,
     dragOverWheel,
