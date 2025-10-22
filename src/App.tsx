@@ -1837,7 +1837,8 @@ export default function ThreeWheel_WinsOnly({
                 <div className="text-[12px] space-y-2">
                   <div>
                     Place <span className="font-semibold">1 card next to each wheel</span>, then{" "}
-                    <span className="font-semibold">press the Resolve button</span>. Where the{" "}
+                    <span className="font-semibold">press the Spin! button</span>. The sum of the 2 
+                    cards left in hand is your <span className="font-semibold">Reserve</span>. Where the{" "}
                     <span className="font-semibold">token stops</span> decides the winnning rule, and
                     the player who matches it gets <span className="font-semibold">1 win</span>.
                     First to <span className="font-semibold">{winGoal}</span> wins takes the match.
@@ -1845,9 +1846,9 @@ export default function ThreeWheel_WinsOnly({
                   <ul className="list-disc pl-5 space-y-1">
                     <li>💥 Strongest — higher value wins</li>
                     <li>🦊 Weakest — lower value wins</li>
-                    <li>🗃️ Reserve — highest sum of cards left in hand</li>
+                    <li>🗃️ Reserve — highest reserve wins</li>
                     <li>🎯 Closest — value closest to target wins</li>
-                    <li>⚑ Initiative — initiative holder wins</li>
+                    <li>⚑ Initiative — initiative (⚑) holder wins</li>
                     <li><span className="font-semibold">0 Start</span> — no one wins</li>
                   </ul>
                   {isGrimoireMode && (
