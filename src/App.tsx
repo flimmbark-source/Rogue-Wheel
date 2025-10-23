@@ -1838,8 +1838,9 @@ export default function ThreeWheel_WinsOnly({
                   <div>
                     Place <span className="font-semibold">1 card next to each wheel</span>, then{" "}
                     <span className="font-semibold">press the Spin! button</span>. The sum of the 2 
-                    cards left in hand is your <span className="font-semibold">Reserve</span>. Where the{" "}
-                    <span className="font-semibold">token stops</span> decides the winnning rule, and
+                    cards left in hand is your <span className="font-semibold">Reserve</span>. For each
+                    wheel, the token spins to the sum of both player's cards, which decides the{" "}
+                    <span className="font-semibold">winning rule</span>, and
                     the player who matches it gets <span className="font-semibold">1 win</span>.
                     First to <span className="font-semibold">{winGoal}</span> wins takes the match.
                   </div>
