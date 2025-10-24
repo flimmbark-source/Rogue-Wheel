@@ -60,6 +60,11 @@ import {
   type SkillLane,
   type SkillState,
 } from "./skillState.js";
+import {
+  chooseBestMove,
+  type GameState as AIDecisionState,
+  type AIMove,
+} from "../../../game/ai/DecisionEngine.js";
 
 export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine.js";
 export type { SkillAbilityTarget } from "../utils/skillAbilityExecution.js";
@@ -1162,21 +1167,77 @@ export function useThreeWheelGame({
   );
 
  function autoPickEnemy(): (Card | null)[] {
-    const hand = [...enemy.hand].filter(isNormal);
-    const picks: (Card | null)[] = [null, null, null];
-    const take = (c: typeof hand[number]) => {
-      const k = hand.indexOf(c);
-      if (k >= 0) hand.splice(k, 1);
-      return c;
+    const aiHand = enemy.hand.filter(isNormal);
+    const picks: (Card | null)[] = [...assignRef.current.enemy];
+
+    if (aiHand.length === 0) {
+      return picks;
+    }
+
+    const assignedEnemyIds = new Set(
+      assignRef.current.enemy
+        .filter((card): card is Card => !!card)
+        .map((card) => card.id),
+    );
+    const usableHand = aiHand.filter((card) => !assignedEnemyIds.has(card.id));
+
+    const aiState: AIDecisionState = {
+      wheels: [0, 1, 2].map((lane) => ({
+        aiCard: assignRef.current.enemy[lane] ?? null,
+        playerCard: assignRef.current.player[lane] ?? null,
+      })),
+      aiHand: [...usableHand],
+      playerHand: player.hand.filter(isNormal),
+      tokens: [...(tokensRef.current ?? tokens)],
+      wheelSections,
+      initiative: initiativeRef.current,
+      reservePenalties: reservePenaltiesRef.current,
     };
-    const best = [...hand].sort((a, b) => b.number - a.number)[0];
-    if (best) picks[0] = take(best);
-    const low = [...hand].sort((a, b) => a.number - b.number)[0];
-    if (low) picks[1] = take(low);
-    const sorted = [...hand].sort((a, b) => a.number - b.number);
-    const mid = sorted[Math.floor(sorted.length / 2)];
-    if (mid) picks[2] = take(mid);
-    for (let i = 0; i < 3; i++) if (!picks[i] && hand.length) picks[i] = take(hand[0]);
+
+    const availableWheels = [0, 1, 2];
+    let stateForMove: AIDecisionState = aiState;
+
+    while (availableWheels.length > 0) {
+      const move: AIMove | null = chooseBestMove(stateForMove, availableWheels);
+      if (!move) break;
+
+      picks[move.wheelIndex] = move.card;
+
+      if (typeof console !== "undefined") {
+        const moveLog = `AI Move: Card ${cardWheelValue(move.card)} on Wheel ${
+          move.wheelIndex + 1
+        }, Win Prob: ${move.prob.toFixed(2)}`;
+        if (typeof console.debug === "function") console.debug(moveLog);
+        else console.log(moveLog);
+      }
+
+      const nextWheels = stateForMove.wheels.map((wheel, idx) =>
+        idx === move.wheelIndex ? { ...wheel, aiCard: move.card } : wheel,
+      );
+      const nextAiHand = stateForMove.aiHand.filter(
+        (card) => card.id !== move.card.id,
+      );
+
+      stateForMove = {
+        ...stateForMove,
+        wheels: nextWheels,
+        aiHand: nextAiHand,
+      };
+
+      const idx = availableWheels.indexOf(move.wheelIndex);
+      if (idx >= 0) availableWheels.splice(idx, 1);
+      if (stateForMove.aiHand.length === 0) break;
+    }
+
+    if (picks.some((card) => card === null) && stateForMove.aiHand.length) {
+      const leftovers = [...stateForMove.aiHand];
+      for (let i = 0; i < picks.length; i++) {
+        if (!picks[i] && leftovers.length) {
+          picks[i] = leftovers.shift() ?? null;
+        }
+      }
+    }
+
     return picks;
   }
 
