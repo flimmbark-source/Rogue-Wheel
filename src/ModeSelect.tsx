@@ -196,7 +196,7 @@ export default function ModeSelect({
         </div>
 
         <div
-          className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end"
+          className="mt-8 flex flex-wrap items-center gap-3 sm:items-center sm:justify-end"
         >
           {showCpuDifficulty && (
             <label className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-2">
