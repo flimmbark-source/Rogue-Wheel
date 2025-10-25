@@ -195,14 +195,12 @@ export default function ModeSelect({
           })}
         </div>
 
-        <div
-          className="mt-8 flex flex-wrap items-center gap-3 sm:items-center sm:justify-end"
-        >
+        <div className="mt-8 flex items-start gap-3 sm:justify-end">
           {showCpuDifficulty && (
-            <label className="order-1 flex flex-col gap-1 text-sm sm:order-none sm:flex-row sm:items-center sm:gap-2">
-              <span className="font-semibold text-slate-300">CPU Difficulty</span>
+            <label className="order-1 flex min-w-[7.5rem] flex-col text-xs font-semibold text-slate-300 sm:order-none sm:min-w-0 sm:text-sm">
+              <span>CPU Difficulty</span>
               <select
-                className="rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm text-slate-100 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+                className="mt-1.5 rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm text-slate-100 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
                 value={cpuDifficulty}
                 onChange={(event) => setCpuDifficulty(event.target.value as CpuDifficulty)}
               >
@@ -218,6 +216,7 @@ export default function ModeSelect({
             <EasyModeSwitch
               checked={easyMode}
               onToggle={setEasyMode}
+              stackedLabel
               className="order-2 shrink-0 rounded-full border border-slate-700 bg-slate-900/60 sm:hidden"
             />
           )}
