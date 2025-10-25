@@ -97,12 +97,22 @@ export default function ModeSelect({
           >
             {backLabel}
           </button>
-          {showTargetWinsInput && (
-            <div className="flex flex-col gap-2 sm:items-end">
+        </div>
+
+        <div className="mt-6 flex flex-col gap-3 text-left">
+          <h1 className="text-3xl font-bold sm:text-4xl">Choose Game Modes</h1>
+          <p className="text-sm text-slate-300 sm:text-base">
+            Classic rules are always on. Toggle any additional modes you want to include.
+          </p>
+        </div>
+
+        {showTargetWinsInput && (
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
               <label className="sr-only" htmlFor="target-wins-input">
                 Wins to take the match
               </label>
-              <div className="flex items-center gap-2 sm:justify-end">
+              <div className="flex items-center gap-2">
                 <input
                   id="target-wins-input"
                   type="number"
@@ -116,21 +126,14 @@ export default function ModeSelect({
                 />
                 <span className="text-xs text-slate-400 sm:text-sm">First to {targetWins} wins.</span>
               </div>
-              <EasyModeSwitch
-                checked={easyMode}
-                onToggle={setEasyMode}
-                className="self-start sm:self-end"
-              />
             </div>
-          )}
-        </div>
-
-        <div className="mt-6 flex flex-col gap-3 text-left">
-          <h1 className="text-3xl font-bold sm:text-4xl">Choose Game Modes</h1>
-          <p className="text-sm text-slate-300 sm:text-base">
-            Classic rules are always on. Toggle any additional modes you want to include.
-          </p>
-        </div>
+            <EasyModeSwitch
+              checked={easyMode}
+              onToggle={setEasyMode}
+              className="sm:self-center"
+            />
+          </div>
+        )}
 
         <div className="mt-8 grid gap-4 sm:grid-cols-2">
           {detailEntries.map(([mode, info]) => {
