@@ -146,7 +146,7 @@ export default function ModeSelect({
               <EasyModeSwitch
                 checked={easyMode}
                 onToggle={setEasyMode}
-                className="shrink-0"
+                className="hidden shrink-0 sm:inline-flex"
               />
             </div>
           </div>
@@ -199,7 +199,7 @@ export default function ModeSelect({
           className="mt-8 flex flex-wrap items-center gap-3 sm:items-center sm:justify-end"
         >
           {showCpuDifficulty && (
-            <label className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-2">
+            <label className="order-1 flex flex-col gap-1 text-sm sm:order-none sm:flex-row sm:items-center sm:gap-2">
               <span className="font-semibold text-slate-300">CPU Difficulty</span>
               <select
                 className="rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm text-slate-100 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
@@ -214,6 +214,13 @@ export default function ModeSelect({
               </select>
             </label>
           )}
+          {showTargetWinsInput && (
+            <EasyModeSwitch
+              checked={easyMode}
+              onToggle={setEasyMode}
+              className="order-2 shrink-0 rounded-full border border-slate-700 bg-slate-900/60 sm:hidden"
+            />
+          )}
           <button
             type="button"
             onClick={() =>
@@ -224,7 +231,7 @@ export default function ModeSelect({
                 cpuDifficulty,
               )
             }
-            className="ml-auto inline-flex items-center justify-center rounded-full bg-emerald-400 px-6 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 sm:ml-0"
+            className="order-3 ml-auto inline-flex items-center justify-center rounded-full bg-emerald-400 px-6 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 sm:ml-0 sm:order-none"
           >
             {confirmLabel}
           </button>
