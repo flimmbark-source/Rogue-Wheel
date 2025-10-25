@@ -107,31 +107,29 @@ export default function ModeSelect({
         </div>
 
         {showTargetWinsInput && (
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-              <label className="sr-only" htmlFor="target-wins-input">
-                Wins to take the match
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  id="target-wins-input"
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={25}
-                  className="w-24 rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-center text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
-                  value={targetWinsInput}
-                  onChange={(event) => handleWinsChange(event.target.value)}
-                  onBlur={handleWinsBlur}
-                />
-                <span className="text-xs text-slate-400 sm:text-sm">First to {targetWins} wins.</span>
-              </div>
+          <div className="mt-4 flex flex-col gap-2">
+            <label className="sr-only" htmlFor="target-wins-input">
+              Wins to take the match
+            </label>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <input
+                id="target-wins-input"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={25}
+                className="w-24 rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-center text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+                value={targetWinsInput}
+                onChange={(event) => handleWinsChange(event.target.value)}
+                onBlur={handleWinsBlur}
+              />
+              <span className="text-xs text-slate-400 sm:text-sm">First to {targetWins} wins.</span>
+              <EasyModeSwitch
+                checked={easyMode}
+                onToggle={setEasyMode}
+                className="shrink-0"
+              />
             </div>
-            <EasyModeSwitch
-              checked={easyMode}
-              onToggle={setEasyMode}
-              className="sm:self-center"
-            />
           </div>
         )}
 
