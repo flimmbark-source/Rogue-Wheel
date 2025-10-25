@@ -65,6 +65,11 @@ import {
   type GameState as AIDecisionState,
   type AIMove,
 } from "../../../game/ai/DecisionEngine.js";
+import {
+  CPU_DIFFICULTY_TRIALS,
+  DEFAULT_CPU_DIFFICULTY,
+  type CpuDifficulty,
+} from "../../../game/ai/cpuDifficulty.js";
 
 export type { LegacySide, SpellEffectPayload } from "../../../game/spellEngine.js";
 export type { SkillAbilityTarget } from "../utils/skillAbilityExecution.js";
@@ -90,6 +95,7 @@ export type ThreeWheelGameProps = {
   targetWins?: number;
   gameMode?: GameMode;
   easyMode?: boolean;
+  cpuDifficulty?: CpuDifficulty;
   onExit?: () => void;
 };
 
@@ -304,6 +310,7 @@ export function useThreeWheelGame({
   targetWins,
   gameMode,
   easyMode,
+  cpuDifficulty = DEFAULT_CPU_DIFFICULTY,
   onExit,
 }: ThreeWheelGameProps): ThreeWheelGameReturn {
   const mountedRef = useRef(true);
@@ -338,6 +345,7 @@ export function useThreeWheelGame({
 
   const playerName = players.left.name || "Wanderer";
   const enemyName = players.right.name || "Shade Bandit";
+  const trialsPerDecision = CPU_DIFFICULTY_TRIALS[cpuDifficulty];
 
   const namesByLegacy: Record<LegacySide, string> = {
     player: playerName,
@@ -1198,7 +1206,11 @@ export function useThreeWheelGame({
     let stateForMove: AIDecisionState = aiState;
 
     while (availableWheels.length > 0) {
-      const move: AIMove | null = chooseBestMove(stateForMove, availableWheels);
+      const move: AIMove | null = chooseBestMove(
+        stateForMove,
+        availableWheels,
+        trialsPerDecision,
+      );
       if (!move) break;
 
       picks[move.wheelIndex] = move.card;

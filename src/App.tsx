@@ -47,6 +47,10 @@ import {
 import { easeInOutCubic, inSection, createSeededRng } from "./game/math";
 import { VC_META, genWheelSections } from "./game/wheel";
 import { DEFAULT_GAME_MODE, normalizeGameMode } from "./gameModes";
+import {
+  DEFAULT_CPU_DIFFICULTY,
+  type CpuDifficulty,
+} from "./game/ai/cpuDifficulty";
 import type { ArchetypeId } from "./game/archetypes";
 import {
   makeFighter,
@@ -273,6 +277,7 @@ export default function ThreeWheel_WinsOnly({
   hostId,
   targetWins,
   easyMode = false,
+  cpuDifficulty = DEFAULT_CPU_DIFFICULTY,
   onExit,
 }: {
   localSide: TwoSide;
@@ -284,6 +289,7 @@ export default function ThreeWheel_WinsOnly({
   hostId?: string;
   targetWins?: number;
   easyMode?: boolean;
+  cpuDifficulty?: CpuDifficulty;
   onExit?: () => void;
 }) {
 
@@ -297,6 +303,7 @@ export default function ThreeWheel_WinsOnly({
     targetWins,
     gameMode,
     easyMode,
+    cpuDifficulty,
     onExit,
   });
   // --- from hook
