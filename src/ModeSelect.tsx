@@ -89,7 +89,7 @@ export default function ModeSelect({
   return (
     <div className="min-h-dvh bg-slate-950 text-slate-100">
       <div className="mx-auto flex min-h-dvh w-full max-w-4xl flex-col px-4 py-6 sm:px-8">
-        <div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <button
             type="button"
             onClick={onBack}
@@ -97,6 +97,32 @@ export default function ModeSelect({
           >
             {backLabel}
           </button>
+          {showTargetWinsInput && (
+            <div className="flex flex-col gap-2 sm:items-end">
+              <label className="sr-only" htmlFor="target-wins-input">
+                Wins to take the match
+              </label>
+              <div className="flex items-center gap-2 sm:justify-end">
+                <input
+                  id="target-wins-input"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={25}
+                  className="w-24 rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-center text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+                  value={targetWinsInput}
+                  onChange={(event) => handleWinsChange(event.target.value)}
+                  onBlur={handleWinsBlur}
+                />
+                <span className="text-xs text-slate-400 sm:text-sm">First to {targetWins} wins.</span>
+              </div>
+              <EasyModeSwitch
+                checked={easyMode}
+                onToggle={setEasyMode}
+                className="self-start sm:self-end"
+              />
+            </div>
+          )}
         </div>
 
         <div className="mt-6 flex flex-col gap-3 text-left">
@@ -149,31 +175,7 @@ export default function ModeSelect({
           })}
         </div>
 
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          {showTargetWinsInput && (
-            <div className="flex flex-col gap-1 text-left sm:flex-row sm:items-center sm:gap-3">
-              <div className="flex items-center justify-between gap-3">
-                <label className="text-xs font-medium text-slate-300 sm:text-sm" htmlFor="target-wins-input">
-                  Wins to take the match
-                </label>
-                <EasyModeSwitch checked={easyMode} onToggle={setEasyMode} />
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  id="target-wins-input"
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={25}
-                  className="w-24 rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-center text-sm focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
-                  value={targetWinsInput}
-                  onChange={(event) => handleWinsChange(event.target.value)}
-                  onBlur={handleWinsBlur}
-                />
-                <span className="text-xs text-slate-400 sm:text-sm">First to {targetWins} wins.</span>
-              </div>
-            </div>
-          )}
+        <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={() => onConfirm(normalizeGameMode(selectedModes), targetWins, easyMode)}
