@@ -7,6 +7,10 @@ import { TARGET_WINS, type Players, type Side } from "./game/types";
 import ProfilePage from "./ProfilePage";
 import ModeSelect from "./ModeSelect";
 import { DEFAULT_GAME_MODE, normalizeGameMode, type GameMode } from "./gameModes";
+import {
+  DEFAULT_CPU_DIFFICULTY,
+  type CpuDifficulty,
+} from "./game/ai/cpuDifficulty";
 
 type MPStartPayload = Parameters<
   NonNullable<React.ComponentProps<typeof MultiplayerRoute>["onStart"]>
@@ -27,6 +31,9 @@ export default function AppShell() {
   const [gameMode, setGameMode] = useState<GameMode>(() => [...DEFAULT_GAME_MODE]);
   const [soloTargetWins, setSoloTargetWins] = useState<number>(TARGET_WINS);
   const [easyMode, setEasyMode] = useState<boolean>(false);
+  const [cpuDifficulty, setCpuDifficulty] = useState<CpuDifficulty>(
+    DEFAULT_CPU_DIFFICULTY,
+  );
 
   if (view.key === "hub") {
     return (
@@ -74,6 +81,10 @@ export default function AppShell() {
     const initialTargetWins = view.next.mode === "mp"
       ? view.next.mpPayload?.targetWins ?? mpPayload?.targetWins ?? TARGET_WINS
       : soloTargetWins;
+    const initialCpuDifficulty =
+      view.next.mode === "mp"
+        ? DEFAULT_CPU_DIFFICULTY
+        : cpuDifficulty;
 
     return (
       <ModeSelect
@@ -84,16 +95,19 @@ export default function AppShell() {
             ? view.next.mpPayload?.easyMode ?? mpPayload?.easyMode ?? false
             : easyMode
         }
+        initialCpuDifficulty={initialCpuDifficulty}
         showTargetWinsInput={view.next.mode === "solo"}
+        showCpuDifficulty={view.next.mode === "solo"}
         backLabel={backLabel}
         confirmLabel={confirmLabel}
         onBack={() => {
           setView({ key: view.from });
           setMpPayload(null);
         }}
-        onConfirm={(mode, winsGoal, easy) => {
+        onConfirm={(mode, winsGoal, easy, cpuDiff) => {
           setGameMode(normalizeGameMode(mode));
           setEasyMode(easy);
+          setCpuDifficulty(cpuDiff);
 
           if (view.next.mode === "mp") {
             const payload = view.next.mpPayload ?? mpPayload;
@@ -130,6 +144,7 @@ export default function AppShell() {
     hostId?: string;
     targetWins?: number;
     easyMode?: boolean;
+    cpuDifficulty?: CpuDifficulty;
   } = {};
 
   if (view.mode === "mp" && (view.mpPayload ?? mpPayload)) {
@@ -152,7 +167,7 @@ export default function AppShell() {
     };
     localSide = "left";
     localPlayerId = "local";
-    extraProps = { targetWins: soloTargetWins, easyMode };
+    extraProps = { targetWins: soloTargetWins, easyMode, cpuDifficulty };
   }
 
   const exitToMenu = () => {

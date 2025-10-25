@@ -2,6 +2,11 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import { TARGET_WINS } from "./game/types";
 import {
+  CPU_DIFFICULTY_OPTIONS,
+  DEFAULT_CPU_DIFFICULTY,
+  type CpuDifficulty,
+} from "./game/ai/cpuDifficulty";
+import {
   DEFAULT_GAME_MODE,
   GAME_MODE_DETAILS,
   normalizeGameMode,
@@ -15,8 +20,15 @@ type ModeSelectProps = {
   initialMode?: GameMode;
   initialTargetWins?: number;
   initialEasyMode?: boolean;
+  initialCpuDifficulty?: CpuDifficulty;
   showTargetWinsInput?: boolean;
-  onConfirm: (mode: GameMode, targetWins: number, easyMode: boolean) => void;
+  showCpuDifficulty?: boolean;
+  onConfirm: (
+    mode: GameMode,
+    targetWins: number,
+    easyMode: boolean,
+    cpuDifficulty: CpuDifficulty,
+  ) => void;
   onBack: () => void;
   backLabel?: string;
   confirmLabel?: string;
@@ -26,7 +38,9 @@ export default function ModeSelect({
   initialMode = DEFAULT_GAME_MODE,
   initialTargetWins = TARGET_WINS,
   initialEasyMode = false,
+  initialCpuDifficulty = DEFAULT_CPU_DIFFICULTY,
   showTargetWinsInput = false,
+  showCpuDifficulty = false,
   onConfirm,
   onBack,
   backLabel = "← Back",
@@ -36,6 +50,7 @@ export default function ModeSelect({
   const [targetWins, setTargetWins] = useState<number>(() => clampTargetWins(initialTargetWins));
   const [targetWinsInput, setTargetWinsInput] = useState<string>(String(clampTargetWins(initialTargetWins)));
   const [easyMode, setEasyMode] = useState<boolean>(Boolean(initialEasyMode));
+  const [cpuDifficulty, setCpuDifficulty] = useState<CpuDifficulty>(initialCpuDifficulty);
 
   const detailEntries = useMemo(
     () =>
@@ -59,6 +74,10 @@ export default function ModeSelect({
   useEffect(() => {
     setEasyMode(Boolean(initialEasyMode));
   }, [initialEasyMode]);
+
+  useEffect(() => {
+    setCpuDifficulty(initialCpuDifficulty);
+  }, [initialCpuDifficulty]);
 
   const handleWinsChange = (value: string) => {
     if (!/^\d*$/.test(value)) return;
@@ -176,10 +195,35 @@ export default function ModeSelect({
           })}
         </div>
 
-        <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:justify-end">
+        <div
+          className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end"
+        >
+          {showCpuDifficulty && (
+            <label className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:gap-2">
+              <span className="font-semibold text-slate-300">CPU Difficulty</span>
+              <select
+                className="rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm text-slate-100 focus:border-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-400/40"
+                value={cpuDifficulty}
+                onChange={(event) => setCpuDifficulty(event.target.value as CpuDifficulty)}
+              >
+                {CPU_DIFFICULTY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button
             type="button"
-            onClick={() => onConfirm(normalizeGameMode(selectedModes), targetWins, easyMode)}
+            onClick={() =>
+              onConfirm(
+                normalizeGameMode(selectedModes),
+                targetWins,
+                easyMode,
+                cpuDifficulty,
+              )
+            }
             className="inline-flex items-center justify-center rounded-full bg-emerald-400 px-6 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
           >
             {confirmLabel}
