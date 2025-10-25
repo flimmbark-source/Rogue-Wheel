@@ -5,6 +5,8 @@ type EasyModeSwitchProps = {
   onToggle: (value: boolean) => void;
   disabled?: boolean;
   className?: string;
+  label?: string;
+  stackedLabel?: boolean;
 };
 
 export default function EasyModeSwitch({
@@ -12,6 +14,8 @@ export default function EasyModeSwitch({
   onToggle,
   disabled = false,
   className = "",
+  label = "Balanced Slices",
+  stackedLabel = false,
 }: EasyModeSwitchProps) {
   return (
     <button
@@ -26,17 +30,28 @@ export default function EasyModeSwitch({
         }
       }}
       className={[
-        "group inline-flex items-center gap-1.5 rounded-full border border-transparent px-2.5 py-1 text-[10px] font-semibold transition sm:gap-3 sm:px-4 sm:py-1.5 sm:text-[11px] sm:font-medium sm:uppercase sm:tracking-wide",
+        "group inline-flex rounded-full border border-transparent text-[10px] font-semibold transition sm:text-[11px] sm:font-medium sm:uppercase sm:tracking-wide",
+        stackedLabel
+          ? "flex-col items-start gap-1 px-3 py-2 text-left sm:gap-1.5 sm:px-4"
+          : "items-center gap-1.5 px-2.5 py-1 sm:gap-3 sm:px-4 sm:py-1.5",
         disabled
           ? "cursor-not-allowed text-slate-500"
           : "text-slate-300 hover:border-emerald-400/60 hover:text-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40",
         className,
       ].join(" ")}
     >
-      <span className="select-none leading-none">Balanced Slices</span>
+      <span
+        className={[
+          "select-none leading-none",
+          stackedLabel ? "text-left" : "",
+        ].join(" ")}
+      >
+        {label}
+      </span>
       <span
         className={[
           "inline-flex h-4 w-[2.25rem] items-center rounded-full border px-0.5 transition-all sm:h-6 sm:w-12 sm:px-1",
+          stackedLabel ? "mt-1.5" : "",
           checked
             ? "justify-end border-emerald-400 bg-emerald-400/20"
             : "justify-start border-slate-600 bg-slate-800",
