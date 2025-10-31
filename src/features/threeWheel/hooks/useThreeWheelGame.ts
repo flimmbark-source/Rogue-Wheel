@@ -406,6 +406,7 @@ export function useThreeWheelGame({
   );
   const [wins, setWins] = useState<{ player: number; enemy: number }>({ player: 0, enemy: 0 });
   const pendingWinsRef = useRef<{ player: number; enemy: number } | null>(null);
+  const pendingInitiativeRef = useRef<LegacySide | null>(null);
 
   const commitPendingWins = useCallback(() => {
     if (!pendingWinsRef.current) return;
@@ -1412,24 +1413,23 @@ export function useThreeWheelGame({
 
       const shouldUpdateInitiative = options?.updateInitiative ?? isSkillMode;
       if (shouldUpdateInitiative) {
-        setInitiative(summary.nextInitiative);
+        pendingInitiativeRef.current = summary.nextInitiative;
       }
 
       return summary;
     },
-    [
-      HUD_COLORS,
-      isAnteMode,
-      isSkillMode,
-      localLegacySide,
-      namesByLegacy,
-      remoteLegacySide,
-      round,
-      setInitiative,
-      setWheelHUD,
-      winGoal,
-      wins,
-    ],
+      [
+        HUD_COLORS,
+        isAnteMode,
+        isSkillMode,
+        localLegacySide,
+        namesByLegacy,
+        remoteLegacySide,
+        round,
+        setWheelHUD,
+        winGoal,
+        wins,
+      ],
   );
 
   const runRecalculationPhase = useCallback(
@@ -1784,7 +1784,7 @@ export function useThreeWheelGame({
         remoteLegacySide,
       });
 
-      setInitiative(summary.nextInitiative);
+      pendingInitiativeRef.current = summary.nextInitiative;
       summary.logs.forEach((entry) => {
         appendLog(entry);
       });
@@ -1877,6 +1877,11 @@ export function useThreeWheelGame({
       if (!allow) return false;
 
       commitPendingWins();
+      const pendingInitiative = pendingInitiativeRef.current;
+      pendingInitiativeRef.current = null;
+      if (pendingInitiative) {
+        setInitiative(pendingInitiative);
+      }
 
       clearResolveVotes();
       clearAdvanceVotes();
@@ -1938,6 +1943,7 @@ export function useThreeWheelGame({
       phase,
       setDragOverWheel,
       isSkillMode,
+      setInitiative,
     ]
   );
 
@@ -2482,6 +2488,7 @@ export function useThreeWheelGame({
     setPlayer(() => makeFighter(playerName));
     setEnemy(() => makeFighter(enemyName));
 
+    pendingInitiativeRef.current = null;
     setInitiative(hostId ? hostLegacySide : localLegacySide);
 
     setWins({ player: 0, enemy: 0 });
