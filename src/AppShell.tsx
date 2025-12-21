@@ -139,6 +139,7 @@ export default function AppShell() {
   let players: Players;
   let localSide: Side;
   let localPlayerId: string;
+  let activeGameMode: GameMode;
   let extraProps: {
     roomCode?: string;
     hostId?: string;
@@ -153,6 +154,7 @@ export default function AppShell() {
     players = mp.players;
     localSide = mp.localSide;
     localPlayerId = mp.players[localSide].id;
+    activeGameMode = normalizeGameMode(mp.gameMode);
     extraProps = {
       roomCode: mp.roomCode,
       hostId: mp.hostId,
@@ -167,6 +169,7 @@ export default function AppShell() {
     };
     localSide = "left";
     localPlayerId = "local";
+    activeGameMode = gameMode;
     extraProps = { targetWins: soloTargetWins, easyMode, cpuDifficulty };
   }
 
@@ -182,7 +185,7 @@ export default function AppShell() {
       players={players}
       seed={seed}
       onExit={exitToMenu}
-      gameMode={gameMode}
+      gameMode={activeGameMode}
       {...extraProps}
     />
   );
