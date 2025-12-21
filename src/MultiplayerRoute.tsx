@@ -122,9 +122,10 @@ export default function MultiplayerRoute({
     }
 
     if (host) {
-      const hostModes = host.gameMode ?? DEFAULT_GAME_MODE;
-      setGameMode(normalizeGameMode(hostModes));
+      // Non-hosts mirror the host's settings
       if (host.clientId !== clientId) {
+        const hostModes = host.gameMode ?? DEFAULT_GAME_MODE;
+        setGameMode(normalizeGameMode(hostModes));
         setEasyMode(Boolean(host.easyMode));
       }
     }
